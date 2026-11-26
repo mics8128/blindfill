@@ -35,7 +35,10 @@ jobs:
       # Trusted Publishing needs npm >= 11.5.1
       - run: npm install -g npm@latest
       - name: Publish (Trusted Publishing / OIDC)
-        run: npm publish --provenance --access public
+        # npm refuses prereleases without --tag; they go to `next` so they never become `latest`.
+        run: |
+          case "$GITHUB_REF_NAME" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
+          npm publish --provenance --access public --tag "$DIST_TAG"
         # FALLBACK, only if Trusted Publishing is unavailable for your package/registry:
         #   1. create a granular, publish-only npm token scoped to this package,
         #   2. store it as the repository secret NPM_TOKEN,
