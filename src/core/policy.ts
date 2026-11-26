@@ -33,7 +33,7 @@ function schemeCompatible(observed: URL, bound: URL): boolean {
 export function matchUri(observedUrl: string, item: ItemUri): MatchResult {
   if (item.match === 'never') return { ok: false, reason: 'match type is "never"' };
   const obs = parseUrl(observedUrl);
-  const bound = parseUrl(item.uri);
+  const bound = item.match === 'regex' ? obs : parseUrl(item.uri); // a regex is not a URL
   if (!obs || !bound) return { ok: false, reason: 'unparseable URL' };
   if (obs.protocol !== 'https:' && obs.protocol !== 'http:') return { ok: false, reason: 'not an http(s) page' };
 
