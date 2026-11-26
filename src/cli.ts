@@ -112,11 +112,18 @@ const { values, positionals } = parseArgs({
   },
 });
 
+const WITHHELD = 'output withheld: it matched a secret';
 function out(o: unknown): void {
-  process.stdout.write(globalScrubber.scrub(JSON.stringify(o, null, 2)) + '\n');
+  const text = JSON.stringify(o, null, 2);
+  process.stdout.write(
+    globalScrubber.guard(
+      text,
+      JSON.stringify({ ok: false, error: { code: 'WITHHELD', message: WITHHELD } }),
+    ) + '\n',
+  );
 }
 function note(s: string): void {
-  process.stderr.write(globalScrubber.scrub(s) + '\n');
+  process.stderr.write(globalScrubber.guard(s, `blindfill: ${WITHHELD}`) + '\n');
 }
 
 function expectSpec(): Expect | undefined {
@@ -305,6 +312,7 @@ async function main(): Promise<number> {
               query: values.query as string | undefined,
             },
             policy,
+            !!(process.stdin.isTTY && process.stderr.isTTY),
           ),
         );
         return 0;

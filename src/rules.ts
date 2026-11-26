@@ -61,6 +61,16 @@ function selector(v: unknown): string {
     v.includes('>>')
   )
     return bad('selector must be plain CSS (no Playwright selector engines)');
+  // value attributes and state pseudo-classes (:placeholder-shown, :invalid, ...) would turn a
+  // match/no-match error into an oracle on what was typed
+  const pseudos = v.replace(/\[[^\]]*\]/g, '').match(/::?[a-z-]+/gi) ?? [];
+  if (
+    /\[[^\]]*value/i.test(v) ||
+    pseudos.some(
+      (p) => !/^:(nth-of-type|nth-child|first-of-type|last-of-type|first-child|last-child|not)$/i.test(p),
+    )
+  )
+    return bad('selector may not test values or input state');
   return v;
 }
 

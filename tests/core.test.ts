@@ -130,6 +130,13 @@ describe('scrubber', () => {
     t.register('ab');
     expect(t.scrub('ab ab')).toBe('ab ab');
   });
+  it('guard withholds the whole text on any hit, including pre-scrubbed markers (no position oracle)', () => {
+    const t = new Scrubber();
+    t.register('hunter2-secret');
+    expect(t.guard('unknown rule "a hunter2-secret b"', 'W')).toBe('W');
+    expect(t.guard('verify: [REDACTED] bad selector', 'W')).toBe('W');
+    expect(t.guard('unknown rule id', 'W')).toBe('unknown rule id');
+  });
 });
 
 describe('audit', () => {

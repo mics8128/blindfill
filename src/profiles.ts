@@ -127,7 +127,7 @@ export function loadProfile(name: string, dir = profilesDir()): Profile {
     text = readPrivateFile(dir, `${name}.json`);
   } catch (e) {
     if (e instanceof BlindfillError && e.message === 'file not found')
-      throw new BlindfillError('NOT_FOUND', `profile "${name}" not found`);
+      throw new BlindfillError('NOT_FOUND', 'profile not found');
     throw e;
   }
   return validateProfile(strictJson(text), name);
@@ -159,7 +159,7 @@ export function createProfile(
     );
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'EEXIST')
-      throw new BlindfillError('POLICY', `profile "${name}" already exists (never overwritten)`);
+      throw new BlindfillError('POLICY', 'a profile with that name already exists (never overwritten)');
     throw new BlindfillError('POLICY', 'cannot create the profile file');
   }
   try {

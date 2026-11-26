@@ -23,7 +23,10 @@ let engine: Engine | null = null;
 let ownedActuator: WebActuator | null = null;
 
 async function getEngine(): Promise<Engine> {
-  if (engine) return engine;
+  if (engine && ownedActuator) return engine;
+  // attached session: re-attach per call so a lock or handoff written by another process (CLI) applies
+  if (engine) await engine.stop();
+  engine = null;
   const cfg = loadConfig();
   const backend = createBackend(cfg.backend ?? 'bw', cfg);
   const n = unverifiedNotice(backend);
@@ -45,7 +48,9 @@ async function getEngine(): Promise<Engine> {
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
 function reply(o: unknown, isError = false): ToolResult {
-  return { content: [{ type: 'text', text: globalScrubber.scrub(JSON.stringify(o, null, 2)) }], isError };
+  const text = JSON.stringify(o, null, 2);
+  const safe = globalScrubber.guard(text, JSON.stringify({ ok: false, error: { code: 'WITHHELD' } }));
+  return { content: [{ type: 'text', text: safe }], isError: isError || safe !== text };
 }
 async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
   try {

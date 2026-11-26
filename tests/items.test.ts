@@ -133,14 +133,17 @@ describe('item generate / create / password-policy (bw, mock)', () => {
     expect(stored().find((i) => i.id === r.id)!.login.password).toBe(pw);
   });
 
-  it('password-policy: read and replace; never changes the password', async () => {
+  it('password-policy: read and replace (human only); never changes the password', async () => {
     const eng = new Engine(backend());
     const id = stored().find((i) => i.name === 'gen-1')!.id;
     const before = stored().find((i) => i.id === id)!.login.password;
-    const r = await eng.itemPasswordPolicy({ item: id }, { version: 1, min_length: 9, max_length: 20 });
+    const policy = { version: 1, min_length: 9, max_length: 20 };
+    // an agent-set policy would be an oracle on the stored password at register time
+    await expect(eng.itemPasswordPolicy({ item: id }, policy)).rejects.toThrow(/terminal/);
+    const r = await eng.itemPasswordPolicy({ item: id }, policy, true);
     expect(r).toMatchObject({ policy_updated: true, password_changed: false });
     expect(stored().find((i) => i.id === id)!.login.password).toBe(before);
-    await expect(eng.itemPasswordPolicy({ item: id }, { version: 1, min_length: 1 })).rejects.toThrow(
+    await expect(eng.itemPasswordPolicy({ item: id }, { version: 1, min_length: 1 }, true)).rejects.toThrow(
       /invalid password policy/,
     );
   });

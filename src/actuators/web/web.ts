@@ -74,11 +74,14 @@ export interface EvidenceResult {
 
 /** Selectors for outcome evidence must be structural; no value/text/pseudo probing (oracle hardening). */
 export function assertSafeEvidenceSelector(sel: string): void {
+  const outside = sel.replace(/\[[^\]]*\]/g, '');
   if (
     sel.length > 120 ||
     !/^[#.\w\-[\]="'>\s*~+,]+$/.test(sel) ||
     /value|\bon\w+=/i.test(sel) ||
-    sel.replace(/\[[^\]]*\]/g, '').includes('=')
+    /[*~^$|]=/.test(sel) || // substring/word attribute matches probe content
+    sel.includes('>>') ||
+    /=|["']/.test(outside) // text= engines and quoted Playwright text selectors
   )
     throw new BlindfillError(
       'POLICY',
@@ -531,7 +534,14 @@ export class WebActuator {
     let target = frame;
     if (!target && rule?.frame) {
       const o = rule.frame.origin;
-      target = this.page.frames().find((f) => f !== this.page.mainFrame() && f.url().startsWith(o)) ?? null;
+      const sameOrigin = (u: string) => {
+        try {
+          return new URL(u).origin === o; // a prefix test would accept https://a.com.evil.net
+        } catch {
+          return false;
+        }
+      };
+      target = this.page.frames().find((f) => f !== this.page.mainFrame() && sameOrigin(f.url())) ?? null;
     }
     if (!target) throw new BlindfillError('NOT_FOUND', 'the rule frame is not present');
     const doc = await target.evaluateHandle('document');
@@ -547,9 +557,13 @@ export class WebActuator {
     assertSafeEvidenceSelector(successSelector);
     if (failureSelector) assertSafeEvidenceSelector(failureSelector);
     const one = async (sel: string): Promise<[boolean, boolean]> => {
-      const loc = this.page.locator(sel);
-      const count = await loc.count();
-      return [count === 1 && (await loc.isVisible()), count > 1];
+      try {
+        const loc = this.page.locator(sel);
+        const count = await loc.count();
+        return [count === 1 && (await loc.isVisible()), count > 1];
+      } catch (e) {
+        throw wrap(e, 'verify'); // Playwright parse errors echo the selector
+      }
     };
     const [s, sa] = await one(successSelector);
     const [f, fa] = failureSelector ? await one(failureSelector) : [false, false];

@@ -48,7 +48,9 @@ export class BwBackend extends RawItemBackend {
       input,
     });
     if (r.code !== 0) {
-      const msg = safeErr(r.stderr || r.stdout, [session]);
+      // writes: stdout may be the item JSON we sent, so only stderr is ever quoted
+      const write = args[0] === 'create' || args[0] === 'edit';
+      const msg = safeErr(write ? r.stderr : r.stderr || r.stdout, [session]);
       if (/locked|not logged in|session key is invalid|invalid master password/i.test(msg))
         throw new BlindfillError('LOCKED', `vault locked or session invalid: ${msg}`);
       if (/not found/i.test(msg)) throw new BlindfillError('NOT_FOUND', 'item not found');
@@ -122,6 +124,11 @@ export class BwBackend extends RawItemBackend {
 
   async #edit(ref: ItemRef, mutate: (raw: BwRawItem) => void): Promise<void> {
     const raw = await this.getRaw(ref);
+    // the whole item goes back to bw by stdin: know every secret in it in case bw echoes the body
+    for (const v of [raw.login?.password, raw.login?.totp, raw.card?.number, raw.card?.code])
+      if (v) globalScrubber.register(v);
+    for (const f of raw.fields ?? [])
+      if (f.value && classifyBwFieldType(f.type) === 'secret') globalScrubber.register(f.value);
     mutate(raw);
     await this.#bw(['edit', 'item', ref.id], this.#encode(raw));
   }
@@ -134,7 +141,7 @@ export class BwBackend extends RawItemBackend {
         return;
       }
       const f = raw.fields?.find((x) => x.name === field && classifyBwFieldType(x.type) === 'secret');
-      if (!f) throw new BlindfillError('NOT_FOUND', `item has no secret field "${field}"`);
+      if (!f) throw new BlindfillError('NOT_FOUND', 'item has no secret field with that name');
       f.value = value;
     });
   }

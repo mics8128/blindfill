@@ -135,6 +135,16 @@ describe('explicit field rules', () => {
     expect(validateRules([base])).toHaveLength(1);
     for (const sel of ['xpath=//input', 'text=Sign in', 'form >> input', 'css=input', 'internal:role=button'])
       expect(() => validateRules([{ ...base, fields: { password: sel } }])).toThrow(/plain CSS/);
+    // value and input-state probes would make match/no-match errors an oracle on typed text
+    for (const sel of [
+      'input[value^="Ab"]',
+      'input:placeholder-shown',
+      'input:invalid',
+      'form:has(input[value="x"])',
+    ])
+      expect(() => validateRules([{ ...base, fields: { password: sel } }])).toThrow(/values or input state/);
+    for (const sel of ['input:nth-of-type(2)', 'input[name="a:b"]', 'form input:not([type=hidden])'])
+      expect(validateRules([{ ...base, fields: { password: sel } }])).toHaveLength(1);
     expect(() => validateRules([base, base])).toThrow();
     expect(() => validateRules([{ ...base, form: undefined }])).toThrow();
     expect(() => validateRules([{ ...base, extra: 1 }])).toThrow(/unknown key/);

@@ -309,7 +309,8 @@ export class Engine {
       changed.push('username');
     }
     for (const [n, v] of Object.entries(req.set ?? {})) {
-      if (meta.secretFields.includes(n) || n === 'password' || n === 'totp')
+      // built-in secret keys too: a readable field named card.number would pass a value via argv as text
+      if (meta.secretFields.includes(n) || /^(password|totp|card\.(number|code)|ssh\..*|fido2.*)$/i.test(n))
         throw new BlindfillError(
           'SECRET_ACCESS',
           `"${n}" is a secret-class field: use the hidden secret prompt`,
@@ -335,7 +336,7 @@ export class Engine {
       );
     for (const n of Object.keys(req.secrets ?? {}))
       if (!meta.secretFields.includes(n))
-        throw new BlindfillError('NOT_FOUND', `item has no secret field "${n}"`);
+        throw new BlindfillError('NOT_FOUND', 'item has no secret field with that name');
     if (!changed.length && !Object.keys(req.secrets ?? {}).length)
       throw new BlindfillError('POLICY', 'nothing to change');
     if (Object.keys(patch).length) await b.updateItem(ref, patch);
@@ -482,10 +483,16 @@ export class Engine {
     return { status: 'completed', id: ref.id, name, origins, secret_exposed: false };
   }
 
-  /** Read or replace only the non-secret password policy of an item; never changes the password. */
-  async itemPasswordPolicy(sel: ItemSelector, policy?: unknown): Promise<Record<string, unknown>> {
+  /** Read or replace only the non-secret password policy; never changes the password. Writes need a human. */
+  async itemPasswordPolicy(
+    sel: ItemSelector,
+    policy?: unknown,
+    human = false,
+  ): Promise<Record<string, unknown>> {
     const ref = await this.resolveItem(sel);
     if (policy !== undefined) {
+      // an agent-chosen policy checked against the stored password at register time would leak its shape
+      if (!human) throw new BlindfillError('POLICY', 'changing a password policy needs a terminal (human)');
       const v = validatePasswordPolicy(policy);
       await this.writable().updateItem(ref, { fields: { 'blindfill.password_policy': JSON.stringify(v) } });
       audit({ event: 'item', backend: this.backend.id, item: ref.id, outcome: 'policy_updated' });
@@ -566,7 +573,8 @@ export class Engine {
     let rule: Rule | undefined = req.ruleOverride;
     if (!rule && req.rule) {
       rule = parsed.rules.find((r) => r.id === req.rule);
-      if (!rule) throw new BlindfillError('POLICY', `unknown rule "${req.rule}"`);
+      // never echo caller input in errors: a scrubbed echo is a secret-guessing oracle
+      if (!rule) throw new BlindfillError('POLICY', 'unknown rule id');
     }
     if (!rule) {
       if (mode === 'registration')
@@ -668,7 +676,7 @@ export class Engine {
       else
         return refuse(
           'unknown field',
-          new BlindfillError('NOT_FOUND', `item has no fillable field "${name}"`),
+          new BlindfillError('NOT_FOUND', 'item has no fillable field with that name'),
         );
       steps.push({ name, kind });
     }

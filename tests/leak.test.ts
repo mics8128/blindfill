@@ -35,6 +35,15 @@ let dir: string;
 let sites: Awaited<ReturnType<typeof startSites>>;
 let env: NodeJS.ProcessEnv;
 const captured: { label: string; text: string }[] = [];
+/** values blindfill generated during the run (read back from the mock vault): checked like the canary */
+const generated: string[] = [];
+const vault = () =>
+  JSON.parse(readFileSync(join(dir, 'items.json'), 'utf8')) as {
+    id: string;
+    name: string;
+    login: { password: string };
+    fields?: { name: string; value: string; type: number }[];
+  }[];
 
 function run(entry: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((res) => {
@@ -144,6 +153,32 @@ function filesUnder(d: string): string[] {
     else out.push(p);
   }
   return out;
+}
+
+/** MCP server over stdio with the test env; every response is captured for the final grep. */
+async function mcp() {
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [...TSX, 'src/mcp.ts'],
+    env: Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined)) as Record<string, string>,
+    cwd: resolve('.'),
+    stderr: 'pipe',
+  });
+  let stderr = '';
+  transport.stderr?.on('data', (d) => (stderr += d));
+  const client = new Client({ name: 'leak-test', version: '0' });
+  await client.connect(transport);
+  return {
+    call: async (name: string, args: Record<string, unknown> = {}) => {
+      const r = await client.callTool({ name, arguments: args });
+      captured.push({ label: `mcp ${name} ${JSON.stringify(args)}`, text: JSON.stringify(r) });
+      return r as { content: { text: string }[]; isError?: boolean };
+    },
+    close: async () => {
+      await client.close();
+      captured.push({ label: 'mcp stderr', text: stderr });
+    },
+  };
 }
 
 describe('leak test: canary password never appears anywhere', () => {
@@ -288,6 +323,10 @@ describe('leak test: canary password never appears anywhere', () => {
     });
     expect(ok.isError).toBeFalsy();
     expect(ok.content[0].text).toContain('"outcome": "success"');
+    // regression: a caller-supplied guess must not be echoed (a scrubbed echo marks the right guess)
+    const guess = await call('fill', { item: 'leak-item', rule: `nope ${CANARY} nope` });
+    expect(guess.isError).toBe(true);
+    expect(guess.content[0].text).not.toMatch(/REDACTED|WITHHELD/);
     expect(sites.received[0].fields.password).toBe(CANARY);
     expect((await call('probe')).isError).toBe(true);
     expect((await call('candidates')).isError).toBe(true);
@@ -363,9 +402,71 @@ describe('leak test: canary password never appears anywhere', () => {
     await cli('session', 'stop');
   }, 180_000);
 
+  it('CLI: item generate/admin, handoff, register with a generated password stay free of secrets', async () => {
+    const good = (p: string) => `http://good.localhost:${sites.port}${p}`;
+    const gen = await cli('item', 'generate', 'leak-gen', '--origin', O(), '--username', 'gen-user');
+    expect(JSON.parse(gen.stdout)).toMatchObject({ password_generated: true, secret_exposed: false });
+    const items = vault();
+    const g = items.find((i) => i.name === 'leak-gen')!;
+    generated.push(g.login.password);
+    // the vault owner adds a registration rule (mock vault edit, not an agent path)
+    g.fields = [
+      ...(g.fields ?? []),
+      { name: 'blindfill.rules', value: JSON.stringify({ version: 2, rules: [regRule()] }), type: 0 },
+    ];
+    writeFileSync(join(dir, 'items.json'), JSON.stringify(items));
+
+    expect((await cli('item', 'password-policy', 'leak-item')).code).toBe(0);
+    expect((await cli('item', 'list')).code).toBe(0);
+    expect((await cli('item', 'status', g.id)).code).toBe(0);
+    expect((await cli('item', 'status', 'leak-item')).code).toBe(0);
+    expect((await cli('item', 'rename', g.id, 'leak-gen2')).code).toBe(0);
+    expect((await cli('item', 'edit', g.id, '--set', 'store_id=S-1')).code).toBe(0);
+    // secret edits from a non-terminal are refused, and the refused value is never echoed
+    for (const kv of ['password=CANARY-pw-argv', 'pin=CANARY-pw-argv']) {
+      const r = await cli('item', 'edit', 'leak-item', '--set', kv);
+      expect(r.code).toBe(1);
+    }
+    expect((await cli('item', 'edit', 'leak-item', '--secret', 'password')).code).toBe(1);
+    expect((await cli('item', 'create', '--origin', O(), '--username', 'x')).code).toBe(1);
+    expect((await cli('item', 'reveal', 'leak-item')).code).toBe(1);
+
+    expect((await cli('session', 'start', '--headless')).code).toBe(0);
+    const m = await mcp(); // attached before the pause, so a cached policy would miss it
+    expect((await m.call('list_pages')).isError).toBeFalsy();
+    expect((await cli('handoff', 'pause', '--reason', 'captcha')).code).toBe(0);
+    expect((await cli('handoff', 'status')).code).toBe(0);
+    const paused = await cli('fill', '--item', 'leak-item', '--url', good('/simple'), '--submit');
+    expect(paused.code).toBe(1);
+    // regression: an already-running MCP server honours a pause written by the CLI
+    const mp = await m.call('probe');
+    expect(mp.isError).toBe(true);
+    expect(mp.content[0].text).toContain('paused');
+    await m.close();
+    expect((await cli('handoff', 'resume')).code).toBe(0);
+
+    sites.received.length = 0;
+    const reg = await cli(
+      'register',
+      '--item',
+      g.id,
+      '--rule',
+      'signup',
+      '--url',
+      good('/register'),
+      '--submit',
+    );
+    expect(JSON.parse(reg.stdout)).toMatchObject({ submitted: true });
+    await expect.poll(() => sites.received.length, { timeout: 5000 }).toBe(1);
+    expect(sites.received[0].fields.password).toBe(generated[0]); // the page did get it
+    expect((await cli('page', 'verify', '--success-selector', '#welcome')).code).toBe(0);
+    expect((await cli('probe')).code).toBe(1);
+    await cli('session', 'stop');
+  }, 180_000);
+
   it('grep: zero occurrences in all captured output and all state files', () => {
     const hits: string[] = [];
-    const ns = needles(CANARY);
+    const ns = [CANARY, ...generated].flatMap(needles);
     const check = (label: string, text: string) => {
       for (const n of ns) if (text.includes(n)) hits.push(`${label} contains ${n.slice(0, 12)}…`);
       if (text.includes('JBSWY3DPEHPK3PXP')) hits.push(`${label} contains the TOTP seed`);
