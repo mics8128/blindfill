@@ -53,6 +53,14 @@ if (verb === 'list' && what === 'items') {
   const it = items.find((i) => i.id === arg);
   if (!it) fail('Not found.');
   console.log(JSON.stringify(it));
+} else if (verb === 'sync') {
+  console.log('Syncing complete.');
+} else if (verb === 'get' && what === 'password') {
+  const it = items.find((i) => i.id === arg);
+  if (!it?.login?.password) fail('Not found.');
+  console.log(it.login.password);
+} else if (verb === 'delete' && what === 'item') {
+  writeFileSync(process.env.BLINDFILL_MOCK_BW_ITEMS, JSON.stringify(items.filter((i) => i.id !== arg)));
 } else if (verb === 'get' && what === 'totp') {
   const it = items.find((i) => i.id === arg);
   if (!it || !it.login?.totp) fail('Not found.');

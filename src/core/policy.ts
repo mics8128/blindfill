@@ -16,10 +16,13 @@ function parseUrl(s: string): URL | null {
   }
 }
 
-/** http origins are only acceptable for loopback targets (dev/test) or when the item URI is itself http. */
+/** Loopback hosts (dev/test) are the only places a secret may be typed over plain http. */
+export function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host.endsWith('.localhost') || /^127\./.test(host) || host === '[::1]';
+}
+
 function schemeCompatible(observed: URL, bound: URL): boolean {
-  if (observed.protocol === bound.protocol) return true;
-  return false;
+  return observed.protocol === bound.protocol;
 }
 
 /**
@@ -33,6 +36,8 @@ export function matchUri(observedUrl: string, item: ItemUri): MatchResult {
   if (!obs || !bound) return { ok: false, reason: 'unparseable URL' };
   if (obs.protocol !== 'https:' && obs.protocol !== 'http:')
     return { ok: false, reason: 'not an http(s) page' };
+  if (obs.protocol === 'http:' && !isLoopbackHost(obs.hostname))
+    return { ok: false, reason: 'plain http outside loopback' };
 
   const hit = (): MatchResult => ({ ok: true, reason: 'match', uri: item.uri, match: item.match });
   const miss = (why: string): MatchResult => ({ ok: false, reason: why, uri: item.uri, match: item.match });

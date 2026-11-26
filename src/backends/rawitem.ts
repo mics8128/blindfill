@@ -12,6 +12,10 @@ export function secretValueFromRaw(raw: BwRawItem, field: string): string | null
   if (field === 'card.number') return raw.card?.number;
   if (field === 'card.code') return raw.card?.code;
   if (field === 'ssh.privateKey') return raw.sshKey?.privateKey;
+  if (field === 'passkey') {
+    const c = raw.login?.fido2Credentials?.[0];
+    return c?.keyValue ? JSON.stringify(c) : undefined;
+  }
   return raw.fields?.find((f) => f.name === field && classifyBwFieldType(f.type) === 'secret')?.value;
 }
 
@@ -65,6 +69,8 @@ export abstract class RawItemBackend implements Backend {
     const value = secretValueFromRaw(raw, field);
     if (!value) throw new BlindfillError('NOT_FOUND', `secret field "${field}" is empty`);
     globalScrubber.register(value);
+    // the private key inside the passkey JSON is scrubbed on its own too
+    if (field === 'passkey') globalScrubber.register(JSON.parse(value).keyValue as string);
     return new SecretHandle(value, field);
   }
 

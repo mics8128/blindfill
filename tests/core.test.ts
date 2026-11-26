@@ -18,6 +18,9 @@ import {
   parseTarget,
   type ItemMeta,
 } from '../src/core/index.js';
+import { parseControl } from '../src/backends/spi.js';
+import { parseRulesValue } from '../src/rules.js';
+import { validatePasswordPolicy } from '../src/password.js';
 
 const PW = 'p@ss w0rd/+&="é"\\';
 
@@ -185,6 +188,26 @@ describe('policy: match types', () => {
     expect(matchUri('http://accounts.example.com/', u).ok).toBe(false); // downgrade
     expect(matchUri('https://accounts.example.com:8443/', u).ok).toBe(false);
     expect(matchUri('https://evil.test/?u=accounts.example.com', u).ok).toBe(false);
+  });
+  it('plain http only on loopback, even when the item URI is http', () => {
+    expect(
+      matchUri('http://intranet.example.com/', { uri: 'http://intranet.example.com', match: 'host' }).ok,
+    ).toBe(false);
+    expect(
+      matchUri('http://good.localhost:8080/', { uri: 'http://good.localhost:8080', match: 'host' }).ok,
+    ).toBe(true);
+    expect(matchUri('http://127.0.0.1:9/', { uri: 'http://127.0.0.1:9', match: 'host' }).ok).toBe(true);
+  });
+  it('malformed control fields fail closed', () => {
+    const c = parseControl({
+      'blindfill.submit': 'onse',
+      'blindfill.rules': '{oops',
+      'blindfill.password_policy': 'x',
+    });
+    expect(c.submit).toBe('none');
+    expect(() => parseRulesValue(c.rules)).toThrow(/not valid JSON/);
+    expect(() => parseRulesValue({ rulez: [] })).toThrow(/unrecognised/);
+    expect(() => validatePasswordPolicy(c.passwordPolicy)).toThrow();
   });
   it('base domain', () => {
     const u = { uri: 'https://www.example.co.uk', match: 'domain' as const };

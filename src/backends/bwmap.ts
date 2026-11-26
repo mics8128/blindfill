@@ -22,10 +22,22 @@ export interface BwRawItem {
     password?: string | null;
     totp?: string | null;
     uris?: { uri?: string | null; match?: number | null }[] | null;
+    /** Bitwarden passkeys; keyValue is the PKCS#8 private key (base64url) */
+    fido2Credentials?: BwFido2Credential[] | null;
   } | null;
   card?: Record<string, string | null> | null;
   sshKey?: { privateKey?: string | null; publicKey?: string | null } | null;
   fields?: { name?: string; value?: string | null; type?: number }[] | null;
+}
+
+export interface BwFido2Credential {
+  credentialId?: string | null;
+  rpId?: string | null;
+  keyAlgorithm?: string | null;
+  keyCurve?: string | null;
+  keyValue?: string | null;
+  userHandle?: string | null;
+  counter?: string | number | null;
 }
 
 /** Map Bitwarden item JSON to ItemMeta. Secret VALUES are dropped here; only names survive. */
@@ -42,6 +54,12 @@ export function mapBwItem(raw: BwRawItem, backendId = 'bw'): ItemMeta {
   if (raw.sshKey?.privateKey) secretFields.push('ssh.privateKey');
   if (raw.card?.cardholderName) readable['card.holder'] = raw.card.cardholderName;
   if (raw.sshKey?.publicKey) readable['ssh.publicKey'] = raw.sshKey.publicKey;
+  // a passkey is Secret as a whole (it carries the private key); only its rpId is readable
+  const pk = raw.login?.fido2Credentials?.[0];
+  if (pk?.keyValue) {
+    secretFields.push('passkey');
+    if (pk.rpId) readable['passkey.rpId'] = pk.rpId;
+  }
   for (const f of raw.fields ?? []) {
     if (!f.name) continue;
     if (isControlField(f.name)) {

@@ -191,6 +191,7 @@ export interface ParsedRules {
 export function parseRulesValue(value: unknown): ParsedRules {
   if (value === undefined || value === null) return { rules: [] };
   if (Array.isArray(value)) return { rules: validateRules(value) };
+  if (typeof value !== 'object') bad('blindfill.rules is not valid JSON');
   const o = value as {
     version?: number;
     v?: number;
@@ -202,7 +203,7 @@ export function parseRulesValue(value: unknown): ParsedRules {
     return { rules: validateRules(o.rules) };
   }
   if (o.fields) return { rules: [], legacyFields: o.fields };
-  return { rules: [] };
+  return bad('unrecognised blindfill.rules format (expected {"version":2,"rules":[...]})');
 }
 
 // ---- local rules / profiles files: private files in the blindfill config directory ----------------------

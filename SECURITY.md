@@ -14,9 +14,20 @@ blindfill defends against **the model and its logs**:
   (Bitwarden match types) and is compared with the origin the browser actually reports.
 - After a Secret has been filled, the session refuses page text, DOM and screenshots to the
   caller, and every string leaving blindfill is scrubbed for the raw, URL-encoded, Base64
-  and JSON-escaped forms of the secrets handled in that process.
+  and JSON-escaped forms of the secrets handled in that process. If any output would match a
+  secret, the whole output is withheld, so a scrubbed echo cannot confirm a guess.
+- Errors never echo caller input (rule ids, field and profile names), and evidence and rule
+  selectors cannot probe values or input state (no `[value…]`, substring attribute matches,
+  text selectors or state pseudo-classes).
+- Changing secret values, origins, `blindfill.*` control fields or a password policy needs a
+  person at a terminal. There is no command that reveals a stored secret.
 - Fill is one-shot: a Secret field is filled at most once per session and origin, and the
   form is submitted at most once per call. Unknown outcomes are reported, never retried.
+- Secrets are typed over https only; plain http is accepted for loopback dev hosts alone. Malformed
+  `blindfill.*` control data fails the operation instead of being skipped.
+- A passkey's private key goes from the vault to a temporary Chromium virtual authenticator over
+  CDP; the page and the agent never receive it. It is used only when the item binds the page and
+  its rpId covers the host, at most once per session and origin.
 
 ## What blindfill does NOT defend against
 
@@ -40,9 +51,29 @@ blindfill defends against **the model and its logs**:
    not scrubbed.
 6. **Shadow DOM, closed iframes and canvas inputs** are not supported by the field detector;
    blindfill stops (fail closed) rather than guessing.
-7. **Android** is not implemented yet (stub only).
+7. **Android is not implemented** (stub). **Passkeys** are web sign-in only, Chromium only; the
+   sign counter is not written back and new passkeys cannot be registered. While a passkey is armed
+   (up to 15 s), any frame of that page that WebAuthn allows for the rpId may trigger the signature.
 8. **Backends marked "blind-written/unverified"** have never touched a real vault. They pass
-   contract tests against recorded fixtures only.
+   contract tests against recorded fixtures only. `bw` is tested against a mock CLI only.
+9. **"A person at a terminal" means a TTY.** An agent that runs blindfill inside a
+   pseudo-terminal passes that check. Do not give an agent a PTY if item edits matter.
+10. **Generated passwords go where the agent registers.** `item generate` binds a new item to
+    origins the caller names, and `register` types the generated password there. That is the
+    purpose; it gives the agent no access to existing items.
+11. **Local rules and profiles are trusted.** Anyone who can write the config directory can
+    define selectors for an item's bound origin (selectors are still restricted, see above).
+12. **Navigation is not locked.** After a fill, `fill --url` may still navigate; reads stay
+    refused until `session stop`.
+13. **Human handoff is unobserved.** While paused, blindfill neither watches nor limits what the
+    person does in the browser; it only refuses agent actions.
+14. **Outcome reporting is a small channel by design.** `verify` and `--expect-*` return
+    booleans for caller-chosen structural selectors; they cannot select on values.
+15. **Rule-less fills are still looser than olliepm in two ways.** Without a rule, the form must be a
+    single login form and submit goes only through its one native POST button (see
+    [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)), but fields are still found in
+    any same-origin or item-bound frame and there is no document-identity binding between steps.
+    Use `blindfill.rules` for sites that matter, and for forms without a `<form>` element.
 
 ## Reporting a vulnerability
 

@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { globalScrubber } from './scrubber.js';
 
 export interface AuditEntry {
-  event: 'fill' | 'totp' | 'refused' | 'submit' | 'session' | 'probe' | 'selftest' | 'item';
+  event: 'fill' | 'totp' | 'refused' | 'submit' | 'session' | 'probe' | 'selftest' | 'item' | 'passkey';
   backend?: string;
   item?: string; // item id, never the name unless configured
   target?: string;

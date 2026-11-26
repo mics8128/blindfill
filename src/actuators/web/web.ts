@@ -2,17 +2,21 @@ import type { ElementHandle, Frame, Page } from 'playwright-core';
 import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
+import type { SecretHandle } from '../../core/secret.js';
+import type { BwFido2Credential } from '../../backends/bwmap.js';
 import {
   DESCRIBE_FIELD,
   DIAGNOSE,
   PWD_COUNT,
-  FIND_SUBMIT,
-  FORM_INFO,
+  FORM_OF,
+  FORM_SUBMITS,
+  GENERIC_SCOPE,
   IS_FOCUSED,
   SAME_VALUE,
   VALUE_EQUALS,
 } from './dom.js';
 import {
+  assertSubmitControl,
   clickRuleSubmit,
   locateInScope,
   openRuleScope,
@@ -418,40 +422,67 @@ export class WebActuator {
   }
 
   /**
-   * Where would the form go? Refuse when the action leaves the origins the item binds, or when a GET form
-   * would put a password into the URL. (Forms handled purely in JS with no action are not affected.)
+   * Rule-less form choice (olliepm parity): the password and username must share one form owner, and the
+   * page must offer exactly one plausible login form. Sign-up / change-password / confirm pages refuse.
+   * Messages never echo page or caller input.
    */
-  private async assertFormSafe(el: ElementHandle, isBound?: (url: string) => boolean): Promise<void> {
-    const info = (await el.evaluate(FORM_INFO)) as {
-      action: string;
-      method: string;
-      self: boolean;
-      hasPassword: boolean;
-    } | null;
-    if (!info) return;
-    if (isBound && !isBound(info.action))
+  async assertGenericScope(pwd: Detected, user: Detected | undefined, ds: Detected[]): Promise<void> {
+    const vis = ds.filter((d) => d.desc.type === 'password' && d.desc.reasons.length === 0);
+    const same = vis.filter((d) => d.frame === pwd.frame);
+    const code = await pwd.handle.evaluate(GENERIC_SCOPE, {
+      pwds: same.map((d) => d.handle),
+      otherFrames: vis.length - same.length,
+      user: user && user.frame === pwd.frame ? user.handle : null,
+    });
+    const split = code === 'ok' && user !== undefined && user.frame !== pwd.frame;
+    const msg: Record<string, string> = {
+      new_password: 'the password field is marked new-password (sign-up or change-password page)',
+      multi_password:
+        'the page has several visible password fields or forms (sign-up, change-password or ambiguous)',
+      split: 'the username and password fields are not in the same form',
+    };
+    if (code !== 'ok' || split)
       throw new BlindfillError(
         'POLICY',
-        'unsafe form: the form action leaves the origins bound by the item; submit refused',
-      );
-    if (info.method === 'get' && info.self && info.hasPassword)
-      throw new BlindfillError(
-        'POLICY',
-        'unsafe form: a GET form would put the password into the URL; submit refused',
+        `unsafe form: ${msg[split ? 'split' : code]}; add a blindfill.rules rule to fill it`,
       );
   }
 
-  /** Click the submit control next to `near` (or press Enter). Returns what was done. */
-  async submit(near: Detected, isBound?: (url: string) => boolean): Promise<'click' | 'enter'> {
+  /** Rule-less submit: exactly one visible native submit of the field's own form, POST, _self, bound action. */
+  private async resolveGenericSubmit(
+    near: Detected,
+    isBound: (url: string) => boolean,
+  ): Promise<ElementHandle> {
+    const form = (await near.handle.evaluateHandle(FORM_OF)).asElement();
+    if (!form)
+      throw new BlindfillError(
+        'POLICY',
+        'unsafe form: the field is not inside a <form>; submit refused without a rule (add a blindfill.rules rule with a submit control)',
+      );
+    const list = await form.evaluateHandle(FORM_SUBMITS);
+    const n = (await (await list.getProperty('length')).jsonValue()) as number;
+    if (n !== 1)
+      throw new BlindfillError(
+        'POLICY',
+        `unsafe form: expected exactly one visible submit button in the form, found ${n}; submit refused (add a blindfill.rules rule)`,
+      );
+    const submitter = (await list.getProperty('0')).asElement();
+    if (!submitter) throw new BlindfillError('NOT_FOUND', 'submit control vanished');
+    await assertSubmitControl(submitter, form, true, 'native', near.frameUrl, isBound);
+    return submitter;
+  }
+
+  /** Validate (no click): lets the engine refuse before any secret is read. */
+  async checkSubmit(near: Detected, isBound: (url: string) => boolean): Promise<void> {
+    await this.resolveGenericSubmit(near, isBound);
+  }
+
+  /** Click the single validated native submit of `near`'s form. */
+  async submit(near: Detected, isBound: (url: string) => boolean): Promise<'click'> {
     try {
-      const h = (await near.handle.evaluateHandle(FIND_SUBMIT)).asElement() as ElementHandle | null;
-      await this.assertFormSafe(h ?? near.handle, isBound);
-      if (h) {
-        await h.click({ timeout: 3000 });
-        return 'click';
-      }
-      await near.handle.press('Enter', { timeout: 3000 });
-      return 'enter';
+      const h = await this.resolveGenericSubmit(near, isBound);
+      await h.click({ timeout: 3000 });
+      return 'click';
     } catch (e) {
       throw wrap(e, 'submit failed');
     }
@@ -612,7 +643,72 @@ export class WebActuator {
     }
   }
 
+  /**
+   * Passkey sign-in (ARCHITECTURE 3.8): the credential is loaded into a per-page Chromium virtual
+   * authenticator over CDP, the page's own navigator.credentials.get() uses it, and it is removed
+   * after the first assertion or the timeout. The private key goes handle -> CDP -> Chromium; the
+   * page and the caller never receive it.
+   */
+  async passkeyAssert(
+    handle: SecretHandle,
+    opts: { click?: string; timeoutMs?: number } = {},
+  ): Promise<{ asserted: boolean; signCount: number | null }> {
+    if (!this.capabilities.cdp)
+      throw new BlindfillError('UNSUPPORTED', 'passkeys need a Chromium provider with CDP');
+    if (opts.click) assertSafeEvidenceSelector(opts.click);
+    const cdp = await this.page.context().newCDPSession(this.page);
+    let authenticatorId: string | undefined;
+    try {
+      await cdp.send('WebAuthn.enable', { enableUI: false });
+      ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+          protocol: 'ctap2',
+          ctap2Version: 'ctap2_1',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
+      }));
+      const asserted = new Promise<number>((res) =>
+        cdp.on('WebAuthn.credentialAsserted', (e) => res(e.credential.signCount)),
+      );
+      await handle.into(async (buf) => {
+        const c = JSON.parse(buf.toString('utf8')) as BwFido2Credential;
+        await cdp.send('WebAuthn.addCredential', {
+          authenticatorId: authenticatorId!,
+          credential: {
+            credentialId: credentialIdBase64(c.credentialId ?? ''),
+            isResidentCredential: true,
+            rpId: c.rpId ?? '',
+            privateKey: Buffer.from(c.keyValue ?? '', 'base64url').toString('base64'),
+            userHandle: c.userHandle ? Buffer.from(c.userHandle, 'base64url').toString('base64') : undefined,
+            signCount: Number(c.counter ?? 0) || 0,
+          },
+        });
+      });
+      if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
+      const n = await Promise.race([asserted, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
+      return { asserted: n !== null, signCount: n };
+    } catch (e) {
+      throw wrap(e, 'passkey');
+    } finally {
+      if (authenticatorId)
+        await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId }).catch(() => undefined);
+      await cdp.detach().catch(() => undefined);
+    }
+  }
+
   async close(): Promise<void> {
     if (this.conn) await this.conn.close();
   }
+}
+
+/** Bitwarden stores a credential id as a GUID, or as `b64.<base64url>` for imported passkeys. */
+export function credentialIdBase64(id: string): string {
+  if (id.startsWith('b64.')) return Buffer.from(id.slice(4), 'base64url').toString('base64');
+  const hex = id.replace(/-/g, '');
+  if (!/^[0-9a-f]{32}$/i.test(hex)) throw new BlindfillError('BACKEND', 'unrecognised passkey credential id');
+  return Buffer.from(hex, 'hex').toString('base64');
 }

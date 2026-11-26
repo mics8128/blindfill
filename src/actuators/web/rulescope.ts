@@ -128,6 +128,36 @@ export async function locateInScope(scope: RuleScope, name: string, selector?: s
   };
 }
 
+/** Shared by rule and rule-less submit: SUBMIT_CHECK plus the action-origin test. */
+export async function assertSubmitControl(
+  submitter: ElementHandle,
+  group: ElementHandle,
+  native: boolean,
+  kind: string,
+  frameUrl: string,
+  isBound: (url: string) => boolean,
+): Promise<void> {
+  const r = (await submitter.evaluate(SUBMIT_CHECK, { group, native, kind })) as {
+    code: string;
+    reason?: string;
+    action?: string;
+  };
+  if (r.code !== 'ok')
+    throw new BlindfillError(
+      'POLICY',
+      r.reason === 'native_get'
+        ? 'unsafe form: a native GET form would put the filled values into the URL; submit refused (use kind "js" only if the site handles it in JS, or submit by hand)'
+        : `unsafe form: submit control is ${r.code}`,
+    );
+  if (r.action !== undefined) {
+    if (originOf(r.action) !== originOf(frameUrl) || !isBound(r.action))
+      throw new BlindfillError(
+        'POLICY',
+        'unsafe form: the form action leaves the bound origin; submit refused',
+      );
+  }
+}
+
 /** Validate the submit control per rule; returns it. Throws POLICY("unsafe form") on anything unclear. */
 export async function resolveRuleSubmit(
   scope: RuleScope,
@@ -142,29 +172,7 @@ export async function resolveRuleSubmit(
   const submitter = await unique(scope.group, s.selector, 'rule submit').catch((e: BlindfillError) => {
     throw new BlindfillError('POLICY', `unsafe form: submit control: ${e.message}`);
   });
-  const r = (await submitter.evaluate(SUBMIT_CHECK, {
-    group: scope.group,
-    native: scope.native,
-    kind: s.kind,
-  })) as {
-    code: string;
-    reason?: string;
-    action?: string;
-  };
-  if (r.code !== 'ok')
-    throw new BlindfillError(
-      'POLICY',
-      r.reason === 'native_get'
-        ? 'unsafe form: a native GET form would put the filled values into the URL; submit refused (use kind "js" only if the site handles it in JS, or submit by hand)'
-        : `unsafe form: submit control is ${r.code}`,
-    );
-  if (r.action !== undefined) {
-    if (originOf(r.action) !== originOf(scope.frame.url()) || !isBound(r.action))
-      throw new BlindfillError(
-        'POLICY',
-        'unsafe form: the form action leaves the bound origin; submit refused',
-      );
-  }
+  await assertSubmitControl(submitter, scope.group, scope.native, s.kind, scope.frame.url(), isBound);
   return submitter;
 }
 

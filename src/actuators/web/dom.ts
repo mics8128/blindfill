@@ -55,29 +55,9 @@ const FOCUSED_SRC = `(el) => {
   return (root.activeElement || document.activeElement) === el;
 }`;
 
-const SUBMIT_SRC = `(el) => {
-  const sel = 'button[type=submit], input[type=submit], button:not([type]), [role=button][type=submit]';
-  let scope = el.form || null;
-  if (!scope) {
-    scope = el.parentElement;
-    for (let i = 0; i < 4 && scope && !scope.querySelector(sel); i++) scope = scope.parentElement;
-  }
-  if (!scope) return null;
-  const all = Array.from(scope.querySelectorAll(sel));
-  const ok = all.filter((b) => {
-    if (b.disabled) return false;
-    const r = b.getBoundingClientRect();
-    if (r.width < 4 || r.height < 4) return false;
-    const cs = getComputedStyle(b);
-    return cs.visibility !== 'hidden' && cs.display !== 'none';
-  });
-  return ok[0] || null;
-}`;
-
 export const DESCRIBE_FIELD = mk<(el: any) => any>(DESCRIBE_SRC);
 export const VALUE_EQUALS = mk<(el: any, expected: string) => boolean>(VALUE_SRC);
 export const IS_FOCUSED = mk<(el: any) => boolean>(FOCUSED_SRC);
-export const FIND_SUBMIT = mk<(el: any) => any>(SUBMIT_SRC);
 
 // ---- rule scopes, submit safety, diagnose (all value-free; booleans/counts/structure only) --------------
 
@@ -130,16 +110,25 @@ const SUBMIT_CHECK_SRC = String.raw`(e, a) => {
   return { code: 'ok', action };
 }`;
 
-/** For the default (rule-less) submit: where would the form go, and does a GET carry a password? */
-const FORM_INFO_SRC = String.raw`(el) => {
-  const f = el.form || (el.closest && el.closest('form'));
-  if (!f) return null;
-  const b = (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) && el.type === 'submit' ? el : null;
-  const action = b && b.hasAttribute('formaction') ? b.formAction : f.action;
-  const method = (b && b.hasAttribute('formmethod') ? b.formMethod : f.method).toLowerCase();
-  let target = b && b.hasAttribute('formtarget') ? b.getAttribute('formtarget') : f.getAttribute('target');
-  if (!target) { const bs = f.ownerDocument.querySelector('base[target]'); target = (bs && bs.getAttribute('target')) || ''; }
-  return { action, method, self: ['', '_self'].includes((target || '').toLowerCase()), hasPassword: Array.from(f.elements).some((x) => x.type === 'password') };
+/** Rule-less fill: the form owner of a field (null when formless). */
+const FORM_OF_SRC = String.raw`(el) => el.form || null`;
+
+/** Visible native submit controls owned by a form (rule-less submit needs exactly one). */
+const FORM_SUBMITS_SRC = String.raw`(form) => Array.from(form.elements).filter((b) => {
+  if (!((b instanceof HTMLButtonElement && b.type === 'submit') || (b instanceof HTMLInputElement && b.type === 'submit'))) return false;
+  const cs = getComputedStyle(b);
+  return b.getClientRects().length > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) !== 0;
+})`;
+
+/**
+ * Rule-less form choice: boolean/code only. a.pwds are the visible password fields of this frame;
+ * a.otherFrames counts visible password fields elsewhere; a.user is the chosen username field or null.
+ */
+const GENERIC_SCOPE_SRC = String.raw`(pwd, a) => {
+  if ((pwd.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/).includes('new-password')) return 'new_password';
+  if (a.pwds.some((p) => p !== pwd && p.form === pwd.form) || a.pwds.some((p) => p.form !== pwd.form) || a.otherFrames > 0) return 'multi_password';
+  if (a.user && a.user.form !== pwd.form) return 'split';
+  return 'ok';
 }`;
 
 const SUBMIT_GUARD_SRC = String.raw`(doc, form) => {
@@ -214,7 +203,10 @@ export const GROUP_KIND = mk<(g: any, native: boolean) => boolean>(GROUP_KIND_SR
 export const IS_FRAME_EL = mk<(e: any) => boolean>(IS_FRAME_SRC);
 export const SUBMIT_CHECK =
   mk<(e: any, a: { group: any; native: boolean; kind: string }) => any>(SUBMIT_CHECK_SRC);
-export const FORM_INFO = mk<(el: any) => any>(FORM_INFO_SRC);
+export const FORM_OF = mk<(el: any) => any>(FORM_OF_SRC);
+export const FORM_SUBMITS = mk<(form: any) => any[]>(FORM_SUBMITS_SRC);
+export const GENERIC_SCOPE =
+  mk<(pwd: any, a: { pwds: any[]; otherFrames: number; user: any }) => string>(GENERIC_SCOPE_SRC);
 export const SUBMIT_GUARD = mk<(doc: any, form: any) => any>(SUBMIT_GUARD_SRC);
 export const SAME_VALUE = mk<(a: any, b: any) => boolean>(SAME_VALUE_SRC);
 export const DIAGNOSE = mk<(doc: any, args: any) => any>(DIAGNOSE_SRC);

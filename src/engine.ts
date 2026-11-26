@@ -310,13 +310,17 @@ export class Engine {
     }
     for (const [n, v] of Object.entries(req.set ?? {})) {
       // built-in secret keys too: a readable field named card.number would pass a value via argv as text
-      if (meta.secretFields.includes(n) || /^(password|totp|card\.(number|code)|ssh\..*|fido2.*)$/i.test(n))
+      if (
+        meta.secretFields.includes(n) ||
+        /^(password|passkey|totp|card\.(number|code)|ssh\..*|fido2.*)$/i.test(n)
+      )
         throw new BlindfillError(
           'SECRET_ACCESS',
           `"${n}" is a secret-class field: use the hidden secret prompt`,
         );
       if (control(n) && n.toLowerCase() === 'blindfill.password_policy')
         validatePasswordPolicy(JSON.parse(v));
+      if (control(n) && n.toLowerCase() === 'blindfill.rules') parseRulesValue(JSON.parse(v));
       fields[n] = v;
       changed.push(n);
     }
@@ -706,7 +710,14 @@ export class Engine {
       };
     try {
       const ds = rule ? undefined : await act.detectStable();
-      for (const st of steps) await locator(st.name)(ds);
+      const found: Record<string, Detected> = {};
+      for (const st of steps) found[st.name] = await locator(st.name)(ds);
+      if (!rule && ds) {
+        const last = found[steps[steps.length - 1]?.name];
+        if (found.password && typeof legacy?.password?.selector !== 'string')
+          await act.assertGenericScope(found.password, found.username, ds);
+        if (req.submit && last && meta.control.submit !== 'none') await act.checkSubmit(last, isBound);
+      }
       if (opts.confirmField && rule && !rule.password_confirmation) await locator('confirm_password')(ds);
       if (req.submit && rule) await act.checkRuleSubmit(await act.openRule(rule, isBound), isBound);
     } catch (e) {
@@ -1124,6 +1135,63 @@ export class Engine {
 
   async fillTotp(req: Omit<FillRequest, 'fields'>): Promise<FillResult> {
     return this.fill({ ...req, fields: ['totp'] });
+  }
+
+  /**
+   * Passkey sign-in (web, Chromium with CDP). Checks the item binding and the passkey's rpId against
+   * the page before the key is read, then lets the page's own WebAuthn request use it once.
+   * The counter is not written back to the vault (ARCHITECTURE 3.8, open point).
+   */
+  async passkey(
+    req: ItemSelector & { url?: string; click?: string; expect?: Expect },
+  ): Promise<Record<string, unknown>> {
+    const act = this.actuator();
+    if (req.url) await act.navigate(req.url);
+    const { target, url } = act.identify();
+    const tname = formatTarget(target);
+    const ref = await this.resolveItem(req, target);
+    const meta = await this.backend.meta(ref);
+    const refuse = (reason: string, err: BlindfillError): never => {
+      audit({ event: 'refused', backend: this.backend.id, item: ref.id, target: tname, reason });
+      throw err;
+    };
+    const bind = checkWebBinding(url, meta);
+    if (!bind.ok)
+      refuse(
+        bind.reason,
+        new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`),
+      );
+    if (!meta.secretFields.includes('passkey'))
+      refuse('no passkey', new BlindfillError('NOT_FOUND', 'item has no passkey'));
+    // WebAuthn lets any subdomain of rpId use it; blindfill also requires the page host to be inside rpId
+    const rpId = meta.readable['passkey.rpId'] ?? '';
+    const host = new URL(url).hostname;
+    if (!rpId || (host !== rpId && !host.endsWith(`.${rpId}`)))
+      refuse(
+        'rpId mismatch',
+        new BlindfillError('ORIGIN_MISMATCH', 'the passkey rpId does not cover this page'),
+      );
+    act.policy.assertFirstSecretFill(target.origin, 'passkey');
+    act.policy.recordSecretFill(target.origin, 'passkey');
+    this.persist();
+    const h = await this.backend.openSecret(ref, 'passkey');
+    const r = await act.passkeyAssert(h, { click: req.click });
+    const ev = r.asserted && req.expect ? await act.evidence(req.expect) : undefined;
+    audit({
+      event: 'passkey',
+      backend: this.backend.id,
+      item: ref.id,
+      target: tname,
+      outcome: r.asserted ? 'asserted' : 'not_used',
+    });
+    return {
+      status: r.asserted ? 'asserted' : 'not_used',
+      origin: target.origin,
+      item: { id: ref.id, name: meta.name },
+      sign_count: r.signCount,
+      counter_written_back: false,
+      outcome: ev?.outcome ?? 'unknown',
+    };
   }
 
   async stop(): Promise<void> {
