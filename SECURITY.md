@@ -69,10 +69,11 @@ blindfill defends against **the model and its logs**:
     person does in the browser; it only refuses agent actions.
 14. **Outcome reporting is a small channel by design.** `verify` and `--expect-*` return
     booleans for caller-chosen structural selectors; they cannot select on values.
-15. **Rule-less fills are looser than olliepm.** Without a rule, fields are scored across the page
-    (not one form), and submit uses the first visible button or Enter with fewer checks than a
-    rule submit. Use `blindfill.rules` for sites that matter; see
-    [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md) for the full list.
+15. **Rule-less fills are still looser than olliepm in two ways.** Without a rule, the form must be a
+    single login form and submit goes only through its one native POST button (see
+    [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)), but fields are still found in
+    any same-origin or item-bound frame and there is no document-identity binding between steps.
+    Use `blindfill.rules` for sites that matter, and for forms without a `<form>` element.
 
 ## Reporting a vulnerability
 

@@ -109,6 +109,38 @@ describe('web actuator e2e (local fake sites)', () => {
     expect(audits()).not.toContain(CANARY);
   });
 
+  describe('rule-less form and submit safety', () => {
+    it.each(['/signup-confirm', '/new-password', '/split'])(
+      '%s: refused before any secret is read',
+      async (path) => {
+        const { eng, act } = await engine();
+        const err = await eng.fill({ item: 'good', url: good(path) }).catch((e) => e);
+        expect(err).toMatchObject({ code: 'POLICY' });
+        expect(String(err.message)).not.toContain(CANARY);
+        expect(act.policy.locked).toBe(false);
+        expect(await page.inputValue('input[type=password]')).toBe('');
+        expect(sites.received).toHaveLength(0);
+      },
+    );
+
+    it.each([
+      ['/login-get', /GET/],
+      ['/two-submits', /exactly one/],
+      ['/formless', /not inside a <form>/],
+    ])('%s: submit refused before filling, plain fill still works', async (path, re) => {
+      const { eng, act } = await engine();
+      const err = await eng.fill({ item: 'good', url: good(path), submit: true }).catch((e) => e);
+      expect(err).toMatchObject({ code: 'POLICY' });
+      expect(String(err.message)).toMatch(re);
+      expect(act.policy.locked).toBe(false);
+      expect(await page.inputValue('input[type=password]')).toBe('');
+      expect(sites.received).toHaveLength(0);
+      const r = await eng.fill({ item: 'good' });
+      expect(r).toMatchObject({ filled: ['username', 'password'], submitted: false });
+      expect(sites.received).toHaveLength(0);
+    });
+  });
+
   it('wrong evidence => failure reported, never retried', async () => {
     const { eng } = await engine();
     // item bound to good, but we pretend the site rejects: expect selector that never appears and failSelector that does not either
@@ -158,7 +190,7 @@ describe('web actuator e2e (local fake sites)', () => {
       expect: { urlIncludes: '/home' },
     });
     expect(b).toMatchObject({ filled: ['password'], outcome: 'success', locked: true });
-    expect(sites.received[0].fields.password).toBe(CANARY);
+    expect(sites.received.at(-1)?.fields.password).toBe(CANARY);
   });
 
   it('lookalike domain: refused before any secret is read; nothing typed', async () => {

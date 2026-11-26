@@ -710,7 +710,14 @@ export class Engine {
       };
     try {
       const ds = rule ? undefined : await act.detectStable();
-      for (const st of steps) await locator(st.name)(ds);
+      const found: Record<string, Detected> = {};
+      for (const st of steps) found[st.name] = await locator(st.name)(ds);
+      if (!rule && ds) {
+        const last = found[steps[steps.length - 1]?.name];
+        if (found.password && typeof legacy?.password?.selector !== 'string')
+          await act.assertGenericScope(found.password, found.username, ds);
+        if (req.submit && last && meta.control.submit !== 'none') await act.checkSubmit(last, isBound);
+      }
       if (opts.confirmField && rule && !rule.password_confirmation) await locator('confirm_password')(ds);
       if (req.submit && rule) await act.checkRuleSubmit(await act.openRule(rule, isBound), isBound);
     } catch (e) {

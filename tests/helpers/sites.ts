@@ -29,6 +29,12 @@ export async function startSites(): Promise<{
       <button type="submit">Sign in</button>
     </form>`;
 
+  const step2 = (email: string) =>
+    page(
+      'Step 2',
+      `<form method="post" action="/login"><input type="hidden" name="email" value="${email}"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button></form>`,
+    );
+
   const server: Server = createServer((req, res) => {
     const host = (req.headers.host ?? '').split(':')[0];
     const u = new URL(req.url ?? '/', 'http://x');
@@ -42,6 +48,10 @@ export async function startSites(): Promise<{
       req.on('end', () => {
         const fields = Object.fromEntries(new URLSearchParams(raw));
         received.push({ host, path: u.pathname, fields });
+        if (u.pathname === '/step2') {
+          html(step2(fields.email ?? ''));
+          return;
+        }
         if (u.pathname === '/passkey') {
           res.writeHead(200).end(); // the test verifies the assertion itself
           return;
@@ -81,16 +91,11 @@ export async function startSites(): Promise<{
         return html(
           page(
             'Step 1',
-            `<form method="get" action="/step2"><label>Email</label><input name="email" type="email" autocomplete="username"><button type="submit">Next</button></form>`,
+            `<form method="post" action="/step2"><label>Email</label><input name="email" type="email" autocomplete="username"><button type="submit">Next</button></form>`,
           ),
         );
       case '/step2':
-        return html(
-          page(
-            'Step 2',
-            `<form method="post" action="/login"><input type="hidden" name="email" value="${u.searchParams.get('email') ?? ''}"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button></form>`,
-          ),
-        );
+        return html(step2(u.searchParams.get('email') ?? ''));
       case '/framed':
         return html(
           page(
@@ -233,6 +238,43 @@ export async function startSites(): Promise<{
                await fetch('/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
                location.href = '/home';
              });`,
+          ),
+        );
+      case '/signup-confirm':
+        // password + confirmation, no autocomplete hint: still a sign-up shape
+        return html(
+          page(
+            'Sign up',
+            `<form method="post" action="/login"><label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password"><label>Confirm password</label><input name="confirm" type="password"><button type="submit">Sign up</button></form>`,
+          ),
+        );
+      case '/new-password':
+        return html(
+          page(
+            'Change password',
+            `<form method="post" action="/login"><label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password" autocomplete="new-password"><button type="submit">Save</button></form>`,
+          ),
+        );
+      case '/split':
+        return html(
+          page(
+            'Split',
+            `<form method="post" action="/login"><label>Email</label><input name="email" type="email" autocomplete="username"><button type="submit">Next</button></form>
+             <form method="post" action="/login"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button></form>`,
+          ),
+        );
+      case '/two-submits':
+        return html(
+          page(
+            'Two submits',
+            `<form method="post" action="/login"><label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button><button type="submit">Sign in with SSO</button></form>`,
+          ),
+        );
+      case '/formless':
+        return html(
+          page(
+            'Formless',
+            `<label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="button">Sign in</button>`,
           ),
         );
       case '/echo':
