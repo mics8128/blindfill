@@ -57,7 +57,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/blindfill.git"
+    "url": "git+https://github.com/mics8128/blindfill.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

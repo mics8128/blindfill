@@ -6,7 +6,7 @@ Publishing is done **only** by `.github/workflows/release.yml`, triggered by pus
 ## One-time owner setup (npm Trusted Publishing)
 
 1. Make sure the repository exists on GitHub and the `repository` URL in `package.json` points to it
-   (it currently contains the placeholder `OWNER`; replace it first, provenance needs it to match).
+   (it must match the GitHub repo URL, because provenance checks it).
 2. Publish access: the first release of a new package name must be possible for your npm account.
    If Trusted Publishing cannot be configured before the package exists, do a one-time bootstrap
    (see fallback below), then switch.
