@@ -1,7 +1,7 @@
 # Contributing to blindfill
 
 Thanks for helping. The product is a set of **security invariants**; most review effort goes
-into making sure a change does not weaken them (see `SECURITY.md` and `docs/security-model.md`).
+into making sure a change does not weaken them (see `SECURITY.md` and `docs/ARCHITECTURE.md`).
 
 ## Setup
 
