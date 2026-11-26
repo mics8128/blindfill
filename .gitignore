@@ -1,0 +1,6 @@
+node_modules
+dist
+.openclaw
+*.log
+.env*
+.blindfill-state

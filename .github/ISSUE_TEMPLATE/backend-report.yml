@@ -1,0 +1,38 @@
+name: "Backend report: I tested backend X"
+description: Report a live run of a backend so it can be promoted to Community-verified
+labels: [backend-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use a **fake item** named `blindfill-selftest`. Do not use a real account.
+        Run `npx -y blindfill backend selftest <id>` and paste the output (it contains no secret values).
+  - type: input
+    id: backend
+    attributes: { label: Backend id (bw, op, keepassxc, pass, gopass, rbw, secret-service) }
+    validations: { required: true }
+  - type: input
+    id: tool_version
+    attributes: { label: Vendor CLI version (e.g. `bw --version`) }
+    validations: { required: true }
+  - type: input
+    id: blindfill_version
+    attributes: { label: blindfill version }
+    validations: { required: true }
+  - type: input
+    id: date
+    attributes: { label: Date tested (YYYY-MM-DD) }
+    validations: { required: true }
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options: [pass, partial, fail]
+    validations: { required: true }
+  - type: textarea
+    id: output
+    attributes: { label: Selftest output, render: json }
+    validations: { required: true }
+  - type: textarea
+    id: notes
+    attributes: { label: Notes (server type, quirks, item layout) }

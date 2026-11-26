@@ -1,0 +1,23 @@
+name: New backend request
+description: Propose support for another password manager
+labels: [new-backend, good first backend]
+body:
+  - type: input
+    id: manager
+    attributes: { label: Password manager and CLI/API name }
+    validations: { required: true }
+  - type: textarea
+    id: cli
+    attributes:
+      label: How can an item be listed, read, and its TOTP code fetched non-interactively?
+      description: Link the vendor docs. Do not paste real output.
+    validations: { required: true }
+  - type: textarea
+    id: mapping
+    attributes: { label: Where could URIs, hidden fields and custom fields live in an item? }
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Can you test it?
+      options:
+        - label: I can run `blindfill backend selftest` against a live vault with a fake item

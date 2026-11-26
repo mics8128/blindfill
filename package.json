@@ -1,0 +1,79 @@
+{
+  "name": "blindfill",
+  "version": "0.1.0-alpha.0",
+  "description": "Let AI agents sign in to websites without ever seeing the password. Write-only credential actuator with an MCP server, a CLI and pluggable password-manager backends.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "blindfill": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "import": "./dist/mcp.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README*.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit && eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "browsers": "playwright-core install chromium"
+  },
+  "keywords": [
+    "ai-agent",
+    "mcp",
+    "mcp-server",
+    "password-manager",
+    "bitwarden",
+    "1password",
+    "keepass",
+    "playwright",
+    "browser-automation",
+    "credentials",
+    "secrets",
+    "llm-security",
+    "prompt-injection",
+    "agentic",
+    "claude-code",
+    "autofill"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/blindfill.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "playwright-core": "^1.65.1",
+    "tldts": "^7.6.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.11",
+    "eslint": "^10.15.0",
+    "prettier": "^3.10.1",
+    "tsup": "^9.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.74.0",
+    "vitest": "^5.1.2"
+  }
+}
