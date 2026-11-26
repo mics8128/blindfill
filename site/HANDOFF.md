@@ -1,25 +1,28 @@
-# Handoff (paused by owner request)
+# Handoff
 
-Branch `site/landing` in `/home/ollie/projects/blindfill-site` (worktree of blindfill). Not pushed.
+Branch `site/landing` in the `blindfill-site` worktree. Not pushed, not deployed.
 
-## What exists
+## Done
 
-- `site/index.html`: full one-page site (hero + terminal demo, key-facts strip, problem, how-it-works with two inline SVG diagrams, features, field-class table, comparison table, support status, "What it can't do (yet)" with threat-model note, FAQ, install CTA, footer).
-- `site/style.css`: dark/light (OS + toggle), responsive, focus styles, reduced-motion handling.
-- `site/app.js`: EN/zh-TW dictionary switcher, theme toggle, terminal demo animation, copy button.
-- `site/favicon.svg`, `site/README.md` (preview + Pages deploy), `.github/workflows/pages.yml` (`workflow_dispatch` only), `.gitignore` entry for `site/_shots/`.
-- zh-TW translation is written (all keys in the `zh` dictionary in `app.js`).
-- Prettier: `site` and the workflow pass `prettier --check`.
-- Headless Chromium run at 390px and 1280px (EN dark, EN light, zh-TW): no console errors, no external requests, no horizontal scroll. Screenshots in `site/_shots/` (git-ignored): mobile-en, desktop-en, desktop-en-light, mobile-zh, desktop-zh (.png).
+- Layout checked in a real browser at 1440px and 390px, EN and zh-TW: no horizontal page scroll, no console errors, no external requests. Wide tables, the terminal and the code block scroll inside keyboard-focusable regions.
+- Keyboard: skip link, every control reachable in a sane order, 3px focus outline everywhere, language buttons work with Enter/Space, no traps.
+- Contrast (computed, WCAG AA): all text pairs >= 5.2:1 in light and >= 7.0:1 in dark (lowest: light comparison "us" column 5.22, light pill.warn 5.27).
+- `prefers-reduced-motion`: terminal shows all lines at once, diagram animation off, no smooth scroll. The diagram animation otherwise stops after 5 loops.
+- zh-TW now also covers the diagrams, their accessible title/description and the `aria-label`s.
+- Claims audited against README.md, SECURITY.md, docs/ARCHITECTURE.md and docs/browsers.md of main @ fa64962 and corrected:
+  - Firefox/Camoufox: loopback Playwright server, opt-in suite, Camoufox 158.0.1-beta.41 and 159.0-beta.43 (no test count, it differs between docs).
+  - Passkeys: shown as "limited" (web sign-in, Chromium only, fake relying party, no counter write-back, no registration), no longer "planned/not supported".
+  - Install: the `npx -y blindfill` one-liner is gone (the npm `latest` is an empty placeholder); only build-from-source steps, with a copy button.
+  - "Fails closed": honeypots are skipped, not a stop condition.
+  - Comparison table: removed "Not protected" claims about extensions and cloud browsers (now "Varies").
+  - Source links added for features, field classes and support status.
 
-## Not done / missing
+## Needs the owner
 
-- Screenshots were only glanced at as downscaled full-page images. Not reviewed in detail: diagram label legibility and overlap, comparison table on mobile, zh-TW layout, light theme contrast.
-- No keyboard-only or contrast audit.
-- The claim-to-source list has not been written. Sources to check against: README.md, SECURITY.md, docs/ARCHITECTURE.md, docs/browsers.md.
-- Wording to review: the install CTA shows `npx -y blindfill` with a note that it is not published to npm yet (README says "Not published"). Comparison-table cells for extensions and cloud browsers are generic and hedged. The terminal demo output is illustrative (README says field names may differ), and the lookalike-domain and post-fill-lock messages are paraphrased, not real output.
-- "Ego Lite" appears only in the support section and FAQ.
-- The tested-tooling note "6 opt-in tests passed on real Camoufox" comes from docs/browsers.md.
+- Deploy decision: Pages is not enabled, the workflow is `workflow_dispatch` only. Nothing was published.
+- Native-speaker pass on zh-TW.
+- Re-check the support section when main changes (it names commit fa64962); update once the npm release exists.
+- The terminal demo output is still illustrative (caption says so).
 
 ## Preview
 
@@ -27,11 +30,4 @@ Branch `site/landing` in `/home/ollie/projects/blindfill-site` (worktree of blin
 cd site && python3 -m http.server 8080
 ```
 
-Use `?lang=zh-TW` for Chinese. The screenshot script is at `/tmp/shot.mjs` (uses the main checkout's playwright-core; may be gone).
-
-## Next steps
-
-1. Review the screenshots and fix layout problems.
-2. Write the claim-to-source list.
-3. Native-speaker pass on zh-TW.
-4. Final report. Publishing and enabling Pages are not authorized.
+Use `?lang=zh-TW` for Chinese.
