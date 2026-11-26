@@ -1,0 +1,44 @@
+# Release: runs ONLY when a tag like v0.1.0 is pushed. Nothing else can publish.
+# Publishing uses npm Trusted Publishing (OIDC): no long-lived token is stored in the repo.
+name: Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+  id-token: write # required for npm Trusted Publishing and --provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Tag must match package.json version
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$PKG" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $PKG" >&2
+            exit 1
+          fi
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+      # Trusted Publishing needs npm >= 11.5.1
+      - run: npm install -g npm@latest
+      - name: Publish (Trusted Publishing / OIDC)
+        run: npm publish --provenance --access public
+        # FALLBACK, only if Trusted Publishing is unavailable for your package/registry:
+        #   1. create a granular, publish-only npm token scoped to this package,
+        #   2. store it as the repository secret NPM_TOKEN,
+        #   3. uncomment the env block below.
+        # env:
+        #   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

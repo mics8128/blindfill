@@ -57,3 +57,23 @@ export function bwFixtureItems() {
     },
   ];
 }
+
+// ---- RFC 6238 TOTP (fixtures only) -----------------------------------------------------------
+import { createHmac } from 'node:crypto';
+
+function b32decode(s: string): Buffer {
+  const al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const c of s.replace(/=+$/, '').toUpperCase()) bits += al.indexOf(c).toString(2).padStart(5, '0');
+  const out: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+  return Buffer.from(out);
+}
+
+export function totpFor(seed: string, now = Date.now()): string {
+  const ctr = Buffer.alloc(8);
+  ctr.writeBigUInt64BE(BigInt(Math.floor(now / 30000)));
+  const h = createHmac('sha1', b32decode(seed)).update(ctr).digest();
+  const o = h[h.length - 1] & 15;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+}

@@ -7,6 +7,10 @@ import { BlindfillError, parseTarget } from '../../core/index.js';
 export interface ContractSetup {
   backend: Backend;
   cleanup?: () => void | Promise<void>;
+  /** item ids in this backend's namespace; defaults to the FAKE ids */
+  ids?: { main?: string; missing?: string; android?: string };
+  /** a search string that finds the FAKE item by name/path */
+  query?: string;
 }
 export interface ContractOptions {
   /** Backend can hold custom fields (Hidden vs Text). */
@@ -30,12 +34,19 @@ export function runBackendContract(
     const out: string[] = [];
     const spies: ReturnType<typeof vi.spyOn>[] = [];
 
+    let ref = { backend: label, id: FAKE.id };
+    let missing = { backend: label, id: FAKE.missingId };
+    let androidId: string = FAKE.androidId;
+    let query = 'shop';
     async function make(locked = false) {
       const s = await setup({ locked });
       if (s.cleanup) cleanups.push(s.cleanup);
+      ref = { backend: label, id: s.ids?.main ?? FAKE.id };
+      missing = { backend: label, id: s.ids?.missing ?? FAKE.missingId };
+      androidId = s.ids?.android ?? FAKE.androidId;
+      query = s.query ?? 'shop';
       return s.backend;
     }
-    const ref = { backend: label, id: FAKE.id };
 
     afterEach(async () => {
       for (const c of cleanups.splice(0)) await c();
@@ -67,10 +78,10 @@ export function runBackendContract(
     it('find: by query and by bound web target; unbound target returns nothing', async () => {
       const b = await make();
       await b.unlock();
-      const byQuery = await b.find({ query: 'shop' });
-      expect(byQuery.map((r) => r.id)).toContain(FAKE.id);
+      const byQuery = await b.find({ query });
+      expect(byQuery.map((r) => r.id)).toContain(ref.id);
       const bound = await b.find({ target: parseTarget('web:https://shop.example.test') });
-      expect(bound.map((r) => r.id)).toEqual([FAKE.id]);
+      expect(bound.map((r) => r.id)).toEqual([ref.id]);
       const other = await b.find({ target: parseTarget('web:https://evil.example.test') });
       expect(other).toEqual([]);
       const lookalike = await b.find({ target: parseTarget('web:https://shop.example.test.evil.test') });
@@ -146,22 +157,21 @@ export function runBackendContract(
 
     it('missing item: NOT_FOUND', async () => {
       const b = await make();
-      const missing = { backend: label, id: FAKE.missingId };
-      await expect(b.meta(missing)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+            await expect(b.meta(missing)).rejects.toMatchObject({ code: 'NOT_FOUND' });
       await expect(b.openSecret(missing, 'password')).rejects.toMatchObject({ code: 'NOT_FOUND' });
     });
 
     it('locked vault: LOCKED, no interactive prompt', async () => {
       const b = await make(true);
       await expect(b.unlock()).rejects.toMatchObject({ code: 'LOCKED' });
-      await expect(b.find({ query: 'shop' })).rejects.toMatchObject({ code: 'LOCKED' });
+      await expect(b.find({ query })).rejects.toMatchObject({ code: 'LOCKED' });
     });
 
     if (opts.android) {
       it('android: androidapp:// URI is returned intact and resolvable by package', async () => {
         const b = await make();
         const refs = await b.find({ target: { kind: 'android', pkg: FAKE.androidPkg } });
-        expect(refs.map((r) => r.id)).toEqual([FAKE.androidId]);
+        expect(refs.map((r) => r.id)).toEqual([androidId]);
         const m = await b.meta(refs[0]);
         expect(m.uris.map((u) => u.uri)).toContain(`androidapp://${FAKE.androidPkg}`);
         expect(m.control.signers).toEqual(['AA:BB:CC:DD']);
@@ -177,7 +187,7 @@ export function runBackendContract(
       const h = await b.openSecret(ref, 'password');
       await h.into(() => undefined);
       await h.into(() => undefined).catch(note);
-      await b.openSecret({ backend: label, id: FAKE.missingId }, 'password').catch(note);
+      await b.openSecret(missing, 'password').catch(note);
       await b.read(ref, 'password').catch(note);
       if (opts.totp) await b.totpCode(ref);
       const all = out.join('') + msgs.join('\n');
