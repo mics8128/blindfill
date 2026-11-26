@@ -110,11 +110,11 @@ confirm in two minutes and paste the output into an issue.
 
 ```ts
 interface Actuator {
-  kind: 'web' | 'android'                  // later 'desktop'
-  identify(): Target                       // observed identity, never self-reported
-  probe(): FieldCandidate[]                // structure only, no values
-  sink(field: FieldCandidate): Sink
-  submit(): Outcome                        // at most once
+  kind: 'web' | 'android'; // later 'desktop'
+  identify(): Target; // observed identity, never self-reported
+  probe(): FieldCandidate[]; // structure only, no values
+  sink(field: FieldCandidate): Sink;
+  submit(): Outcome; // at most once
 }
 ```
 
