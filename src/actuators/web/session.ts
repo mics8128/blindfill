@@ -24,7 +24,7 @@ export interface SessionFile {
   owned: boolean;
   pid?: number;
   userDataDir?: string;
-  policy: { locked: boolean; filled: string[] };
+  policy: { locked: boolean; filled: string[]; paused?: { reason: string; since: string } | null };
 }
 
 const file = () => join(stateDir(), 'session.json');

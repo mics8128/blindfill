@@ -129,11 +129,27 @@ export function assertBound(r: MatchResult): void {
  */
 export class SessionPolicy {
   locked: boolean;
+  /** Set while a human has the browser (CAPTCHA, consent, push-MFA). Agent-driven actions are refused. */
+  paused: { reason: string; since: string } | null;
   private filled: Set<string>;
 
-  constructor(init?: { locked?: boolean; filled?: string[] }) {
+  constructor(init?: {
+    locked?: boolean;
+    filled?: string[];
+    paused?: { reason: string; since: string } | null;
+  }) {
     this.locked = init?.locked ?? false;
+    this.paused = init?.paused ?? null;
     this.filled = new Set(init?.filled ?? []);
+  }
+
+  /** Every agent-driven browser action calls this first. */
+  assertActive(what: string): void {
+    if (this.paused)
+      throw new BlindfillError(
+        'POLICY',
+        `session is paused for a human (${this.paused.reason}): refusing ${what}. Resume it with handoff resume.`,
+      );
   }
 
   /** Call before returning page text, DOM, screenshots or console output. */
@@ -162,8 +178,8 @@ export class SessionPolicy {
     this.filled.add(`${origin}|${field}`);
   }
 
-  snapshot(): { locked: boolean; filled: string[] } {
-    return { locked: this.locked, filled: [...this.filled] };
+  snapshot(): { locked: boolean; filled: string[]; paused: { reason: string; since: string } | null } {
+    return { locked: this.locked, filled: [...this.filled], paused: this.paused };
   }
 }
 

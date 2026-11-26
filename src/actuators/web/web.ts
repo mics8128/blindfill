@@ -2,7 +2,24 @@ import type { ElementHandle, Frame, Page } from 'playwright-core';
 import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
-import { DESCRIBE_FIELD, FIND_SUBMIT, IS_FOCUSED, VALUE_EQUALS } from './dom.js';
+import {
+  DESCRIBE_FIELD,
+  DIAGNOSE,
+  PWD_COUNT,
+  FIND_SUBMIT,
+  FORM_INFO,
+  IS_FOCUSED,
+  SAME_VALUE,
+  VALUE_EQUALS,
+} from './dom.js';
+import {
+  clickRuleSubmit,
+  locateInScope,
+  openRuleScope,
+  resolveRuleSubmit,
+  type RuleScope,
+} from './rulescope.js';
+import type { Rule } from '../../rules.js';
 import { pick, pickNamed, scoreRole, type FieldDescriptor, type Pick, type Role } from './heuristics.js';
 import { getProvider } from './providers/registry.js';
 import type { ProviderCapabilities, ProviderConnection, ProviderOptions } from './providers/types.js';
@@ -57,11 +74,14 @@ export interface EvidenceResult {
 
 /** Selectors for outcome evidence must be structural; no value/text/pseudo probing (oracle hardening). */
 export function assertSafeEvidenceSelector(sel: string): void {
+  const outside = sel.replace(/\[[^\]]*\]/g, '');
   if (
     sel.length > 120 ||
     !/^[#.\w\-[\]="'>\s*~+,]+$/.test(sel) ||
     /value|\bon\w+=/i.test(sel) ||
-    sel.replace(/\[[^\]]*\]/g, '').includes('=')
+    /[*~^$|]=/.test(sel) || // substring/word attribute matches probe content
+    sel.includes('>>') ||
+    /=|["']/.test(outside) // text= engines and quoted Playwright text selectors
   )
     throw new BlindfillError(
       'POLICY',
@@ -397,10 +417,35 @@ export class WebActuator {
     throw wrap(lastErr, 'fill failed');
   }
 
+  /**
+   * Where would the form go? Refuse when the action leaves the origins the item binds, or when a GET form
+   * would put a password into the URL. (Forms handled purely in JS with no action are not affected.)
+   */
+  private async assertFormSafe(el: ElementHandle, isBound?: (url: string) => boolean): Promise<void> {
+    const info = (await el.evaluate(FORM_INFO)) as {
+      action: string;
+      method: string;
+      self: boolean;
+      hasPassword: boolean;
+    } | null;
+    if (!info) return;
+    if (isBound && !isBound(info.action))
+      throw new BlindfillError(
+        'POLICY',
+        'unsafe form: the form action leaves the origins bound by the item; submit refused',
+      );
+    if (info.method === 'get' && info.self && info.hasPassword)
+      throw new BlindfillError(
+        'POLICY',
+        'unsafe form: a GET form would put the password into the URL; submit refused',
+      );
+  }
+
   /** Click the submit control next to `near` (or press Enter). Returns what was done. */
-  async submit(near: Detected): Promise<'click' | 'enter'> {
+  async submit(near: Detected, isBound?: (url: string) => boolean): Promise<'click' | 'enter'> {
     try {
       const h = (await near.handle.evaluateHandle(FIND_SUBMIT)).asElement() as ElementHandle | null;
+      await this.assertFormSafe(h ?? near.handle, isBound);
       if (h) {
         await h.click({ timeout: 3000 });
         return 'click';
@@ -410,6 +455,119 @@ export class WebActuator {
     } catch (e) {
       throw wrap(e, 'submit failed');
     }
+  }
+
+  // ---- explicit rules ---------------------------------------------------------------------
+
+  openRule(rule: Rule, isBound: (url: string) => boolean): Promise<RuleScope> {
+    return openRuleScope(this.page, rule, isBound);
+  }
+  locateRule(scope: RuleScope, name: string): Promise<Detected> {
+    return locateInScope(scope, name);
+  }
+  async checkRuleSubmit(scope: RuleScope, isBound: (url: string) => boolean): Promise<void> {
+    await resolveRuleSubmit(scope, isBound);
+  }
+  async passwordCount(scope: RuleScope): Promise<number> {
+    return scope.group.evaluate(PWD_COUNT, { native: scope.native });
+  }
+  /** Validate + click the rule's submit control once. */
+  async submitRule(scope: RuleScope, isBound: (url: string) => boolean): Promise<'click'> {
+    try {
+      const submitter = await resolveRuleSubmit(scope, isBound);
+      await clickRuleSubmit(this.page, scope, submitter, async () => {
+        await resolveRuleSubmit(scope, isBound); // re-validate with the guard installed
+      });
+      return 'click';
+    } catch (e) {
+      throw wrap(e, 'submit failed');
+    }
+  }
+  /** Registration: both password fields hold the same non-empty value. Returns only a boolean. */
+  async sameValue(a: Detected, b: Detected): Promise<boolean> {
+    try {
+      return (await a.handle.evaluate(SAME_VALUE, b.handle)) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---- pages and value-free inspection ------------------------------------------------------
+
+  /** Pages of the attached context: index, origin and path only (never query, fragment or title). */
+  listPages(): { index: number; origin: string; path: string; current: boolean }[] {
+    return this.page
+      .context()
+      .pages()
+      .map((p, index) => {
+        let origin = '';
+        let path = '';
+        try {
+          const u = new URL(p.url());
+          if (/^https?:$/.test(u.protocol)) {
+            origin = u.origin;
+            path = u.pathname;
+          } else origin = u.protocol;
+        } catch {
+          /* blank */
+        }
+        return { index, origin, path: globalScrubber.scrub(path), current: p === this.page };
+      });
+  }
+
+  /** A sibling actuator on another page of the same context; shares the policy (lock/one-shot). */
+  withPageIndex(index: number): WebActuator {
+    const p = this.page.context().pages()[index];
+    if (!p) throw new BlindfillError('NOT_FOUND', `no page with index ${index}`);
+    return p === this.page ? this : WebActuator.fromPage(p, this.policy);
+  }
+
+  /** Bounded structural diagnosis: no values, no raw attribute text, no labels. */
+  async diagnose(rule?: Rule): Promise<unknown> {
+    this.policy.assertReadable('page diagnosis');
+    const kinds: Record<string, string> = {
+      password: 'password',
+      confirm_password: 'password',
+      totp: 'totp',
+    };
+    const frame = rule?.frame ? null : this.page.mainFrame();
+    let target = frame;
+    if (!target && rule?.frame) {
+      const o = rule.frame.origin;
+      const sameOrigin = (u: string) => {
+        try {
+          return new URL(u).origin === o; // a prefix test would accept https://a.com.evil.net
+        } catch {
+          return false;
+        }
+      };
+      target = this.page.frames().find((f) => f !== this.page.mainFrame() && sameOrigin(f.url())) ?? null;
+    }
+    if (!target) throw new BlindfillError('NOT_FOUND', 'the rule frame is not present');
+    const doc = await target.evaluateHandle('document');
+    const r = (await doc.evaluate(DIAGNOSE, { rule: rule ?? null, kinds })) as { total: number };
+    return { ...r, truncated: r.total > 80 };
+  }
+
+  /** Caller-selected unique visible evidence; booleans only. Allowed while locked. */
+  async verify(
+    successSelector: string,
+    failureSelector?: string,
+  ): Promise<{ success: boolean; failure: boolean; ambiguous: boolean }> {
+    assertSafeEvidenceSelector(successSelector);
+    if (failureSelector) assertSafeEvidenceSelector(failureSelector);
+    const one = async (sel: string): Promise<[boolean, boolean]> => {
+      try {
+        const loc = this.page.locator(sel);
+        const count = await loc.count();
+        return [count === 1 && (await loc.isVisible()), count > 1];
+      } catch (e) {
+        throw wrap(e, 'verify'); // Playwright parse errors echo the selector
+      }
+    };
+    const [s, sa] = await one(successSelector);
+    const [f, fa] = failureSelector ? await one(failureSelector) : [false, false];
+    return { success: s, failure: f, ambiguous: sa || fa };
   }
 
   /** Outcome evidence from caller-specified URL/selectors. Returns booleans/enums, never page content. */

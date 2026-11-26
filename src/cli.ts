@@ -12,6 +12,8 @@ import { BlindfillError } from './core/types.js';
 import { attach, attachSession, loadSession, startSession, stopSession } from './actuators/web/session.js';
 import { redactEndpoint, resolveEndpoint } from './actuators/web/providers/util.js';
 import type { Expect } from './actuators/web/web.js';
+import { strictJson } from './rules.js';
+import { createProfile, loadProfile, type ProfileDoc } from './profiles.js';
 
 const VERSION = (() => {
   try {
@@ -29,11 +31,23 @@ Commands:
   login <url|web:origin>      open the page, pick the bound item, fill username+password, submit once
   fill                        fill fields on the current page (--fields username,password,totp,<name>)
   item show                   show an item: readable fields only (secret field NAMES, never values)
+  item list [text]            list items (names, origins, field names); item status <id> structural status
+  item rename <id> <name>     rename; item edit <id> [--origin o ...] [--username u] [--set N=V] [--unset N] [--secret N]
+                              (origins, blindfill.* and --secret need a terminal; there is deliberately no reveal)
+  item generate <name>        generate a password (CSPRNG, optional --policy-file) and save it as a new item; never printed
+  item create [name]          create an item; username/password are read from the terminal (hidden)
+  item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy
   totp [--fill]               print the current TOTP code, or fill it into the page
   probe                       describe the current page's form fields (structure only)
   candidates [--role r]       list field candidates (names only)
   backend list                list backends and their support tier
   backend selftest [id]       round-trip a fake item through a backend (--fixture for offline)
+  handoff pause|resume|status hand the browser to a person (CAPTCHA/consent/MFA); agent actions are refused meanwhile
+  register --rule <id>        fill a registration form from an opted-in item (fill-only unless --submit)
+  page list|discover|diagnose|verify
+                              open pages (origin+path), planned fields, structural diagnosis, outcome evidence
+  profile init|validate|login login recipes: init <name> --item id --origin o --rule id; validate <name>;
+                              login <name> [--check|--diagnose] [--submit] [--page n] [--revision sha]
   session start|stop|status   manage the local Chromium session
   mcp                         run the MCP server on stdio
 
@@ -62,6 +76,24 @@ const { values, positionals } = parseArgs({
     'endpoint-file': { type: 'string' },
     browser: { type: 'string' },
     page: { type: 'string' },
+    rule: { type: 'string' },
+    reason: { type: 'string' },
+    set: { type: 'string', multiple: true },
+    unset: { type: 'string', multiple: true },
+    secret: { type: 'string', multiple: true },
+    username: { type: 'string' },
+    'display-name': { type: 'string' },
+    length: { type: 'string' },
+    'policy-file': { type: 'string' },
+    'no-registration': { type: 'boolean' },
+    totp: { type: 'boolean' },
+    name: { type: 'string' },
+    origin: { type: 'string', multiple: true },
+    revision: { type: 'string' },
+    'success-selector': { type: 'string' },
+    check: { type: 'boolean' },
+    diagnose: { type: 'boolean' },
+    registration: { type: 'boolean' },
     executable: { type: 'string' },
     backend: { type: 'string' },
     role: { type: 'string' },
@@ -80,11 +112,18 @@ const { values, positionals } = parseArgs({
   },
 });
 
+const WITHHELD = 'output withheld: it matched a secret';
 function out(o: unknown): void {
-  process.stdout.write(globalScrubber.scrub(JSON.stringify(o, null, 2)) + '\n');
+  const text = JSON.stringify(o, null, 2);
+  process.stdout.write(
+    globalScrubber.guard(
+      text,
+      JSON.stringify({ ok: false, error: { code: 'WITHHELD', message: WITHHELD } }),
+    ) + '\n',
+  );
 }
 function note(s: string): void {
-  process.stderr.write(globalScrubber.scrub(s) + '\n');
+  process.stderr.write(globalScrubber.guard(s, `blindfill: ${WITHHELD}`) + '\n');
 }
 
 function expectSpec(): Expect | undefined {
@@ -130,6 +169,7 @@ function fillRequest(): FillRequest {
     url: values.url as string | undefined,
     submit: values.submit === true && values['no-submit'] !== true,
     expect: expectSpec(),
+    rule: values.rule as string | undefined,
   };
 }
 
@@ -205,6 +245,7 @@ async function main(): Promise<number> {
                 ),
                 endpointFile: s.endpointFile,
                 locked: s.policy.locked,
+                paused: s.policy.paused ?? null,
                 owned: s.owned,
               }
             : { running: false },
@@ -214,7 +255,126 @@ async function main(): Promise<number> {
       throw new BlindfillError('POLICY', 'usage: blindfill session start|attach|stop|status');
     }
     case 'item': {
-      if (sub !== 'show') throw new BlindfillError('POLICY', 'usage: blindfill item show --item <id>');
+      const origins = (values.origin as string[] | undefined) ?? [];
+      const policyFile = values['policy-file'] as string | undefined;
+      const policy = policyFile ? strictJson(readFileSync(policyFile, 'utf8')) : undefined;
+      if (sub === 'generate') {
+        const name = positionals[2];
+        if (!name || !values.username)
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill item generate <name> --origin <https origin> [--origin ...] --username <u> [--display-name n] [--length n] [--policy-file f] [--no-registration]',
+          );
+        const e = await engineFor(false);
+        out(
+          await e.itemGenerate({
+            name,
+            origins,
+            username: String(values.username),
+            displayName: values['display-name'] as string | undefined,
+            length: values.length ? Number(values.length) : undefined,
+            policy,
+            registration: values['no-registration'] === true ? false : true,
+          }),
+        );
+        return 0;
+      }
+      if (sub === 'create') {
+        if (!process.stdin.isTTY || !process.stderr.isTTY)
+          throw new BlindfillError(
+            'POLICY',
+            'item create reads the password from a terminal; use item generate for scripted use',
+          );
+        const username = String(values.username ?? (await readLine('Username: ')));
+        const password = await readHidden('Password: ');
+        if (password !== (await readHidden('Confirm password: ')))
+          throw new BlindfillError('POLICY', 'the two passwords differ; nothing was saved');
+        const seed = values.totp ? await readHidden('TOTP seed: ') : undefined;
+        const e = await engineFor(false);
+        out(
+          await e.itemCreate({
+            name: positionals[2],
+            origins,
+            username,
+            password,
+            totpSeed: seed || undefined,
+            policy,
+          }),
+        );
+        return 0;
+      }
+      if (sub === 'password-policy') {
+        const e = await engineFor(false);
+        out(
+          await e.itemPasswordPolicy(
+            {
+              item: (values.item as string | undefined) ?? positionals[2],
+              query: values.query as string | undefined,
+            },
+            policy,
+            !!(process.stdin.isTTY && process.stderr.isTTY),
+          ),
+        );
+        return 0;
+      }
+      const sel = {
+        item: (values.item as string | undefined) ?? undefined,
+        query: values.query as string | undefined,
+      };
+      if (sub === 'list') {
+        out(await (await engineFor(false)).itemList(positionals[2] ?? ''));
+        return 0;
+      }
+      if (sub === 'status') {
+        out(await (await engineFor(false)).itemStatus({ ...sel, item: sel.item ?? positionals[2] }));
+        return 0;
+      }
+      if (sub === 'rename') {
+        const [, , a, b2] = positionals;
+        const byFlag = !!(sel.item || sel.query);
+        const nn = byFlag ? a : b2;
+        if (!nn) throw new BlindfillError('POLICY', 'usage: blindfill item rename <item id> <new name>');
+        out(await (await engineFor(false)).itemRename(byFlag ? sel : { item: a }, nn));
+        return 0;
+      }
+      if (sub === 'edit') {
+        const human = !!(process.stdin.isTTY && process.stderr.isTTY);
+        const set: Record<string, string> = {};
+        for (const kv of (values.set as string[] | undefined) ?? []) {
+          const i = kv.indexOf('=');
+          if (i < 1) throw new BlindfillError('POLICY', '--set needs NAME=VALUE');
+          set[kv.slice(0, i)] = kv.slice(i + 1);
+        }
+        const secrets: Record<string, string> = {};
+        for (const n of (values.secret as string[] | undefined) ?? []) {
+          if (!human) throw new BlindfillError('POLICY', 'secret values are entered at a terminal');
+          const v = await readHidden(`New value for ${n}: `);
+          if (v !== (await readHidden(`Confirm ${n}: `)))
+            throw new BlindfillError('POLICY', 'the two values differ; nothing was saved');
+          secrets[n] = v;
+        }
+        out(
+          await (
+            await engineFor(false)
+          ).itemEdit(
+            { ...sel, item: sel.item ?? positionals[2] },
+            {
+              origins: origins.length ? origins : undefined,
+              username: values.username as string | undefined,
+              set,
+              unset: values.unset as string[] | undefined,
+              secrets,
+              human,
+            },
+          ),
+        );
+        return 0;
+      }
+      if (sub !== 'show')
+        throw new BlindfillError(
+          'POLICY',
+          'usage: blindfill item show|list|status|rename|edit|generate|create|password-policy',
+        );
       const e = await engineFor(false);
       out(
         await e.itemShow({
@@ -256,6 +416,143 @@ async function main(): Promise<number> {
       out(r);
       return 0;
     }
+    case 'handoff': {
+      const e = await engineFor(true);
+      try {
+        if (sub === 'pause') out(e.handoffPause(String(values.reason ?? 'other')));
+        else if (sub === 'resume') out(e.handoffResume());
+        else if (sub === 'status') out(e.handoffStatus());
+        else
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill handoff pause --reason captcha|consent|mfa|other | resume | status',
+          );
+      } finally {
+        await disconnect(e);
+      }
+      return 0;
+    }
+    case 'register': {
+      const e = await engineFor(true);
+      try {
+        const req = fillRequest();
+        if (!req.rule) throw new BlindfillError('POLICY', 'register needs --rule <registration rule id>');
+        out(await e.register({ ...req, rule: req.rule }));
+      } finally {
+        await disconnect(e);
+      }
+      return 0;
+    }
+    case 'page': {
+      if (sub === 'list') {
+        const e = await engineFor(true);
+        try {
+          out(e.pages());
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      if (sub === 'discover' || sub === 'diagnose') {
+        const e = await engineFor(true);
+        try {
+          const req = fillRequest();
+          out(
+            sub === 'discover'
+              ? await e.discover({ ...req, registration: values.registration === true })
+              : await e.diagnose({ item: req.item, query: req.query, rule: req.rule, url: req.url }),
+          );
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      if (sub === 'verify') {
+        const success = values['success-selector'] as string | undefined;
+        if (!success)
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill page verify --success-selector <css> [--fail-selector <css>]',
+          );
+        const e = await engineFor(true);
+        try {
+          out(await e.verify({ success, failure: values['fail-selector'] as string | undefined }));
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      throw new BlindfillError('POLICY', 'usage: blindfill page list|discover|diagnose|verify');
+    }
+    case 'profile': {
+      const name = positionals[2];
+      if (!name) throw new BlindfillError('POLICY', 'usage: blindfill profile init|validate|login <name>');
+      if (sub === 'validate') {
+        const p = loadProfile(name);
+        out({ status: 'valid', name: p.name, revision: p.revision, origin: p.doc.web.origin });
+        return 0;
+      }
+      if (sub === 'init') {
+        const item = values.item as string | undefined;
+        const origin = (values.origin as string[] | undefined)?.[0];
+        const rule = values.rule as string | undefined;
+        if (!item || !origin || !rule)
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill profile init <name> --item <id> --origin <origin> --rule <rule id> [--fields a,b] [--submit]',
+          );
+        const e = await engineFor(false);
+        const meta = await e.itemShow({ item });
+        const doc: ProfileDoc = {
+          version: 1,
+          item,
+          item_name: meta.name,
+          web: {
+            origin,
+            rule,
+            ...(values.fields
+              ? {
+                  fields: String(values.fields)
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                }
+              : {}),
+            submit: values.submit === true,
+          },
+        };
+        const { path, profile } = createProfile(name, doc);
+        out({ status: 'created', name, path, revision: profile.revision });
+        return 0;
+      }
+      if (sub === 'login') {
+        const p = loadProfile(name);
+        if (values.revision && values.revision !== p.revision)
+          throw new BlindfillError(
+            'POLICY',
+            'profile_revision_mismatch: the recipe changed since it was reviewed; re-validate it',
+          );
+        const e = await engineFor(true);
+        try {
+          out(
+            await e.runProfile(p, {
+              check: values.check === true,
+              diagnose: values.diagnose === true,
+              submit: values.submit === true ? true : values['no-submit'] === true ? false : undefined,
+              page:
+                values.page !== undefined && /^\d+$/.test(String(values.page))
+                  ? Number(values.page)
+                  : undefined,
+              expect: expectSpec(),
+            }),
+          );
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      throw new BlindfillError('POLICY', 'usage: blindfill profile init|validate|login <name>');
+    }
     case 'fill': {
       const e = await engineFor(true);
       try {
@@ -295,6 +592,48 @@ async function main(): Promise<number> {
       process.stderr.write(HELP);
       return 1;
   }
+}
+
+function readLine(prompt: string): Promise<string> {
+  return new Promise((res) => {
+    process.stderr.write(prompt);
+    process.stdin.setEncoding('utf8');
+    process.stdin.once('data', (d) => {
+      process.stdin.pause();
+      res(String(d).replace(/\r?\n$/, ''));
+    });
+  });
+}
+/** Read without echo (TTY only). The typed value is never printed. */
+function readHidden(prompt: string): Promise<string> {
+  return new Promise((res, rej) => {
+    process.stderr.write(prompt);
+    const stdin = process.stdin;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    let buf = '';
+    const onData = (ch: string) => {
+      for (const c of ch) {
+        if (c === '\u0003') {
+          stdin.setRawMode(false);
+          stdin.off('data', onData);
+          process.stderr.write('\n');
+          return rej(new BlindfillError('POLICY', 'cancelled'));
+        }
+        if (c === '\r' || c === '\n') {
+          stdin.setRawMode(false);
+          stdin.pause();
+          stdin.off('data', onData);
+          process.stderr.write('\n');
+          return res(buf);
+        }
+        if (c === '\u007f') buf = buf.slice(0, -1);
+        else buf += c;
+      }
+    };
+    stdin.on('data', onData);
+  });
 }
 
 /** Disconnect from a CDP-attached browser without closing it. */

@@ -64,6 +64,14 @@ export class Scrubber {
     return out;
   }
 
+  /**
+   * Output boundary. A redaction marker shows that, and where, a secret matched the text (e.g. a
+   * caller-supplied guess echoed in an error), so any hit withholds the whole text instead.
+   */
+  guard(text: string, withheld: string): string {
+    return this.scrub(text) === text && !text.includes(REDACTED) ? text : withheld;
+  }
+
   /** Scrub every string in a JSON-able value (keys too). */
   scrubDeep<T>(v: T): T {
     if (typeof v === 'string') return this.scrub(v) as unknown as T;

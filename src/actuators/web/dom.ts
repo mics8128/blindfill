@@ -78,3 +78,146 @@ export const DESCRIBE_FIELD = mk<(el: any) => any>(DESCRIBE_SRC);
 export const VALUE_EQUALS = mk<(el: any, expected: string) => boolean>(VALUE_SRC);
 export const IS_FOCUSED = mk<(el: any) => boolean>(FOCUSED_SRC);
 export const FIND_SUBMIT = mk<(el: any) => any>(SUBMIT_SRC);
+
+// ---- rule scopes, submit safety, diagnose (all value-free; booleans/counts/structure only) --------------
+
+const COUNT_SRC = String.raw`(root, sel) => {
+  try { return root.querySelectorAll(sel).length; } catch (e) { return -1; }
+}`;
+const FIRST_SRC = String.raw`(root, sel) => {
+  const all = root.querySelectorAll(sel);
+  return all.length === 1 ? all[0] : null;
+}`;
+/** fields owned by the group: native form => el.form === group; container => no form owner */
+const COUNT_IN_GROUP_SRC = String.raw`(group, a) => {
+  try {
+    return Array.from(group.querySelectorAll(a.sel)).filter((e) => (a.native ? e.form === group : e.form === null)).length;
+  } catch (e) { return -1; }
+}`;
+const FIRST_IN_GROUP_SRC = String.raw`(group, a) => {
+  const m = Array.from(group.querySelectorAll(a.sel)).filter((e) => (a.native ? e.form === group : e.form === null));
+  return m.length === 1 ? m[0] : null;
+}`;
+const GROUP_KIND_SRC = String.raw`(g, native) => (native ? g instanceof HTMLFormElement : !(g instanceof HTMLFormElement))`;
+const IS_FRAME_SRC = String.raw`(e) => e.tagName === 'IFRAME' || e.tagName === 'FRAME'`;
+
+/** Submit control checks (port of olliepm _check_submit). */
+const SUBMIT_CHECK_SRC = String.raw`(e, a) => {
+  const g = a.group;
+  const roleBtn = e instanceof HTMLElement && ['DIV', 'SPAN'].includes(e.tagName) && (e.getAttribute('role') || '').toLowerCase() === 'button';
+  const owner = roleBtn ? e.closest('form') : e.form;
+  const cs = getComputedStyle(e);
+  const visible = e.isConnected && e.getClientRects().length > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) !== 0;
+  const isBtn = (e instanceof HTMLButtonElement && ['button', 'submit'].includes(e.type)) || (e instanceof HTMLInputElement && ['button', 'submit'].includes(e.type)) || roleBtn;
+  const isSubmit = (e instanceof HTMLButtonElement && e.type === 'submit') || (e instanceof HTMLInputElement && e.type === 'submit');
+  if (!visible || !isBtn) return { code: 'unsafe' };
+  if (e.hasAttribute('disabled') || e.matches(':disabled') || e.closest('[aria-disabled="true"], [inert]')) return { code: 'disabled' };
+  if (roleBtn && ['form', 'formaction', 'formmethod', 'formtarget', 'formenctype', 'formnovalidate'].some((x) => e.hasAttribute(x))) return { code: 'unsafe' };
+  if (!a.native) {
+    if (owner !== null || ['formaction', 'formmethod', 'formtarget', 'form'].some((x) => e.hasAttribute(x))) return { code: 'unsafe' };
+    return { code: 'ok' };
+  }
+  if (owner !== g) return { code: 'unsafe' };
+  const action = e.hasAttribute('formaction') ? e.formAction : g.action;
+  const method = (e.hasAttribute('formmethod') ? e.formMethod : g.method).toLowerCase();
+  let target = e.hasAttribute('formtarget') ? e.getAttribute('formtarget') : g.getAttribute('target');
+  if (!target) { const b = e.ownerDocument.querySelector('base[target]'); target = (b && b.getAttribute('target')) || ''; }
+  const self = ['', '_self'].includes(target.toLowerCase());
+  if (a.kind === 'js' && self && ['get', 'post'].includes(method)) return { code: 'ok', action };
+  if (method === 'get' && self) return { code: 'unsafe', reason: 'native_get' };
+  if (method !== 'post' || !self) return { code: 'unsafe' };
+  if (a.kind === 'native' && !isSubmit) return { code: 'unsafe' };
+  return { code: 'ok', action };
+}`;
+
+/** For the default (rule-less) submit: where would the form go, and does a GET carry a password? */
+const FORM_INFO_SRC = String.raw`(el) => {
+  const f = el.form || (el.closest && el.closest('form'));
+  if (!f) return null;
+  const b = (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) && el.type === 'submit' ? el : null;
+  const action = b && b.hasAttribute('formaction') ? b.formAction : f.action;
+  const method = (b && b.hasAttribute('formmethod') ? b.formMethod : f.method).toLowerCase();
+  let target = b && b.hasAttribute('formtarget') ? b.getAttribute('formtarget') : f.getAttribute('target');
+  if (!target) { const bs = f.ownerDocument.querySelector('base[target]'); target = (bs && bs.getAttribute('target')) || ''; }
+  return { action, method, self: ['', '_self'].includes((target || '').toLowerCase()), hasPassword: Array.from(f.elements).some((x) => x.type === 'password') };
+}`;
+
+const SUBMIT_GUARD_SRC = String.raw`(doc, form) => {
+  if (doc !== document || form.ownerDocument !== doc || !form.isConnected) throw new Error('document_changed');
+  const prevent = (event) => { if (event.target === form) event.preventDefault(); };
+  doc.addEventListener('submit', prevent, true);
+  return () => doc.removeEventListener('submit', prevent, true);
+}`;
+
+/** field-to-field equality for registration (no value ever leaves the page; only a boolean) */
+const SAME_VALUE_SRC = String.raw`(a, b) => a.type === 'password' && b.type === 'password' && a.value.length > 0 && a.value === b.value`;
+
+/** structural diagnosis; paths are tag/nth-of-type only (arbitrary id/name/placeholder strings are never exported) */
+const DIAGNOSE_SRC = String.raw`(doc, args) => {
+  const visible = (e) => {
+    if (!e.isConnected || !Array.from(e.getClientRects()).some((r) => r.width > 0 && r.height > 0)) return false;
+    for (let p = e; p; p = p.parentElement) {
+      const s = getComputedStyle(p);
+      if (p.hasAttribute('hidden') || p.hasAttribute('inert') || s.display === 'none' || ['hidden', 'collapse'].includes(s.visibility) || Number(s.opacity) === 0) return false;
+    }
+    return true;
+  };
+  const enabled = (e) => !e.hasAttribute('disabled') && !e.matches(':disabled') && !e.closest('[aria-disabled="true"], [inert]');
+  const editable = (e) => visible(e) && enabled(e) && !e.readOnly && (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement);
+  const OK = ['html','body','main','section','article','div','span','form','fieldset','label','input','textarea','button','p','table','tbody','tr','td','th','ul','ol','li','header','footer','nav','aside','dialog'];
+  const path = (e) => {
+    const parts = [];
+    for (let n = e; n && n.nodeType === 1; n = n.parentElement) {
+      const tag = n.tagName.toLowerCase();
+      if (!OK.includes(tag)) return null;
+      const sib = n.parentElement ? Array.from(n.parentElement.children).filter((s) => s.tagName === n.tagName) : [n];
+      parts.unshift(tag + ':nth-of-type(' + (sib.indexOf(n) + 1) + ')');
+      if (parts.length > 24) return null;
+    }
+    return parts.join(' > ');
+  };
+  const typed = (e, kind) => {
+    if (kind === 'password') return e instanceof HTMLInputElement && e.type === 'password';
+    if (kind === 'totp') return e instanceof HTMLInputElement && ['text', 'tel', 'number', 'password'].includes(e.type);
+    return e instanceof HTMLTextAreaElement || (e instanceof HTMLInputElement && ['text', 'email', 'tel', 'url', 'search'].includes(e.type));
+  };
+  const all = Array.from(doc.querySelectorAll('input,textarea,button,form'));
+  let mapping = null;
+  if (args.rule) {
+    const native = args.rule.form != null;
+    let groups = [];
+    try { groups = Array.from(doc.querySelectorAll(native ? args.rule.form : args.rule.container)); } catch (e) { groups = []; }
+    const defs = Object.assign({}, args.rule.fields);
+    if (args.rule.confirm_password) defs.confirm_password = args.rule.confirm_password;
+    mapping = { groups: groups.length, fields: Object.entries(defs).map(([field, sel]) => {
+      let found = [];
+      try { found = groups.length === 1 ? Array.from(groups[0].querySelectorAll(sel)).filter((e) => (native ? e.form === groups[0] : e.form === null)) : []; } catch (e) { found = []; }
+      return { field, matches: found.length, visible: found.length === 1 && visible(found[0]), editable: found.length === 1 && !!editable(found[0]), type_compatible: found.length === 1 && typed(found[0], args.kinds[field] || 'text') };
+    }) };
+  }
+  return { total: all.length, mapping, controls: all.slice(0, 80).map((e) => {
+    const selector = path(e);
+    const type = e instanceof HTMLInputElement || e instanceof HTMLButtonElement ? e.type : null;
+    let matches = 0;
+    try { matches = selector ? doc.querySelectorAll(selector).length : 0; } catch (x) { matches = 0; }
+    return { tag: e.tagName.toLowerCase(), type, selector, matches, visible: visible(e), enabled: !!enabled(e), editable: !!editable(e),
+      has_name: e.hasAttribute('name'), has_id: e.hasAttribute('id'), form_selector: e.form ? path(e.form) : null,
+      sensitive: e instanceof HTMLInputElement && (e.type === 'password' || (e.getAttribute('autocomplete') || '').toLowerCase().includes('one-time-code')) };
+  }) };
+}`;
+
+export const COUNT_SEL = mk<(root: any, sel: string) => number>(COUNT_SRC);
+export const FIRST_SEL = mk<(root: any, sel: string) => any>(FIRST_SRC);
+export const COUNT_IN_GROUP = mk<(g: any, a: { sel: string; native: boolean }) => number>(COUNT_IN_GROUP_SRC);
+export const FIRST_IN_GROUP = mk<(g: any, a: { sel: string; native: boolean }) => any>(FIRST_IN_GROUP_SRC);
+export const GROUP_KIND = mk<(g: any, native: boolean) => boolean>(GROUP_KIND_SRC);
+export const IS_FRAME_EL = mk<(e: any) => boolean>(IS_FRAME_SRC);
+export const SUBMIT_CHECK =
+  mk<(e: any, a: { group: any; native: boolean; kind: string }) => any>(SUBMIT_CHECK_SRC);
+export const FORM_INFO = mk<(el: any) => any>(FORM_INFO_SRC);
+export const SUBMIT_GUARD = mk<(doc: any, form: any) => any>(SUBMIT_GUARD_SRC);
+export const SAME_VALUE = mk<(a: any, b: any) => boolean>(SAME_VALUE_SRC);
+export const DIAGNOSE = mk<(doc: any, args: any) => any>(DIAGNOSE_SRC);
+
+const PWD_COUNT_SRC = String.raw`(g, a) => Array.from(g.querySelectorAll('input[type=password]')).filter((e) => (a.native ? e.form === g : e.form === null)).length`;
+export const PWD_COUNT = mk<(g: any, a: { native: boolean }) => number>(PWD_COUNT_SRC);

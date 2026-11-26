@@ -90,6 +90,10 @@ describe('guards', () => {
       expect(() => assertSafeEvidenceSelector(ok)).not.toThrow();
     for (const bad of [
       'input[value^="a"]',
+      'input[data-x*="ab"]', // substring match on a copied value
+      'input[data-x~="ab"]',
+      '"exact text"', // Playwright quoted text selector
+      '#a >> #b',
       'p:has-text("x")',
       'text=secret',
       'a:nth-child(2)',

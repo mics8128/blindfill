@@ -23,7 +23,10 @@ let engine: Engine | null = null;
 let ownedActuator: WebActuator | null = null;
 
 async function getEngine(): Promise<Engine> {
-  if (engine) return engine;
+  if (engine && ownedActuator) return engine;
+  // attached session: re-attach per call so a lock or handoff written by another process (CLI) applies
+  if (engine) await engine.stop();
+  engine = null;
   const cfg = loadConfig();
   const backend = createBackend(cfg.backend ?? 'bw', cfg);
   const n = unverifiedNotice(backend);
@@ -45,7 +48,9 @@ async function getEngine(): Promise<Engine> {
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
 function reply(o: unknown, isError = false): ToolResult {
-  return { content: [{ type: 'text', text: globalScrubber.scrub(JSON.stringify(o, null, 2)) }], isError };
+  const text = JSON.stringify(o, null, 2);
+  const safe = globalScrubber.guard(text, JSON.stringify({ ok: false, error: { code: 'WITHHELD' } }));
+  return { content: [{ type: 'text', text: safe }], isError: isError || safe !== text };
 }
 async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
   try {
@@ -137,10 +142,88 @@ export function buildServer(): McpServer {
           .optional()
           .describe('Navigate here first. The binding is checked against where the browser ends up.'),
         submit: z.boolean().optional().describe('Submit once after filling (default false).'),
+        rule: z
+          .string()
+          .optional()
+          .describe('Explicit field-rule id from the item rules (chosen by origin when omitted).'),
         expect: expectShape,
       },
     },
     (a) => run(async () => (await getEngine()).fill(a)),
+  );
+  server.registerTool(
+    'human_handoff',
+    {
+      description: `Hand the browser to a human (CAPTCHA, consent screen, push-MFA) or take it back. action=pause stops every agent-driven browser action until action=resume; status shows the state. You only ever see origin+path of open pages; resume does not clear the post-fill lock. ${CONTRACT}`,
+      inputSchema: {
+        action: z.enum(['pause', 'resume', 'status']),
+        reason: z.enum(['captcha', 'consent', 'mfa', 'other']).optional().describe('Required for pause.'),
+      },
+    },
+    ({ action, reason }) =>
+      run(async () => {
+        const e = await getEngine();
+        return action === 'pause'
+          ? e.handoffPause(reason ?? 'other')
+          : action === 'resume'
+            ? e.handoffResume()
+            : e.handoffStatus();
+      }),
+  );
+  server.registerTool(
+    'list_pages',
+    {
+      description: `List the open pages of the attached browser context as origin + path only (no query, no titles, no values). ${CONTRACT}`,
+      inputSchema: {},
+    },
+    () => run(async () => (await getEngine()).pages()),
+  );
+  server.registerTool(
+    'discover_fields',
+    {
+      description: `Plan a fill without doing it: which item fields and rule would be used on this page. Reads no secret and touches no field. Refused after a secret fill. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        url: urlArg,
+        rule: z.string().optional(),
+        registration: z.boolean().optional().describe('Plan a registration rule instead of a login.'),
+        submit: z.boolean().optional().describe('Also validate that the rule submit control is usable.'),
+      },
+    },
+    (a) => run(async () => (await getEngine()).discover(a)),
+  );
+  server.registerTool(
+    'diagnose_fields',
+    {
+      description: `Structural, value-free diagnosis of the page (counts, tags, types, DOM paths; never values or raw attributes) and of the rule mapping when a rule is given. Refused after a secret fill. ${CONTRACT}`,
+      inputSchema: { ...itemSel, url: urlArg, rule: z.string().optional() },
+    },
+    (a) => run(async () => (await getEngine()).diagnose(a)),
+  );
+  server.registerTool(
+    'verify_login',
+    {
+      description: `Report whether caller-supplied page evidence (CSS selectors) is visible: success/failure booleans only. It proves nothing about identity. Allowed after the lock. ${CONTRACT}`,
+      inputSchema: {
+        success: z.string().describe('Structural CSS selector that is visible when logged in.'),
+        failure: z.string().optional().describe('Structural CSS selector visible on failure.'),
+      },
+    },
+    (a) => run(async () => (await getEngine()).verify(a)),
+  );
+  server.registerTool(
+    'register_credentials',
+    {
+      description: `Fill an account-registration form using the stored password of an item that opted in (custom field blindfill.registration=allow) and an explicit registration rule. The same stored value is typed into the password and confirmation fields; nothing is returned. Fill-only unless submit=true; at most one submit; never retried. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        rule: z.string().describe('Registration rule id (required; never inferred).'),
+        url: z.string().optional(),
+        submit: z.boolean().optional(),
+        expect: expectShape,
+      },
+    },
+    (a) => run(async () => (await getEngine()).register(a)),
   );
   server.registerTool(
     'fill_totp',

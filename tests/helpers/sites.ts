@@ -42,7 +42,7 @@ export async function startSites(): Promise<{
       req.on('end', () => {
         const fields = Object.fromEntries(new URLSearchParams(raw));
         received.push({ host, path: u.pathname, fields });
-        if (fields.password === CANARY) {
+        if (fields.password === CANARY || fields.a2 === CANARY) {
           res.writeHead(302, { location: '/home' });
           res.end();
         } else html(page('Sign in', '<div id="error">Invalid credentials</div>'), 401);
@@ -128,6 +128,89 @@ export async function startSites(): Promise<{
             'Ambiguous',
             `<form method="post" action="/login"><input name="email" type="email"><input name="password" type="password" placeholder="Password"></form>
              <form method="post" action="/login"><input name="email" type="email"><input name="password" type="password" placeholder="Password"></form>`,
+          ),
+        );
+      case '/multi':
+        return html(
+          page(
+            'Multi',
+            `<form id="newsletter" method="post" action="/newsletter"><input name="email" type="email" placeholder="Email for news"><button type="submit">Subscribe</button></form>
+             <form id="signin" method="post" action="/login"><input id="u" name="a1" type="text"><input id="p" name="a2" type="password"><button id="go" type="submit">Go</button></form>`,
+          ),
+        );
+      case '/register':
+        return html(
+          page(
+            'Create account',
+            `<h1>Create account</h1><form id="signup" method="post" action="/register">
+              <input id="login" name="login" type="text"><input id="display" name="display" type="text">
+              <input id="pw1" name="password" type="password" autocomplete="new-password">
+              <input id="pw2" name="confirm" type="password" autocomplete="new-password">
+              <button id="create" type="submit">Create</button></form>`,
+          ),
+        );
+      case '/register-xorigin':
+        return html(
+          page(
+            'Create account',
+            `<form id="signup" method="post" action="http://evil.localhost:${(server.address() as AddressInfo).port}/register">
+              <input id="login" name="login" type="text"><input id="pw1" name="password" type="password"><input id="pw2" name="confirm" type="password">
+              <button id="create" type="submit">Create</button></form>`,
+          ),
+        );
+      case '/register-get':
+        return html(
+          page(
+            'Create account',
+            `<form id="signup" method="get" action="/register">
+              <input id="login" name="login" type="text"><input id="pw1" name="password" type="password"><input id="pw2" name="confirm" type="password">
+              <button id="create" type="submit">Create</button></form>`,
+          ),
+        );
+      case '/register-extra-pw':
+        return html(
+          page(
+            'Create account',
+            `<form id="signup" method="post" action="/register">
+              <input id="login" name="login" type="text"><input id="pw1" name="password" type="password"><input id="pw2" name="confirm" type="password"><input id="pw3" name="third" type="password">
+              <button id="create" type="submit">Create</button></form>`,
+          ),
+        );
+      case '/register-nocopy':
+        // the page rewrites the confirmation field after input: values will not match
+        return html(
+          page(
+            'Create account',
+            `<form id="signup" method="post" action="/register">
+              <input id="login" name="login" type="text"><input id="pw1" name="password" type="password"><input id="pw2" name="confirm" type="password">
+              <button id="create" type="submit">Create</button></form>`,
+            `document.getElementById('pw2').addEventListener('input', (e) => { setTimeout(() => { e.target.value = e.target.value.slice(0, -1); }, 20); });`,
+          ),
+        );
+      case '/login-get':
+        return html(
+          page(
+            'Sign in',
+            `<form method="get" action="/login"><label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button></form>`,
+          ),
+        );
+      case '/login-xorigin':
+        return html(
+          page(
+            'Sign in',
+            `<form method="post" action="http://evil.localhost:${(server.address() as AddressInfo).port}/login"><label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button></form>`,
+          ),
+        );
+      case '/js-login':
+        return html(
+          page(
+            'JS login',
+            `<div id="box"><input id="ju" type="text" placeholder="user"><input id="jp" type="password"><div id="jgo" role="button">Go</div></div>`,
+            `document.getElementById('jgo').addEventListener('click', async () => {
+               const body = new URLSearchParams({ email: document.getElementById('ju').value, password: document.getElementById('jp').value });
+               await fetch('/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+               location.href = '/home';
+             });`,
           ),
         );
       case '/echo':

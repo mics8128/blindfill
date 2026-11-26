@@ -11,6 +11,25 @@ export interface FindQuery {
   query?: string;
 }
 
+/** Item to create. Only login-shaped items; `password` is Secret-class and is never echoed back. */
+export interface NewItemSpec {
+  name: string;
+  username?: string;
+  /** exact origins; stored as exact-host URIs */
+  uris: string[];
+  password?: string;
+  totpSeed?: string;
+  /** non-secret custom fields (incl. blindfill.* control fields) */
+  fields?: Record<string, string>;
+}
+/** Non-secret change of an existing item. `fields[name] = null` deletes a field. Secret-class fields are refused. */
+export interface ItemPatch {
+  name?: string;
+  username?: string;
+  uris?: string[];
+  fields?: Record<string, string | null>;
+}
+
 /** ARCHITECTURE 3.1. Every backend must pass src/backends/_contract. */
 export interface Backend {
   readonly id: string;
@@ -30,9 +49,20 @@ export interface Backend {
   openSecret(ref: ItemRef, field: string): Promise<SecretHandle>;
   /** Current TOTP code (Ephemeral). The seed never leaves the backend. */
   totpCode(ref: ItemRef): Promise<string>;
+  /** Optional (capability WRITE). Backends without it report UNSUPPORTED to callers. */
+  createItem?(spec: NewItemSpec): Promise<ItemRef>;
+  /** Optional (WRITE). Replace one Secret-class value; the value is never returned or logged. */
+  updateSecret?(ref: ItemRef, field: string, value: string): Promise<void>;
+  /** Optional (WRITE). Change only non-secret properties. */
+  updateItem?(ref: ItemRef, patch: ItemPatch): Promise<void>;
 }
 
-export const DEFAULT_CONTROL: ControlFields = { submit: 'once', signers: [], notesReadable: false };
+export const DEFAULT_CONTROL: ControlFields = {
+  submit: 'once',
+  signers: [],
+  notesReadable: false,
+  registration: false,
+};
 
 /** Parse blindfill.* control fields given as name -> value. Shared by backends. */
 export function parseControl(fields: Record<string, string>): ControlFields {
@@ -46,7 +76,14 @@ export function parseControl(fields: Record<string, string>): ControlFields {
         .map((s) => s.trim())
         .filter(Boolean);
     else if (key === 'blindfill.notes') c.notesReadable = v.trim().toLowerCase() === 'readable';
-    else if (key === 'blindfill.rules') {
+    else if (key === 'blindfill.registration') c.registration = v.trim().toLowerCase() === 'allow';
+    else if (key === 'blindfill.password_policy') {
+      try {
+        c.passwordPolicy = JSON.parse(v);
+      } catch {
+        c.passwordPolicy = undefined;
+      }
+    } else if (key === 'blindfill.rules') {
       try {
         c.rules = JSON.parse(v);
       } catch {
