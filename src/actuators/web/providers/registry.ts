@@ -4,6 +4,7 @@ import { borrowedPage } from './borrowed-page.js';
 import { chromiumCdp } from './chromium-cdp.js';
 import { chromiumLaunch } from './chromium-launch.js';
 import { firefoxConnect } from './firefox-connect.js';
+import { egoCli } from './ego-cli.js';
 
 const providers = new Map<string, BrowserProvider>();
 
@@ -31,6 +32,7 @@ export function listProviders(): BrowserProvider[] {
 export function inferProviderId(endpoint: string): string {
   try {
     const u = new URL(endpoint);
+    if (u.protocol === 'ego:') return 'ego-cli';
     if (u.protocol === 'http:' || u.protocol === 'https:' || u.pathname.startsWith('/devtools/'))
       return 'chromium-cdp';
     return 'firefox-connect';
@@ -39,4 +41,4 @@ export function inferProviderId(endpoint: string): string {
   }
 }
 
-for (const p of [chromiumLaunch, chromiumCdp, firefoxConnect, borrowedPage]) registerProvider(p);
+for (const p of [chromiumLaunch, chromiumCdp, firefoxConnect, borrowedPage, egoCli]) registerProvider(p);

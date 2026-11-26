@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright-core';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { BwBackend } from '../src/backends/bw.js';
 import { WebActuator } from '../src/actuators/web/web.js';
 import { Engine } from '../src/engine.js';
@@ -15,6 +15,12 @@ let sites: Awaited<ReturnType<typeof startSites>>;
 let dir: string;
 let auditFile: string;
 let page: Page;
+/**
+ * BLINDFILL_E2E_BROWSER=ego runs this suite through the running Ego Lite (ego-cli provider, owner's
+ * Mac only). Each test opens a fresh Ego task space and closes it (BLINDFILL_EGO_KEEP=0).
+ */
+const EGO = process.env.BLINDFILL_E2E_BROWSER === 'ego';
+const opened: WebActuator[] = [];
 
 const item = (id: string, uris: string[], extra: any[] = []) => ({
   id,
@@ -30,16 +36,23 @@ const item = (id: string, uris: string[], extra: any[] = []) => ({
 });
 
 async function engine(): Promise<{ eng: Engine; act: WebActuator }> {
-  const ctx = await browser.newContext();
-  page = await ctx.newPage();
-  const act = WebActuator.fromPage(page);
+  let act: WebActuator;
+  if (EGO) {
+    act = await WebActuator.fromProvider('ego-cli', { endpoint: 'ego://new' });
+    opened.push(act);
+    page = act.page;
+  } else {
+    page = await (await browser.newContext()).newPage();
+    act = WebActuator.fromPage(page);
+  }
   const backend = new BwBackend({ bin: MOCK, env: { ...process.env, BW_SESSION: 'mock-session-token' } });
   return { eng: new Engine(backend, act), act };
 }
 const audits = () => (existsSync(auditFile) ? readFileSync(auditFile, 'utf8') : '');
 
 beforeAll(async () => {
-  browser = await chromium.launch({ headless: true });
+  if (EGO) process.env.BLINDFILL_EGO_KEEP = '0';
+  else browser = await chromium.launch({ headless: true });
   sites = await startSites();
   dir = mkdtempSync(join(tmpdir(), 'bf-e2e-'));
   auditFile = join(dir, 'audit.jsonl');
@@ -73,6 +86,11 @@ afterAll(async () => {
 beforeEach(() => {
   sites.received.length = 0;
   globalScrubber.register(CANARY);
+});
+afterEach(async () => {
+  for (const act of opened.splice(0)) await act.close();
+  // Ego runs out of process: let a submit that is still in flight land before the next test resets
+  if (EGO) await new Promise((r) => setTimeout(r, 500));
 });
 
 const good = (p: string) => sites.url('good.localhost', p);
@@ -181,10 +199,20 @@ describe('web actuator e2e (local fake sites)', () => {
   it('cross-origin iframe: refused unless the item binds the frame origin', async () => {
     const { eng, act } = await engine();
     await expect(eng.fill({ item: 'good', url: good('/framed'), submit: true })).rejects.toMatchObject({
-      code: 'ORIGIN_MISMATCH',
+      // ego-cli cannot see out-of-process frames at all, so it refuses for lack of a field
+      code: EGO ? 'AMBIGUOUS' : 'ORIGIN_MISMATCH',
     });
     expect(sites.received).toHaveLength(0);
     expect(act.policy.locked).toBe(false); // refused before any secret was read
+    if (EGO) {
+      // documented ego-cli limit: even a bound cross-origin frame is out of reach; refused, nothing typed
+      const { eng: e2 } = await engine();
+      await expect(
+        e2.fill({ item: 'good-cdn', url: good('/framed-bound'), submit: true }),
+      ).rejects.toBeTruthy();
+      expect(sites.received).toHaveLength(0);
+      return;
+    }
     const { eng: e2 } = await engine();
     const r = await e2.fill({ item: 'good-cdn', url: good('/framed-bound'), submit: true });
     expect(r.filled).toEqual(['username', 'password']);

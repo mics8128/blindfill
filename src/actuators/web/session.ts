@@ -9,6 +9,7 @@ import { BlindfillError } from '../../core/types.js';
 import { WebActuator } from './web.js';
 import { getProvider, inferProviderId } from './providers/registry.js';
 import { assertLoopbackEndpoint, redactEndpoint, resolveEndpoint } from './providers/util.js';
+import { parseEgoEndpoint } from './providers/ego-cli.js';
 
 export interface SessionFile {
   /** Chromium CDP endpoint, or (for attached non-CDP browsers) the same endpoint string. Never printed raw. */
@@ -122,11 +123,14 @@ function explicitSession(opts: AttachOpts): SessionFile | null {
   const endpoint = opts.endpoint ?? opts.cdp;
   if (!endpoint && !opts.endpointFile) return null;
   const ep = resolveEndpoint({ endpoint, endpointFile: opts.endpointFile });
-  assertLoopbackEndpoint(ep);
+  const browser = opts.browser ?? inferProviderId(ep);
+  // ego:// names a local Ego Lite task space (no network endpoint); everything else must be loopback
+  if (browser === 'ego-cli') parseEgoEndpoint(ep);
+  else assertLoopbackEndpoint(ep);
   return {
     cdp: endpoint ?? '',
     endpointFile: opts.endpointFile,
-    browser: opts.browser ?? inferProviderId(ep),
+    browser,
     playwrightModule: opts.playwrightModule,
     owned: false,
     policy: { locked: false, filled: [] },
