@@ -32,7 +32,8 @@ export class BwBackend extends RawItemBackend {
 
   async #bw(args: string[]): Promise<string> {
     const session = this.#env.BW_SESSION;
-    if (!session) throw new BlindfillError('LOCKED', 'BW_SESSION is not set (vault locked); unlock it outside blindfill');
+    if (!session)
+      throw new BlindfillError('LOCKED', 'BW_SESSION is not set (vault locked); unlock it outside blindfill');
     // session goes by environment, never on the command line (visible in ps)
     const r = await this.#run(this.#bin, [...args, '--nointeraction'], {
       env: { BW_SESSION: session, BW_NOINTERACTION: 'true' },

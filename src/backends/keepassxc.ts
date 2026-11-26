@@ -41,13 +41,16 @@ export class KeepassxcBackend extends RawItemBackend {
   async #kp(sub: string, rest: string[], extra: string[] = []): Promise<string> {
     if (!this.#db) throw new BlindfillError('LOCKED', 'no database configured (BLINDFILL_KEEPASS_DB)');
     const pw = this.#env.BLINDFILL_KEEPASS_PASSWORD;
-    if (pw === undefined && !this.#key) throw new BlindfillError('LOCKED', 'BLINDFILL_KEEPASS_PASSWORD (or a key file) is required');
+    if (pw === undefined && !this.#key)
+      throw new BlindfillError('LOCKED', 'BLINDFILL_KEEPASS_PASSWORD (or a key file) is required');
     const args = [sub, '-q', ...(this.#key ? ['-k', this.#key] : []), ...extra, this.#db, ...rest];
     const r = await this.#run(this.#bin, args, { input: pw !== undefined ? pw + '\n' : '\n' });
     if (r.code !== 0) {
       const msg = safeErr(r.stderr || r.stdout, [pw]);
-      if (/invalid credentials|wrong|unable to open|master key|password/i.test(msg)) throw new BlindfillError('LOCKED', `database not unlocked: ${msg}`);
-      if (/could not find|not found|no results/i.test(msg)) throw new BlindfillError('NOT_FOUND', 'item not found');
+      if (/invalid credentials|wrong|unable to open|master key|password/i.test(msg))
+        throw new BlindfillError('LOCKED', `database not unlocked: ${msg}`);
+      if (/could not find|not found|no results/i.test(msg))
+        throw new BlindfillError('NOT_FOUND', 'item not found');
       throw new BlindfillError('BACKEND', `keepassxc-cli ${sub} failed: ${msg}`);
     }
     return r.stdout;
@@ -61,10 +64,14 @@ export class KeepassxcBackend extends RawItemBackend {
     await this.#kp('ls', [], ['-R', '-f']);
   }
   protected async listRaw(q: FindQuery): Promise<BwRawItem[]> {
-    const names = (await this.#kp('ls', [], ['-R', '-f'])).split('\n').map((s) => s.trim()).filter((s) => s && !s.endsWith('/'));
+    const names = (await this.#kp('ls', [], ['-R', '-f']))
+      .split('\n')
+      .map((s) => s.trim())
+      .filter((s) => s && !s.endsWith('/'));
     let hits: string[];
     if (q.query !== undefined) hits = names.filter((n) => n.toLowerCase().includes(q.query!.toLowerCase()));
-    else if (q.target?.kind === 'web') hits = names; // URL lives in the entry; the binding filter decides
+    else if (q.target?.kind === 'web')
+      hits = names; // URL lives in the entry; the binding filter decides
     else throw new BlindfillError('POLICY', 'find needs a web target or a query');
     return Promise.all(hits.slice(0, 40).map((id) => this.getRaw({ backend: 'keepassxc', id })));
   }
@@ -73,7 +80,9 @@ export class KeepassxcBackend extends RawItemBackend {
     const text = await this.#kp('show', [ref.id], ['-s']);
     const { kvs } = parseKvLines(text);
     const get = (k: string) => kvs.find((x) => x.key.toLowerCase() === k)?.value;
-    const rest = kvs.filter((x) => !['title', 'username', 'password', 'url', 'notes', 'uuid', 'tags'].includes(x.key.toLowerCase()));
+    const rest = kvs.filter(
+      (x) => !['title', 'username', 'password', 'url', 'notes', 'uuid', 'tags'].includes(x.key.toLowerCase()),
+    );
     const kv = [
       ...(get('username') ? [{ key: 'username', value: get('username') as string }] : []),
       ...(get('url') ? [{ key: 'url', value: get('url') as string }] : []),

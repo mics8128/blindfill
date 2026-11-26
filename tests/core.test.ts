@@ -136,9 +136,22 @@ describe('audit', () => {
   it('appends JSONL, never values', () => {
     const dir = mkdtempSync(join(tmpdir(), 'bf-audit-'));
     const p = join(dir, 'a.jsonl');
-    audit({ event: 'fill', backend: 'bw', item: 'id1', target: 'web:https://x.test', fields: ['password'], outcome: 'ok' }, p);
+    audit(
+      {
+        event: 'fill',
+        backend: 'bw',
+        item: 'id1',
+        target: 'web:https://x.test',
+        fields: ['password'],
+        outcome: 'ok',
+      },
+      p,
+    );
     audit({ event: 'refused', reason: 'origin' }, p);
-    const lines = readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const lines = readFileSync(p, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatchObject({ event: 'fill', fields: ['password'] });
     expect(lines[0].ts).toBeTruthy();
@@ -198,9 +211,17 @@ describe('policy: match types', () => {
   });
   it('checkWebBinding: no web uri => refuse; any matching uri => ok', () => {
     expect(checkWebBinding('https://a.test/', meta([])).ok).toBe(false);
-    expect(checkWebBinding('https://a.test/', meta([{ uri: 'androidapp://com.x.y', match: 'host' }])).ok).toBe(false);
     expect(
-      checkWebBinding('https://b.test/', meta([{ uri: 'https://a.test', match: 'host' }, { uri: 'https://b.test', match: 'host' }])).ok,
+      checkWebBinding('https://a.test/', meta([{ uri: 'androidapp://com.x.y', match: 'host' }])).ok,
+    ).toBe(false);
+    expect(
+      checkWebBinding(
+        'https://b.test/',
+        meta([
+          { uri: 'https://a.test', match: 'host' },
+          { uri: 'https://b.test', match: 'host' },
+        ]),
+      ).ok,
     ).toBe(true);
   });
   it('android binding needs package + pinned signer', () => {

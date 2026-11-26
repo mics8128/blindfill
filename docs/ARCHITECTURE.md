@@ -13,7 +13,7 @@ paste the password into the prompt, hand the agent a password-manager CLI (`bw g
 returns plaintext to the agent), or keep a bespoke credential store.
 
 Blindfill is a **credential actuator**: it resolves a secret from a password manager and
-writes it straight into the target field. The agent chooses *which account and which page*;
+writes it straight into the target field. The agent chooses _which account and which page_;
 it never receives the value.
 
 Non-goals: not a password manager, not a login state machine, not a captcha/2FA-by-SMS
@@ -22,10 +22,10 @@ solver, not a general remote-control tool. Multi-step flows stay with the caller
 ## 2. Security invariants (the product)
 
 1. **Secrets are write-only; everything else is readable.** Fields are classed (see 2a).
-   No API, CLI flag or MCP tool returns a *secret-class* field to the caller; those can only
+   No API, CLI flag or MCP tool returns a _secret-class_ field to the caller; those can only
    be filled (secret -> sink). Non-secret fields (username, URIs, text custom fields, field
    names, the current TOTP code) are returned normally so the agent can reason and act.
-2. **Origin/app binding.** A fill is allowed only if the item is bound to the *actual*
+2. **Origin/app binding.** A fill is allowed only if the item is bound to the _actual_
    target identity (web origin, or Android package + signer). Binding comes from the vault
    item, never from the caller.
 3. **One shot.** Fill and submit once; unknown outcome is reported, never retried.
@@ -35,25 +35,26 @@ solver, not a general remote-control tool. Multi-step flows stay with the caller
 5. **Fail closed.** Missing signer tool, ambiguous field, origin mismatch, focus change:
    stop before the secret is read from the backend.
 6. **Honest limits, documented.** The secret still exists in the page DOM / app memory.
-   Blindfill defends against the *model and its logs*, not against a malicious page or a
+   Blindfill defends against the _model and its logs_, not against a malicious page or a
    compromised host. `SECURITY.md` states this up front.
 
 ### 2a. Field classes
 
-| Class | Examples | Agent can read? | Agent can fill? |
-|---|---|---|---|
-| **Secret** | password, TOTP seed/otpauth URI, Bitwarden *Hidden* custom fields, card number/CVV, SSH/private keys, passkey material | **never** | yes (via fill) |
-| **Ephemeral** | the current TOTP code (6-8 digits, ~30 s) | **yes** (owner's decision) | yes |
-| **Readable** | username, item name, URIs, *Text*/*Boolean* custom fields, field names, folder/collection | yes | yes |
-| **Notes** | free-form notes | no by default (may hold secrets); opt in per item with `blindfill.notes=readable` | no |
+| Class         | Examples                                                                                                               | Agent can read?                                                                   | Agent can fill? |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- |
+| **Secret**    | password, TOTP seed/otpauth URI, Bitwarden _Hidden_ custom fields, card number/CVV, SSH/private keys, passkey material | **never**                                                                         | yes (via fill)  |
+| **Ephemeral** | the current TOTP code (6-8 digits, ~30 s)                                                                              | **yes** (owner's decision)                                                        | yes             |
+| **Readable**  | username, item name, URIs, _Text_/_Boolean_ custom fields, field names, folder/collection                              | yes                                                                               | yes             |
+| **Notes**     | free-form notes                                                                                                        | no by default (may hold secrets); opt in per item with `blindfill.notes=readable` | no              |
 
 Notes:
-* Class comes from the vault's own type (Bitwarden field type Hidden vs Text), so the owner
+
+- Class comes from the vault's own type (Bitwarden field type Hidden vs Text), so the owner
   controls it in the normal vault UI. Unknown or untyped data defaults to Secret.
-* The current TOTP code is treated exactly like a text field: readable and fillable, no
+- The current TOTP code is treated exactly like a text field: readable and fillable, no
   special switch (owner's decision, 2026-11-27). Only the TOTP seed is Secret. The code is
   short-lived, but readability means its safety rests on target binding.
-* Scrubbing (invariant 4) applies to Secret-class values only; Ephemeral codes are not
+- Scrubbing (invariant 4) applies to Secret-class values only; Ephemeral codes are not
   scrubbed since they are returned on purpose.
 
 ## 3. Layers
@@ -82,25 +83,25 @@ class Backend(Protocol):
     def totp_code(self, ref) -> str: ...                     # Ephemeral; seed never leaves the backend
 ```
 
-* `SecretHandle` is write-once, `repr()`/`str()` raise, and offers only
+- `SecretHandle` is write-once, `repr()`/`str()` raise, and offers only
   `handle.into(sink)`. It zeroes its buffer after use (Buffer.fill(0) after use; a
   Rust core could be stricter, see section 8).
-* A backend never learns the target page content; the engine never learns more than the
+- A backend never learns the target page content; the engine never learns more than the
   handle exposes.
-* Backends declare capabilities; the engine degrades gracefully (e.g. no `ANDROID_APPS` ->
+- Backends declare capabilities; the engine degrades gracefully (e.g. no `ANDROID_APPS` ->
   phone actuator disabled for that backend).
 
 Planned backends and support tiers:
 
-| Tier | Meaning | Backends |
-|---|---|---|
-| **Verified** | maintainers run CI against it | `bw` (Bitwarden/Vaultwarden), `secret-service` |
-| **Blind-written** | coded from the vendor docs, contract tests pass against recorded fixtures, **no live test yet** | `op` (1Password), `keepassxc-cli`, `pass`/`gopass`, `rbw`, Proton Pass CLI, `lpass`, Dashlane CLI, HashiCorp Vault KV |
-| **Community-verified** | a user reported a successful live run (issue template + date + version) | promoted from blind-written |
+| Tier                   | Meaning                                                                                         | Backends                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Verified**           | maintainers run CI against it                                                                   | `bw` (Bitwarden/Vaultwarden), `secret-service`                                                                        |
+| **Blind-written**      | coded from the vendor docs, contract tests pass against recorded fixtures, **no live test yet** | `op` (1Password), `keepassxc-cli`, `pass`/`gopass`, `rbw`, Proton Pass CLI, `lpass`, Dashlane CLI, HashiCorp Vault KV |
+| **Community-verified** | a user reported a successful live run (issue template + date + version)                         | promoted from blind-written                                                                                           |
 
 The README carries a live **backend matrix** (tier, version tested, last confirmed). Blind
 backends print a one-line "unverified backend" notice on first use and have a
-`blindfill backend selftest` command that runs a *fake item* round trip, so a volunteer can
+`blindfill backend selftest` command that runs a _fake item_ round trip, so a volunteer can
 confirm in two minutes and paste the output into an issue.
 
 ### 3.2 Actuator SPI (where secrets are typed)
@@ -114,16 +115,16 @@ class Actuator(Protocol):
     def submit(self) -> Outcome: ...            # once
 ```
 
-* **Web actuator** **[from olliepm]**: Playwright `Page`. Attach modes: in-process page
+- **Web actuator** **[from olliepm]**: Playwright `Page`. Attach modes: in-process page
   (`share_page`), Chromium CDP on loopback, Playwright-launched browser. Observed origin
   comes from the page URL, not from the caller.
-* **Android actuator** **[from olliepm, unverified on real secrets]**: host-side scrcpy
+- **Android actuator** **[from olliepm, unverified on real secrets]**: host-side scrcpy
   control channel (INJECT_TEXT), no `adb shell input text`, no clipboard, no UIAutomator
   setText. Identity = device serial + Android user + package + APK signer SHA-256
   (checked with `apksigner`). Two-stage roadmap:
   1. host injection as above (works today, focus-based, not atomic);
   2. optional companion **AutofillService** APK for atomic, system-attested fills.
-* Later: desktop (accessibility APIs), iOS (probably impossible without Autofill extension).
+- Later: desktop (accessibility APIs), iOS (probably impossible without Autofill extension).
 
 ### 3.3 Target model
 
@@ -132,7 +133,7 @@ web:https://accounts.example.com
 android:com.instagram.android#sha256=5F:3E:...      # signer pinned
 ```
 
-A `Target` is what the actuator *observed*. Matching reuses the vault's own rules:
+A `Target` is what the actuator _observed_. Matching reuses the vault's own rules:
 
 ### 3.4 Vault item contract (no sidecar files)
 
@@ -141,15 +142,15 @@ model, so the vault stays the single source of truth.
 
 Bitwarden/Vaultwarden mapping:
 
-| Need | Where in the item |
-|---|---|
-| Web binding | `login.uris[]` with Bitwarden match types (base domain, host, starts-with, exact, regex). Default **Host** or stricter; Base-domain only if the user chose it. |
-| Android app binding | extra URI `androidapp://com.instagram.android` (Bitwarden's own convention) + custom field `blindfill.signers` = comma-separated SHA-256 |
-| Username / password / TOTP | `login.username`, `login.password`, `login.totp` |
-| Extra fields (e.g. store ID, display name) | custom fields; names prefixed `blindfill.` are control fields, others are fillable by explicit name |
-| Per-site selector overrides, multi-step hints | custom field `blindfill.rules` (small JSON, version-tagged) or Notes block fenced as ```blindfill |
-| Submit policy | `blindfill.submit` = `once` (default) / `none` |
-| Agent visibility | put items in a dedicated collection; membership + read-only permission is the grant |
+| Need                                          | Where in the item                                                                                                                                              |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web binding                                   | `login.uris[]` with Bitwarden match types (base domain, host, starts-with, exact, regex). Default **Host** or stricter; Base-domain only if the user chose it. |
+| Android app binding                           | extra URI `androidapp://com.instagram.android` (Bitwarden's own convention) + custom field `blindfill.signers` = comma-separated SHA-256                       |
+| Username / password / TOTP                    | `login.username`, `login.password`, `login.totp`                                                                                                               |
+| Extra fields (e.g. store ID, display name)    | custom fields; names prefixed `blindfill.` are control fields, others are fillable by explicit name                                                            |
+| Per-site selector overrides, multi-step hints | custom field `blindfill.rules` (small JSON, version-tagged) or Notes block fenced as ```blindfill                                                              |
+| Submit policy                                 | `blindfill.submit` = `once` (default) / `none`                                                                                                                 |
+| Agent visibility                              | put items in a dedicated collection; membership + read-only permission is the grant                                                                            |
 
 Other managers get an equivalent mapping documented in `docs/backends/<id>.md`. Where a
 backend cannot hold custom fields, rules fall back to a local `rules.d/` file keyed by item id.
@@ -170,32 +171,32 @@ flow.
 
 ### 3.6 Interfaces
 
-* CLI: `blindfill login <target>`, `blindfill fill`, `blindfill item show` (readable fields only),
+- CLI: `blindfill login <target>`, `blindfill fill`, `blindfill item show` (readable fields only),
   `blindfill totp [--fill]`, `blindfill probe`,
   `blindfill backend list|selftest`, `blindfill session stop`. JSON on stdout, prompts on
   stderr.
-* MCP server (stdio only): `probe`, `candidates`, `item_show` (readable fields), `totp_code`,
+- MCP server (stdio only): `probe`, `candidates`, `item_show` (readable fields), `totp_code`,
   `fill`, `fill_totp`, `session_stop`. No tool returns Secret-class values. Tool descriptions state the no-read contract so agents plan for it.
-* TypeScript library for in-process Playwright owners.
+- TypeScript library for in-process Playwright owners.
 
 ### 3.7 Audit and grants
 
-* Local append-only log: time, backend, item id (not name if configured), target, fields
+- Local append-only log: time, backend, item id (not name if configured), target, fields
   filled, outcome. Never values.
-* Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
+- Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
   creates a digest (as olliepm does) the engine checks at fill time.
 
 ## 4. Threat model (short)
 
-| Threat | Handled by |
-|---|---|
-| Model asks for password | no read API |
-| Prompt injection from the page | origin binding from vault; caller cannot choose the target |
-| Secret echoed in logs / tool output | scrubber (raw, URL-encoded, Base64), post-fill lock |
-| Wrong site (phishing, redirect) | observed origin vs item URIs, Host match by default |
-| Rogue app on phone | package + signer pin, fail closed |
-| Malicious page reads DOM | **not handled**, documented |
-| Compromised host | out of scope |
+| Threat                              | Handled by                                                 |
+| ----------------------------------- | ---------------------------------------------------------- |
+| Model asks for password             | no read API                                                |
+| Prompt injection from the page      | origin binding from vault; caller cannot choose the target |
+| Secret echoed in logs / tool output | scrubber (raw, URL-encoded, Base64), post-fill lock        |
+| Wrong site (phishing, redirect)     | observed origin vs item URIs, Host match by default        |
+| Rogue app on phone                  | package + signer pin, fail closed                          |
+| Malicious page reads DOM            | **not handled**, documented                                |
+| Compromised host                    | out of scope                                               |
 
 ## 5. Repo layout
 
@@ -217,48 +218,48 @@ blindfill/
 
 ## 6. Testing strategy
 
-* **Backend contract suite**: one test file every backend must pass against fixtures
+- **Backend contract suite**: one test file every backend must pass against fixtures
   (find, meta, open_secret->into, totp, missing item, locked vault, no secret in repr/log).
   This is what makes blind-writing credible.
-* **Fake sites**: local pages with traps (hidden honeypot fields, cross-origin iframe,
+- **Fake sites**: local pages with traps (hidden honeypot fields, cross-origin iframe,
   lookalike domain) -> must refuse.
-* **Leak tests**: run fills with a canary password and grep every output, log and artifact.
-* **Android**: emulator + synthetic app; real-device runs stay manual.
+- **Leak tests**: run fills with a canary password and grep every output, log and artifact.
+- **Android**: emulator + synthetic app; real-device runs stay manual.
 
 ## 7. Adoption plan
 
-* Name, one-sentence promise, 20-second demo GIF (agent logs in, transcript shows no secret).
-* README first screen: the no-read guarantee, install in one command (`npx -y <package>`),
+- Name, one-sentence promise, 20-second demo GIF (agent logs in, transcript shows no secret).
+- README first screen: the no-read guarantee, install in one command (`npx -y <package>`),
   the backend matrix.
-* `good first backend` issues; backend template + selftest make contributions small.
-* SECURITY.md with honest limits; responsible-disclosure address.
-* License: MIT or Apache-2.0 (decision needed).
-* Publish only after an internal run of a week on our own accounts.
+- `good first backend` issues; backend template + selftest make contributions small.
+- SECURITY.md with honest limits; responsible-disclosure address.
+- License: MIT or Apache-2.0 (decision needed).
+- Publish only after an internal run of a week on our own accounts.
 
 ## 8. Language decision (revised 2026-11-27: TypeScript / Node)
 
 Goal: install in one command, no toolchain explanation.
 
-* **TypeScript on Node 20+ (chosen).** `npx -y <pkg>` is the de-facto way agents launch MCP
+- **TypeScript on Node 20+ (chosen).** `npx -y <pkg>` is the de-facto way agents launch MCP
   servers; Playwright is first class in Node; the Bitwarden CLI is itself an npm package, so
   the main user already has Node. `Buffer` secrets can be zero-filled, which is better than
   Python's immutable strings. The Android side needs only `adb`/`scrcpy` as external binaries.
-* Python (olliepm's language): `uvx` is also one command, but it needs `uv` and a Python
+- Python (olliepm's language): `uvx` is also one command, but it needs `uv` and a Python
   runtime, which most MCP users do not have. The olliepm engine is ported, not reused.
-* Go/Rust single binary: easiest install and best secrecy guarantees, but Playwright is not
+- Go/Rust single binary: easiest install and best secrecy guarantees, but Playwright is not
   first class there. Revisit only if a CDP-only core is wanted.
-* Keep the `SecretHandle` boundary clean so the core can later move to Rust/Go.
+- Keep the `SecretHandle` boundary clean so the core can later move to Rust/Go.
 
 ## 9. Roadmap
 
-* **M0** repo, name, invariants, SECURITY.md, backend/actuator SPI, contract tests.
-* **M1** `bw` + `secret-service` backends; web actuator ported from olliepm; CLI + MCP;
+- **M0** repo, name, invariants, SECURITY.md, backend/actuator SPI, contract tests.
+- **M1** `bw` + `secret-service` backends; web actuator ported from olliepm; CLI + MCP;
   migrate our own 15 items; one week of dogfooding.
-* **M2** Android actuator ported (host injection) with signer pinning; real-device test on
+- **M2** Android actuator ported (host injection) with signer pinning; real-device test on
   our own accounts only after explicit approval.
-* **M3** blind-written backends (`op`, `keepassxc-cli`, `pass`, `rbw`); selftest command;
+- **M3** blind-written backends (`op`, `keepassxc-cli`, `pass`, `rbw`); selftest command;
   public release and backend matrix.
-* **M4** companion AutofillService; community rule packs; desktop actuator exploration.
+- **M4** companion AutofillService; community rule packs; desktop actuator exploration.
 
 ## 10. Open questions
 

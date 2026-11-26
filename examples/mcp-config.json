@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "blindfill": {
+      "command": "npx",
+      "args": ["-y", "blindfill", "mcp"],
+      "env": { "BW_SESSION": "<exported by you; never put a real value in a committed file>" }
+    }
+  }
+}

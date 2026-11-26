@@ -31,14 +31,16 @@ export class SecretServiceBackend extends RawItemBackend {
   }
   async version(): Promise<string> {
     const r = await this.#run(this.#bin, ['--version']);
-    if (r.code !== 0 && !r.stdout && !r.stderr) throw new BlindfillError('BACKEND', 'secret-tool not runnable');
+    if (r.code !== 0 && !r.stdout && !r.stderr)
+      throw new BlindfillError('BACKEND', 'secret-tool not runnable');
     return (r.stdout || r.stderr).trim().split('\n')[0].slice(0, 60);
   }
   async #all(): Promise<BwRawItem[]> {
     const r = await this.#run(this.#bin, ['search', '--all', 'blindfill', '1']);
     if (r.code !== 0) {
       const msg = safeErr(r.stderr || r.stdout);
-      if (/locked|cancel|denied|no such secret collection|prompt/i.test(msg)) throw new BlindfillError('LOCKED', `keyring locked: ${msg}`);
+      if (/locked|cancel|denied|no such secret collection|prompt/i.test(msg))
+        throw new BlindfillError('LOCKED', `keyring locked: ${msg}`);
       if (r.code === 1 && !r.stdout.trim()) return [];
       throw new BlindfillError('BACKEND', `secret-tool search failed: ${msg}`);
     }
@@ -60,7 +62,8 @@ export class SecretServiceBackend extends RawItemBackend {
   }
   protected async listRaw(q: FindQuery): Promise<BwRawItem[]> {
     const all = await this.#all();
-    if (q.query !== undefined) return all.filter((i) => (i.name ?? '').toLowerCase().includes(q.query!.toLowerCase()));
+    if (q.query !== undefined)
+      return all.filter((i) => (i.name ?? '').toLowerCase().includes(q.query!.toLowerCase()));
     if (q.target) return all;
     throw new BlindfillError('POLICY', 'find needs a target or a query');
   }

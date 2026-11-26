@@ -20,13 +20,55 @@ export interface BackendInfo {
 }
 
 export const BACKEND_INFO: BackendInfo[] = [
-  { id: 'bw', tier: 'verified', title: 'Bitwarden / Vaultwarden (bw CLI)', binary: 'bw', doc: 'docs/backends/bitwarden.md' },
-  { id: 'secret-service', tier: 'blind-written/unverified', title: 'freedesktop Secret Service (secret-tool)', binary: 'secret-tool', doc: 'docs/backends/other.md' },
-  { id: 'op', tier: 'blind-written/unverified', title: '1Password CLI (op)', binary: 'op', doc: 'docs/backends/other.md' },
-  { id: 'keepassxc', tier: 'blind-written/unverified', title: 'KeePassXC (keepassxc-cli)', binary: 'keepassxc-cli', doc: 'docs/backends/other.md' },
-  { id: 'pass', tier: 'blind-written/unverified', title: 'pass (password-store)', binary: 'pass', doc: 'docs/backends/other.md' },
-  { id: 'gopass', tier: 'blind-written/unverified', title: 'gopass', binary: 'gopass', doc: 'docs/backends/other.md' },
-  { id: 'rbw', tier: 'blind-written/unverified', title: 'rbw (unofficial Bitwarden CLI)', binary: 'rbw', doc: 'docs/backends/other.md' },
+  {
+    id: 'bw',
+    tier: 'verified',
+    title: 'Bitwarden / Vaultwarden (bw CLI)',
+    binary: 'bw',
+    doc: 'docs/backends/bitwarden.md',
+  },
+  {
+    id: 'secret-service',
+    tier: 'blind-written/unverified',
+    title: 'freedesktop Secret Service (secret-tool)',
+    binary: 'secret-tool',
+    doc: 'docs/backends/other.md',
+  },
+  {
+    id: 'op',
+    tier: 'blind-written/unverified',
+    title: '1Password CLI (op)',
+    binary: 'op',
+    doc: 'docs/backends/other.md',
+  },
+  {
+    id: 'keepassxc',
+    tier: 'blind-written/unverified',
+    title: 'KeePassXC (keepassxc-cli)',
+    binary: 'keepassxc-cli',
+    doc: 'docs/backends/other.md',
+  },
+  {
+    id: 'pass',
+    tier: 'blind-written/unverified',
+    title: 'pass (password-store)',
+    binary: 'pass',
+    doc: 'docs/backends/other.md',
+  },
+  {
+    id: 'gopass',
+    tier: 'blind-written/unverified',
+    title: 'gopass',
+    binary: 'gopass',
+    doc: 'docs/backends/other.md',
+  },
+  {
+    id: 'rbw',
+    tier: 'blind-written/unverified',
+    title: 'rbw (unofficial Bitwarden CLI)',
+    binary: 'rbw',
+    doc: 'docs/backends/other.md',
+  },
 ];
 
 export function backendInfo(id: string): BackendInfo | undefined {
@@ -43,7 +85,11 @@ export function createBackend(id: string, cfg: Config = {}): Backend {
     case 'op':
       return new OpBackend({ bin: opts.bin });
     case 'keepassxc':
-      return new KeepassxcBackend({ bin: opts.bin, db: opts.db as string | undefined, keyFile: opts.keyFile as string | undefined });
+      return new KeepassxcBackend({
+        bin: opts.bin,
+        db: opts.db as string | undefined,
+        keyFile: opts.keyFile as string | undefined,
+      });
     case 'pass':
     case 'gopass':
       return new PassBackend({ variant: id, bin: opts.bin });

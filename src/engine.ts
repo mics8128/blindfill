@@ -3,7 +3,14 @@ import { audit } from './core/audit.js';
 import { checkWebBinding, SubmitGuard } from './core/policy.js';
 import { globalScrubber } from './core/scrubber.js';
 import { BlindfillError, formatTarget, type ItemMeta, type ItemRef, type Target } from './core/types.js';
-import type { Detected, Expect, EvidenceResult, ProbeResult, CandidateInfo, WebActuator } from './actuators/web/web.js';
+import type {
+  Detected,
+  Expect,
+  EvidenceResult,
+  ProbeResult,
+  CandidateInfo,
+  WebActuator,
+} from './actuators/web/web.js';
 import type { Role } from './actuators/web/heuristics.js';
 
 export interface ItemSelector {
@@ -56,7 +63,11 @@ export function readableView(m: ItemMeta): ReadableItem {
     readable: m.readable,
     secretFields: m.secretFields,
     hasTotp: m.hasTotp,
-    control: { submit: m.control.submit, signers: m.control.signers, hasRules: m.control.rules !== undefined },
+    control: {
+      submit: m.control.submit,
+      signers: m.control.signers,
+      hasRules: m.control.rules !== undefined,
+    },
     notes: m.notes,
   };
 }
@@ -66,7 +77,8 @@ interface RulesV1 {
   fields?: Record<string, { selector?: string }>;
 }
 
-const fieldRole = (n: string): Role | null => (n === 'username' || n === 'password' || n === 'totp' ? n : null);
+const fieldRole = (n: string): Role | null =>
+  n === 'username' || n === 'password' || n === 'totp' ? n : null;
 
 export class Engine {
   constructor(
@@ -82,7 +94,11 @@ export class Engine {
 
   async resolveItem(sel: ItemSelector, target?: Target): Promise<ItemRef> {
     if (sel.item) return { backend: this.backend.id, id: sel.item };
-    const refs = sel.query ? await this.backend.find({ query: sel.query }) : target ? await this.backend.find({ target }) : [];
+    const refs = sel.query
+      ? await this.backend.find({ query: sel.query })
+      : target
+        ? await this.backend.find({ target })
+        : [];
     if (refs.length === 0) throw new BlindfillError('NOT_FOUND', 'no matching item');
     if (refs.length > 1)
       throw new BlindfillError(
@@ -109,7 +125,10 @@ export class Engine {
     const p = await act.probe();
     let items: { id: string; name?: string }[] | undefined;
     try {
-      items = (await this.backend.find({ target: { kind: 'web', origin: p.origin } })).map((r) => ({ id: r.id, name: r.name }));
+      items = (await this.backend.find({ target: { kind: 'web', origin: p.origin } })).map((r) => ({
+        id: r.id,
+        name: r.name,
+      }));
     } catch {
       items = undefined; // locked vault etc.: probe still works
     }
@@ -139,7 +158,11 @@ export class Engine {
 
     // 1. origin binding, before any secret is read
     const bind = checkWebBinding(url, meta);
-    if (!bind.ok) refuse(bind.reason, new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`));
+    if (!bind.ok)
+      refuse(
+        bind.reason,
+        new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`),
+      );
     const isBound = (u: string) => checkWebBinding(u, meta).ok;
 
     // 2. classify the request; everything unknown is rejected before anything happens
@@ -152,10 +175,13 @@ export class Engine {
           refuse('no totp', new BlindfillError('NOT_FOUND', 'this item has no TOTP'));
         steps.push({ name, kind: 'totp' });
       } else if (meta.secretFields.includes(name)) steps.push({ name, kind: 'secret' });
-      else if (name === 'username' ? !!meta.username : name in meta.readable) steps.push({ name, kind: 'readable' });
+      else if (name === 'username' ? !!meta.username : name in meta.readable)
+        steps.push({ name, kind: 'readable' });
       else refuse('unknown field', new BlindfillError('NOT_FOUND', `item has no fillable field "${name}"`));
     }
-    steps.sort((a, b) => ({ readable: 0, totp: 1, secret: 2 })[a.kind] - ({ readable: 0, totp: 1, secret: 2 })[b.kind]);
+    steps.sort(
+      (a, b) => ({ readable: 0, totp: 1, secret: 2 })[a.kind] - { readable: 0, totp: 1, secret: 2 }[b.kind],
+    );
     for (const s of steps.filter((x) => x.kind === 'secret')) {
       try {
         act.policy.assertFirstSecretFill(target.origin, s.name);
@@ -166,18 +192,26 @@ export class Engine {
 
     // 3. locate EVERY field before reading ANY secret (fail closed)
     const rules = (meta.control.rules ?? {}) as RulesV1;
-    const locator = (s: Step) => async (ds?: Detected[]): Promise<Detected> => {
-      const sel = rules.fields?.[s.name]?.selector;
-      if (typeof sel === 'string') return act.locateBySelector(sel, isBound);
-      const role = fieldRole(s.name);
-      return act.locate(role ? { role } : { name: s.name }, isBound, ds);
-    };
+    const locator =
+      (s: Step) =>
+      async (ds?: Detected[]): Promise<Detected> => {
+        const sel = rules.fields?.[s.name]?.selector;
+        if (typeof sel === 'string') return act.locateBySelector(sel, isBound);
+        const role = fieldRole(s.name);
+        return act.locate(role ? { role } : { name: s.name }, isBound, ds);
+      };
     try {
       const ds = await act.detectStable();
       for (const s of steps) await locator(s)(ds);
     } catch (e) {
       const be = e as BlindfillError;
-      audit({ event: 'refused', backend: this.backend.id, item: ref.id, target: tname, reason: `${be.code}: ${be.message}` });
+      audit({
+        event: 'refused',
+        backend: this.backend.id,
+        item: ref.id,
+        target: tname,
+        reason: `${be.code}: ${be.message}`,
+      });
       throw e;
     }
 
@@ -227,7 +261,14 @@ export class Engine {
       this.persist();
     }
 
-    audit({ event: 'fill', backend: this.backend.id, item: ref.id, target: tname, fields: filled, outcome: 'ok' });
+    audit({
+      event: 'fill',
+      backend: this.backend.id,
+      item: ref.id,
+      target: tname,
+      fields: filled,
+      outcome: 'ok',
+    });
 
     // 5. optional single submit
     let submitted = false;
@@ -244,10 +285,12 @@ export class Engine {
         const ev = await act.evidence(req.expect);
         outcome = ev.outcome;
         evidence = { matched: ev.matched, url: ev.url };
-        if (ev.outcome === 'unknown') notes.push('outcome unknown; blindfill does not retry. Check with your own evidence selectors.');
+        if (ev.outcome === 'unknown')
+          notes.push('outcome unknown; blindfill does not retry. Check with your own evidence selectors.');
       }
     }
-    if (wroteSecret) notes.push('session is locked: page text, DOM and screenshots are refused until session stop');
+    if (wroteSecret)
+      notes.push('session is locked: page text, DOM and screenshots are refused until session stop');
     return {
       origin: target.origin,
       item: { id: ref.id, name: meta.name },

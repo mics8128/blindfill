@@ -45,14 +45,16 @@ export function scoreRole(d: FieldDescriptor, role: Role): number {
     if (/\busername\b|\bemail\b/.test(ac)) s += 45;
     if (d.type === 'email') s += 15;
     if (/user|login|email|e-mail|account|member|signin|handle|phone/.test(idish)) s += 25;
-    if (/user|login|email|e-mail|account|member|phone/.test(text)) s += 20;
+    if (/user|login|email|e-mail|account|member|phone/.test(text)) s += 45;
     if (d.type === 'text' || d.type === '') s += 5;
-    if (/search|query|captcha|coupon|promo|otp|code|token|zip|postal|first|last|company|city/.test(b)) s -= 60;
+    if (/search|query|captcha|coupon|promo|otp|code|token|zip|postal|first|last|company|city/.test(b))
+      s -= 60;
     if (d.type === 'search') s -= 40;
   } else {
     if (!['text', 'tel', 'number', 'password', ''].includes(d.type)) return 0;
     if (/one-time-code/.test(ac)) s += 60;
-    if (/otp|totp|2fa|mfa|two.?factor|one.?time|verification|authenticator|security.?code|passcode/.test(b)) s += 35;
+    if (/otp|totp|2fa|mfa|two.?factor|one.?time|verification|authenticator|security.?code|passcode/.test(b))
+      s += 35;
     else if (/\bcode\b|token/.test(b)) s += 20;
     if (/numeric|tel/.test(d.inputmode) || d.type === 'tel') s += 8;
     if (d.maxlength >= 4 && d.maxlength <= 8) s += 15;
@@ -68,9 +70,7 @@ export interface Scored<T> {
 }
 
 export type Pick<T> =
-  | { kind: 'ok'; item: T; score: number }
-  | { kind: 'none'; best: number }
-  | { kind: 'ambiguous'; items: T[] };
+  { kind: 'ok'; item: T; score: number } | { kind: 'none'; best: number } | { kind: 'ambiguous'; items: T[] };
 
 /** Choose the single best usable candidate for a role. Below threshold or near-tie => stop. */
 export function pick<T extends { desc: FieldDescriptor }>(all: T[], role: Role): Pick<T> {
@@ -78,7 +78,8 @@ export function pick<T extends { desc: FieldDescriptor }>(all: T[], role: Role):
   const scored: Scored<T>[] = usable
     .map((item) => ({ item, score: scoreRole(item.desc, role) }))
     .sort((a, b) => b.score - a.score);
-  if (scored.length === 0 || scored[0].score < THRESHOLD) return { kind: 'none', best: scored[0]?.score ?? 0 };
+  if (scored.length === 0 || scored[0].score < THRESHOLD)
+    return { kind: 'none', best: scored[0]?.score ?? 0 };
   const near = scored.filter((s) => s.score >= THRESHOLD && scored[0].score - s.score < AMBIGUITY_MARGIN);
   if (near.length > 1) return { kind: 'ambiguous', items: near.map((n) => n.item) };
   return { kind: 'ok', item: scored[0].item, score: scored[0].score };
@@ -104,7 +105,8 @@ export function pickNamed<T extends { desc: FieldDescriptor }>(all: T[], fieldNa
   const scored = usable
     .map((item) => ({ item, score: scoreNamed(item.desc, fieldName) }))
     .sort((a, b) => b.score - a.score);
-  if (scored.length === 0 || scored[0].score < THRESHOLD) return { kind: 'none', best: scored[0]?.score ?? 0 };
+  if (scored.length === 0 || scored[0].score < THRESHOLD)
+    return { kind: 'none', best: scored[0]?.score ?? 0 };
   const near = scored.filter((s) => scored[0].score - s.score < AMBIGUITY_MARGIN);
   if (near.length > 1) return { kind: 'ambiguous', items: near.map((n) => n.item) };
   return { kind: 'ok', item: scored[0].item, score: scored[0].score };

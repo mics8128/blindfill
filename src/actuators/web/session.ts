@@ -32,7 +32,9 @@ export function saveSession(s: SessionFile): void {
 }
 
 /** Start a persistent Chromium (Playwright's bundled one) with a loopback-only debugging port. */
-export async function startSession(opts: { headless?: boolean; executablePath?: string } = {}): Promise<SessionFile> {
+export async function startSession(
+  opts: { headless?: boolean; executablePath?: string } = {},
+): Promise<SessionFile> {
   const existing = loadSession();
   if (existing?.owned && existing.pid && alive(existing.pid))
     throw new BlindfillError('POLICY', 'a session is already running; run `blindfill session stop` first');
@@ -47,7 +49,7 @@ export async function startSession(opts: { headless?: boolean; executablePath?: 
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-extensions',
-    ...(opts.headless ?? true ? ['--headless=new'] : []),
+    ...((opts.headless ?? true) ? ['--headless=new'] : []),
     ...(process.env.BLINDFILL_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
     'about:blank',
   ];
@@ -102,7 +104,11 @@ export async function attach(opts: { cdp?: string; urlIncludes?: string } = {}):
     assertLoopbackEndpoint(opts.cdp);
     if (!s || s.cdp !== opts.cdp) s = { cdp: opts.cdp, owned: false, policy: { locked: false, filled: [] } };
   }
-  if (!s) throw new BlindfillError('ACTUATOR', 'no browser session: run `blindfill session start` or pass --cdp <loopback url>');
+  if (!s)
+    throw new BlindfillError(
+      'ACTUATOR',
+      'no browser session: run `blindfill session start` or pass --cdp <loopback url>',
+    );
   const session = s;
   const policy = new SessionPolicy(session.policy);
   const actuator = await WebActuator.connectCDP(session.cdp, { urlIncludes: opts.urlIncludes, policy });

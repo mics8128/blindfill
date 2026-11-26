@@ -1,6 +1,15 @@
 import type { Config } from '../config.js';
 import { FAKE } from './_contract/fixtures.js';
-import { KP_DB, KP_PASSWORD, fakeBw, fakeKeepass, fakeOp, fakePass, fakeRbw, fakeSecretTool } from './_contract/fake-runners.js';
+import {
+  KP_DB,
+  KP_PASSWORD,
+  fakeBw,
+  fakeKeepass,
+  fakeOp,
+  fakePass,
+  fakeRbw,
+  fakeSecretTool,
+} from './_contract/fake-runners.js';
 import { BwBackend } from './bw.js';
 import { KeepassxcBackend } from './keepassxc.js';
 import { OpBackend } from './op.js';
@@ -35,12 +44,12 @@ export function fixtureBackend(id: string): { backend: Backend; query: string } 
   switch (id) {
     case 'bw': {
       const f = fakeBw(false);
-      return { backend: new BwBackend({ runner: f.runner, env: f.env }), query: 'shop' };
+      return { backend: new BwBackend({ runner: f.runner, env: f.env }), query: FAKE.name };
     }
     case 'op':
-      return { backend: new OpBackend({ runner: fakeOp(false) }), query: 'shop' };
+      return { backend: new OpBackend({ runner: fakeOp(false) }), query: FAKE.name };
     case 'rbw':
-      return { backend: new RbwBackend({ runner: fakeRbw(false) }), query: 'shop' };
+      return { backend: new RbwBackend({ runner: fakeRbw(false) }), query: FAKE.name };
     case 'pass':
     case 'gopass': {
       const f = fakePass(false, id);
@@ -48,11 +57,15 @@ export function fixtureBackend(id: string): { backend: Backend; query: string } 
     }
     case 'keepassxc':
       return {
-        backend: new KeepassxcBackend({ runner: fakeKeepass(), db: KP_DB, env: { BLINDFILL_KEEPASS_PASSWORD: KP_PASSWORD } }),
-        query: 'shop',
+        backend: new KeepassxcBackend({
+          runner: fakeKeepass(),
+          db: KP_DB,
+          env: { BLINDFILL_KEEPASS_PASSWORD: KP_PASSWORD },
+        }),
+        query: FAKE.name,
       };
     case 'secret-service':
-      return { backend: new SecretServiceBackend({ runner: fakeSecretTool(false) }), query: 'shop' };
+      return { backend: new SecretServiceBackend({ runner: fakeSecretTool(false) }), query: FAKE.name };
     default:
       throw new BlindfillError('UNSUPPORTED', `unknown backend "${id}"`);
   }
@@ -77,7 +90,11 @@ export async function runSelftest(
       steps.push({ name, ok: true, ...(detail ? { detail } : {}) });
       return true;
     } catch (e) {
-      steps.push({ name, ok: false, detail: `${(e as BlindfillError).code ?? 'ERR'}: ${String((e as Error).message).slice(0, 160)}` });
+      steps.push({
+        name,
+        ok: false,
+        detail: `${(e as BlindfillError).code ?? 'ERR'}: ${String((e as Error).message).slice(0, 160)}`,
+      });
       return false;
     }
   };
@@ -93,12 +110,14 @@ export async function runSelftest(
       ? 'fixture mode runs against an in-memory fake CLI: it checks blindfill, NOT the vendor tool. Do not report it as a live verification.'
       : `live mode: uses ONLY the fake item named "${SELFTEST_ITEM}". Never point this at a real account item.`,
   };
-  if (!(await step('tool version', async () => (report.toolVersion = await backend.version())))) return report;
+  if (!(await step('tool version', async () => (report.toolVersion = await backend.version()))))
+    return report;
   if (!(await step('vault unlocked (non-interactive)', () => backend.unlock()))) return report;
   let ref: Awaited<ReturnType<Backend['find']>>[number] | undefined;
   await step(`find item "${opts.fixture ? FAKE.name : SELFTEST_ITEM}"`, async () => {
     const refs = await backend.find({ query });
-    if (refs.length !== 1) throw new BlindfillError('NOT_FOUND', `expected exactly 1 match, got ${refs.length}`);
+    if (refs.length !== 1)
+      throw new BlindfillError('NOT_FOUND', `expected exactly 1 match, got ${refs.length}`);
     ref = refs[0];
   });
   if (!ref) return finish(report);
@@ -106,7 +125,8 @@ export async function runSelftest(
   let meta: Awaited<ReturnType<Backend['meta']>> | undefined;
   await step('meta: readable fields + secret field names', async () => {
     meta = await backend.meta(r);
-    if (!meta.secretFields.includes('password')) throw new BlindfillError('NOT_FOUND', 'item has no password field');
+    if (!meta.secretFields.includes('password'))
+      throw new BlindfillError('NOT_FOUND', 'item has no password field');
     return `username ${meta.username ? 'present' : 'missing'}, ${meta.uris.length} uri(s), secret fields: ${meta.secretFields.join(', ')}`;
   });
   await step('read(password) is refused', async () => {
@@ -133,16 +153,22 @@ export async function runSelftest(
     if (len === 0) throw new Error('empty secret');
     return `delivered ${len} bytes to the sink (value not recorded)`;
   });
-  if (meta && meta.hasTotp) await step('totp code', async () => {
-    const c = await backend.totpCode(r);
-    return `got a ${c.length}-digit code`;
-  });
+  if (meta && meta.hasTotp)
+    await step('totp code', async () => {
+      const c = await backend.totpCode(r);
+      return `got a ${c.length}-digit code`;
+    });
   else steps.push({ name: 'totp code', ok: true, detail: 'skipped: item has no TOTP' });
   return finish(report);
 }
 
 function finish(report: SelftestReport): SelftestReport {
   const bad = report.steps.filter((s) => !s.ok).length;
-  report.result = bad === 0 ? 'pass' : report.steps.some((s) => s.ok && s.name.startsWith('openSecret')) ? 'partial' : 'fail';
+  report.result =
+    bad === 0
+      ? 'pass'
+      : report.steps.some((s) => s.ok && s.name.startsWith('openSecret'))
+        ? 'partial'
+        : 'fail';
   return report;
 }

@@ -16,10 +16,6 @@ function parseUrl(s: string): URL | null {
   }
 }
 
-function isLoopbackHost(h: string): boolean {
-  return h === 'localhost' || h.endsWith('.localhost') || h === '127.0.0.1' || h === '[::1]';
-}
-
 /** http origins are only acceptable for loopback targets (dev/test) or when the item URI is itself http. */
 function schemeCompatible(observed: URL, bound: URL): boolean {
   if (observed.protocol === bound.protocol) return true;
@@ -35,7 +31,8 @@ export function matchUri(observedUrl: string, item: ItemUri): MatchResult {
   const obs = parseUrl(observedUrl);
   const bound = item.match === 'regex' ? obs : parseUrl(item.uri); // a regex is not a URL
   if (!obs || !bound) return { ok: false, reason: 'unparseable URL' };
-  if (obs.protocol !== 'https:' && obs.protocol !== 'http:') return { ok: false, reason: 'not an http(s) page' };
+  if (obs.protocol !== 'https:' && obs.protocol !== 'http:')
+    return { ok: false, reason: 'not an http(s) page' };
 
   const hit = (): MatchResult => ({ ok: true, reason: 'match', uri: item.uri, match: item.match });
   const miss = (why: string): MatchResult => ({ ok: false, reason: why, uri: item.uri, match: item.match });
@@ -57,7 +54,8 @@ export function matchUri(observedUrl: string, item: ItemUri): MatchResult {
     case 'startsWith':
       if (!schemeCompatible(obs, bound)) return miss('scheme differs');
       // compare on a boundary so https://a.com/x does not accept https://a.com/xyz
-      return obs.origin === bound.origin && startsWithPath(obs.pathname + obs.search, bound.pathname + bound.search)
+      return obs.origin === bound.origin &&
+        startsWithPath(obs.pathname + obs.search, bound.pathname + bound.search)
         ? hit()
         : miss('does not start with item URI');
     case 'domain': {
@@ -85,13 +83,13 @@ function startsWithPath(actual: string, prefix: string): boolean {
 
 /** Web URIs only (androidapp:// entries are handled by android binding). */
 export function webUris(meta: ItemMeta): ItemUri[] {
-  return meta.uris.filter((u) => /^https?:\/\//i.test(u.uri) || (!u.uri.includes('://') && u.match !== 'regex'));
+  return meta.uris.filter(
+    (u) => /^https?:\/\//i.test(u.uri) || (!u.uri.includes('://') && u.match !== 'regex'),
+  );
 }
 
 export function androidPackages(meta: ItemMeta): string[] {
-  return meta.uris
-    .map((u) => u.uri.match(/^androidapp:\/\/(.+)$/i)?.[1])
-    .filter((x): x is string => !!x);
+  return meta.uris.map((u) => u.uri.match(/^androidapp:\/\/(.+)$/i)?.[1]).filter((x): x is string => !!x);
 }
 
 /** Origin binding for the page the browser is actually on. */

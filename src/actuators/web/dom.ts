@@ -1,9 +1,10 @@
 /**
- * Scripts evaluated inside the page. They are plain strings (not functions) so that bundler
- * helpers like __name are never injected into the page context. None of them reads or returns
- * an input's value.
+ * Scripts evaluated inside the page. They are kept as source strings and turned into real function
+ * objects with `new Function` in Node, so that bundler helpers such as __name are never injected into
+ * the page context (Playwright serialises fn.toString()). None of them reads or returns an input's value.
  */
-export const DESCRIBE_FIELD = `(el) => {
+const mk = <T>(src: string): T => new Function('return ' + src)() as T;
+const DESCRIBE_SRC = `(el) => {
   const reasons = [];
   const cs = getComputedStyle(el);
   const r = el.getBoundingClientRect();
@@ -47,14 +48,14 @@ export const DESCRIBE_FIELD = `(el) => {
 }`;
 
 /** Exact-value check inside the page; returns only a boolean. */
-export const VALUE_EQUALS = `(el, expected) => el.value === expected`;
+const VALUE_SRC = `(el, expected) => el.value === expected`;
 
-export const IS_FOCUSED = `(el) => {
+const FOCUSED_SRC = `(el) => {
   const root = el.getRootNode();
   return (root.activeElement || document.activeElement) === el;
 }`;
 
-export const FIND_SUBMIT = `(el) => {
+const SUBMIT_SRC = `(el) => {
   const sel = 'button[type=submit], input[type=submit], button:not([type]), [role=button][type=submit]';
   let scope = el.form || null;
   if (!scope) {
@@ -72,3 +73,8 @@ export const FIND_SUBMIT = `(el) => {
   });
   return ok[0] || null;
 }`;
+
+export const DESCRIBE_FIELD = mk<(el: any) => any>(DESCRIBE_SRC);
+export const VALUE_EQUALS = mk<(el: any, expected: string) => boolean>(VALUE_SRC);
+export const IS_FOCUSED = mk<(el: any) => boolean>(FOCUSED_SRC);
+export const FIND_SUBMIT = mk<(el: any) => any>(SUBMIT_SRC);

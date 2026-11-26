@@ -66,7 +66,8 @@ export class OpBackend extends RawItemBackend {
       const msg = safeErr(r.stderr || r.stdout, [process.env.OP_SERVICE_ACCOUNT_TOKEN]);
       if (/not signed in|sign in|session expired|authoriz|locked|biometric/i.test(msg))
         throw new BlindfillError('LOCKED', `1Password is locked or not signed in: ${msg}`);
-      if (/isn't an item|not found|no item/i.test(msg)) throw new BlindfillError('NOT_FOUND', 'item not found');
+      if (/isn't an item|not found|no item/i.test(msg))
+        throw new BlindfillError('NOT_FOUND', 'item not found');
       throw new BlindfillError('BACKEND', `op ${args[0]} failed: ${msg}`);
     }
     return r.stdout;
@@ -80,13 +81,25 @@ export class OpBackend extends RawItemBackend {
     await this.#op(['whoami', '--format', 'json']);
   }
   protected async listRaw(q: FindQuery): Promise<BwRawItem[]> {
-    const list = parseJson<OpItem[]>(await this.#op(['item', 'list', '--categories', 'Login', '--format', 'json']), 'op item list');
-    let hits = list;
-    if (q.query !== undefined) hits = list.filter((i) => (i.title ?? '').toLowerCase().includes(q.query!.toLowerCase()));
-    else if (q.target?.kind === 'web') {
+    const list = parseJson<OpItem[]>(
+      await this.#op(['item', 'list', '--categories', 'Login', '--format', 'json']),
+      'op item list',
+    );
+    let hits: OpItem[];
+    if (q.query !== undefined) {
+      const needle = q.query.toLowerCase();
+      hits = list.filter((i) => (i.title ?? '').toLowerCase().includes(needle));
+    } else if (q.target?.kind === 'web') {
       const host = new URL(q.target.origin).hostname;
-      hits = list.filter((i) => (i.urls ?? []).some((u) => u.href?.includes(host.split('.').slice(-2).join('.'))));
-    } else if (q.target?.kind === 'android') hits = list.filter((i) => (i.urls ?? []).some((u) => u.href?.includes(q.target!.kind === 'android' ? (q.target as { pkg: string }).pkg : '')));
+      hits = list.filter((i) =>
+        (i.urls ?? []).some((u) => u.href?.includes(host.split('.').slice(-2).join('.'))),
+      );
+    } else if (q.target?.kind === 'android')
+      hits = list.filter((i) =>
+        (i.urls ?? []).some((u) =>
+          u.href?.includes(q.target!.kind === 'android' ? (q.target as { pkg: string }).pkg : ''),
+        ),
+      );
     else throw new BlindfillError('POLICY', 'find needs a target or a query');
     return Promise.all(hits.slice(0, 25).map((i) => this.getRaw({ backend: 'op', id: i.id })));
   }

@@ -28,8 +28,8 @@ binary (`tests/fixtures/mock-bw.mjs`) and local fake login pages with canary pas
 npx -y blindfill backend selftest <id>
 ```
 
-Create a *fake* item named `blindfill-selftest` first (see `docs/backends/`), then paste the
-output into a *Backend report* issue. Verified reports promote a backend from
+Create a _fake_ item named `blindfill-selftest` first (see `docs/backends/`), then paste the
+output into a _Backend report_ issue. Verified reports promote a backend from
 "Blind-written" to "Community-verified".
 
 ## Adding a backend

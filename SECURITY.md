@@ -22,15 +22,15 @@ blindfill defends against **the model and its logs**:
 
 1. **A malicious or compromised page.** The password is typed into the page's DOM. Scripts on
    a page you bound the item to can read it. Binding to the right origin is the only
-   protection, so prefer the *Host* or *Exact* match type over *Base domain*.
+   protection, so prefer the _Host_ or _Exact_ match type over _Base domain_.
 2. **A compromised host or browser.** Anyone who can read process memory, the browser profile
    or the vault session (`BW_SESSION`) wins. Playwright needs the value as a JavaScript
    string for a moment; JS strings cannot be zeroed. Only the `Buffer` inside `SecretHandle`
    is zero-filled.
-3. **The agent driving the browser itself.** If the agent has *another* tool attached to the
+3. **The agent driving the browser itself.** If the agent has _another_ tool attached to the
    same browser (a Playwright MCP, a CDP console), it can read the DOM (including a filled
    password field's value) through that tool. The post-fill lock only covers blindfill's own
-   interfaces. Give the agent blindfill *instead of*, not next to, an unrestricted browser
+   interfaces. Give the agent blindfill _instead of_, not next to, an unrestricted browser
    tool for the same session if this matters to you.
 4. **The returned TOTP code.** By design the current code is Ephemeral and readable. Its
    safety rests on origin binding and its short lifetime.

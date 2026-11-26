@@ -76,7 +76,10 @@ describe('bw item mapping', () => {
   });
 
   it('rejects dangerous ids', async () => {
-    const b = new BwBackend({ env: { BW_SESSION: 's' }, runner: async () => ({ code: 0, stdout: '{}', stderr: '' }) });
+    const b = new BwBackend({
+      env: { BW_SESSION: 's' },
+      runner: async () => ({ code: 0, stdout: '{}', stderr: '' }),
+    });
     await expect(b.meta({ backend: 'bw', id: '--help' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(FAKE.id).toBeTruthy();
   });

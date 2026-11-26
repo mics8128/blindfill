@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './harden.js';
 import { parseArgs } from 'node:util';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
@@ -10,9 +11,6 @@ import { audit } from './core/audit.js';
 import { BlindfillError } from './core/types.js';
 import { attach, loadSession, startSession, stopSession } from './actuators/web/session.js';
 import type { Expect } from './actuators/web/web.js';
-
-// Playwright's DEBUG logging can echo call arguments. Never inherit it.
-delete process.env.DEBUG;
 
 const VERSION = (() => {
   try {
@@ -36,6 +34,7 @@ Commands:
   backend list                list backends and their support tier
   backend selftest [id]       round-trip a fake item through a backend (--fixture for offline)
   session start|stop|status   manage the local Chromium session
+  mcp                         run the MCP server on stdio
 
 Options:
   --item <id>        backend item id            --query <text>   search text (must match one item)
@@ -107,7 +106,12 @@ function fillRequest(): FillRequest {
   return {
     item: values.item as string | undefined,
     query: values.query as string | undefined,
-    fields: values.fields ? String(values.fields).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+    fields: values.fields
+      ? String(values.fields)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined,
     url: values.url as string | undefined,
     submit: values.submit === true && values['no-submit'] !== true,
     expect: expectSpec(),
@@ -126,9 +130,16 @@ async function main(): Promise<number> {
   }
 
   switch (cmd) {
+    case 'mcp': {
+      const { startMcp } = await import('./mcp.js');
+      await startMcp();
+      return -1; // keep running
+    }
     case 'backend': {
       if (sub === 'list') {
-        out(BACKEND_INFO.map((b) => ({ id: b.id, tier: b.tier, title: b.title, binary: b.binary, doc: b.doc })));
+        out(
+          BACKEND_INFO.map((b) => ({ id: b.id, tier: b.tier, title: b.title, binary: b.binary, doc: b.doc })),
+        );
         return 0;
       }
       if (sub === 'selftest') {
@@ -142,7 +153,9 @@ async function main(): Promise<number> {
     case 'session': {
       if (sub === 'start') {
         const cfg = loadConfig();
-        const headless = values.headed ? false : ((values.headless as boolean | undefined) ?? cfg.web?.headless ?? true);
+        const headless = values.headed
+          ? false
+          : ((values.headless as boolean | undefined) ?? cfg.web?.headless ?? true);
         const s = await startSession({ headless, executablePath: cfg.web?.executablePath });
         audit({ event: 'session', outcome: 'started' });
         out({ started: true, cdp: s.cdp, headless });
@@ -164,7 +177,12 @@ async function main(): Promise<number> {
     case 'item': {
       if (sub !== 'show') throw new BlindfillError('POLICY', 'usage: blindfill item show --item <id>');
       const e = await engineFor(false);
-      out(await e.itemShow({ item: values.item as string | undefined, query: values.query as string | undefined }));
+      out(
+        await e.itemShow({
+          item: values.item as string | undefined,
+          query: values.query as string | undefined,
+        }),
+      );
       return 0;
     }
     case 'totp': {
@@ -177,13 +195,21 @@ async function main(): Promise<number> {
         return 0;
       }
       const e = await engineFor(false);
-      out(await e.totpCode({ item: values.item as string | undefined, query: values.query as string | undefined }));
+      out(
+        await e.totpCode({
+          item: values.item as string | undefined,
+          query: values.query as string | undefined,
+        }),
+      );
       return 0;
     }
     case 'probe':
     case 'candidates': {
       const e = await engineFor(true);
-      const r = cmd === 'probe' ? await e.probe() : await e.candidates(values.role as 'username' | 'password' | 'totp' | undefined);
+      const r =
+        cmd === 'probe'
+          ? await e.probe()
+          : await e.candidates(values.role as 'username' | 'password' | 'totp' | undefined);
       await disconnect(e);
       out(r);
       return 0;
@@ -204,7 +230,9 @@ async function main(): Promise<number> {
       if (!loadSession() && !values.cdp && !loadConfig().web?.cdp) {
         const cfg = loadConfig();
         const s = await startSession({
-          headless: values.headed ? false : ((values.headless as boolean | undefined) ?? cfg.web?.headless ?? true),
+          headless: values.headed
+            ? false
+            : ((values.headless as boolean | undefined) ?? cfg.web?.headless ?? true),
           executablePath: cfg.web?.executablePath,
         });
         note(`blindfill: started a browser session (${s.cdp}); stop it with: blindfill session stop`);
@@ -230,7 +258,9 @@ async function disconnect(e: Engine): Promise<void> {
 }
 
 main()
-  .then((code) => process.exit(code))
+  .then((code) => {
+    if (code >= 0) process.exit(code);
+  })
   .catch((err: unknown) => {
     const be = err as BlindfillError & { candidates?: unknown };
     const code = be?.code ?? 'ERROR';

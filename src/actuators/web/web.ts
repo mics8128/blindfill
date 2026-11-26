@@ -3,14 +3,7 @@ import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
 import { DESCRIBE_FIELD, FIND_SUBMIT, IS_FOCUSED, VALUE_EQUALS } from './dom.js';
-import {
-  pick,
-  pickNamed,
-  scoreRole,
-  type FieldDescriptor,
-  type Pick,
-  type Role,
-} from './heuristics.js';
+import { pick, pickNamed, scoreRole, type FieldDescriptor, type Pick, type Role } from './heuristics.js';
 
 export interface Detected {
   desc: FieldDescriptor;
@@ -66,12 +59,20 @@ export function assertLoopbackEndpoint(endpoint: string): void {
     throw new BlindfillError('ACTUATOR', 'invalid CDP endpoint');
   }
   if (!['http:', 'ws:'].includes(u.protocol) || !LOOPBACK.has(u.hostname))
-    throw new BlindfillError('ACTUATOR', 'CDP endpoint must be a loopback address (127.0.0.1, localhost, ::1)');
+    throw new BlindfillError(
+      'ACTUATOR',
+      'CDP endpoint must be a loopback address (127.0.0.1, localhost, ::1)',
+    );
 }
 
 /** Selectors for outcome evidence must be structural; no value/text/pseudo probing (oracle hardening). */
 export function assertSafeEvidenceSelector(sel: string): void {
-  if (sel.length > 120 || !/^[#.\w\-[\]="'>\s*~+,]+$/.test(sel) || /value|\bon\w+=/i.test(sel))
+  if (
+    sel.length > 120 ||
+    !/^[#.\w\-[\]="'>\s*~+,]+$/.test(sel) ||
+    /value|\bon\w+=/i.test(sel) ||
+    sel.replace(/\[[^\]]*\]/g, '').includes('=')
+  )
     throw new BlindfillError(
       'POLICY',
       'evidence selectors may only use tags, #id, .class and attribute equality (no :pseudo, text= or value probing)',
@@ -173,7 +174,7 @@ export class WebActuator {
     for (const frame of this.page.frames()) {
       const frameUrl = frame.url();
       if (!/^https?:\/\//i.test(frameUrl)) continue;
-      let handles: ElementHandle[] = [];
+      let handles: ElementHandle[];
       try {
         handles = (await frame.$$('input, textarea')).slice(0, 80);
       } catch {
@@ -256,7 +257,9 @@ export class WebActuator {
       title: globalScrubber.scrub(title),
       candidates: ds.map((d, i) => this.info(d, i)).filter((c) => c.usable || c.rejectedBecause.length),
       rejectedHidden: ds.filter((d) => d.desc.reasons.length > 0).length,
-      skippedFrames: this.page.frames().filter((f) => !/^https?:/i.test(f.url()) && f !== this.page.mainFrame()).length,
+      skippedFrames: this.page
+        .frames()
+        .filter((f) => !/^https?:/i.test(f.url()) && f !== this.page.mainFrame()).length,
     };
   }
 
@@ -268,11 +271,13 @@ export class WebActuator {
     what: { role: Role } | { name: string },
     isBound: (url: string) => boolean,
     ds?: Detected[],
-    allowNames = true,
+    _allowNames = true,
   ): Promise<Detected> {
     const all = ds ?? (await this.detectStable());
     const topOrigin = new URL(this.page.url()).origin;
-    const allowed = all.filter((d) => d.inTop || new URL(d.frameUrl).origin === topOrigin || isBound(d.frameUrl));
+    const allowed = all.filter(
+      (d) => d.inTop || new URL(d.frameUrl).origin === topOrigin || isBound(d.frameUrl),
+    );
     const run = (set: Detected[]): Pick<Detected> =>
       'role' in what ? pick(set, what.role) : pickNamed(set, what.name);
     const label = 'role' in what ? what.role : `"${what.name}"`;
@@ -309,7 +314,7 @@ export class WebActuator {
       if (!/^https?:\/\//i.test(frameUrl)) continue;
       const inTop = frame === top;
       if (!inTop && new URL(frameUrl).origin !== topOrigin && !isBound(frameUrl)) continue;
-      let hs: ElementHandle[] = [];
+      let hs: ElementHandle[];
       try {
         hs = await frame.$$(selector);
       } catch {
@@ -317,11 +322,15 @@ export class WebActuator {
       }
       for (const handle of hs) {
         const desc = (await handle.evaluate(DESCRIBE_FIELD)) as FieldDescriptor;
-        if (desc.reasons.length === 0 && !desc.disabled && !desc.readOnly) found.push({ desc, handle, frame, inTop, frameUrl });
+        if (desc.reasons.length === 0 && !desc.disabled && !desc.readOnly)
+          found.push({ desc, handle, frame, inTop, frameUrl });
       }
     }
     if (found.length !== 1)
-      throw new BlindfillError('AMBIGUOUS', `rule selector matched ${found.length} usable fields (need exactly 1)`);
+      throw new BlindfillError(
+        'AMBIGUOUS',
+        `rule selector matched ${found.length} usable fields (need exactly 1)`,
+      );
     return found[0];
   }
 
@@ -334,7 +343,10 @@ export class WebActuator {
       await h.fill(value, { timeout: 4000 });
       if ((await h.evaluate(VALUE_EQUALS, value)) === true) return 'fill';
     } catch (e) {
-      if (/detached|not attached|Execution context|destroyed|Target closed/i.test(String((e as Error).message))) throw e;
+      if (
+        /detached|not attached|Execution context|destroyed|Target closed/i.test(String((e as Error).message))
+      )
+        throw e;
       // fall through to the real key-event path
     }
     // fill() left the field empty/different: type with real key events.
@@ -346,7 +358,10 @@ export class WebActuator {
     await this.page.keyboard.type(value, { delay: 5 });
     if ((await h.evaluate(VALUE_EQUALS, value)) === true) return 'keys';
     await h.fill('').catch(() => undefined);
-    throw new BlindfillError('ACTUATOR', 'field did not accept the value (verification failed); nothing submitted');
+    throw new BlindfillError(
+      'ACTUATOR',
+      'field did not accept the value (verification failed); nothing submitted',
+    );
   }
 
   /**
@@ -364,7 +379,10 @@ export class WebActuator {
     for (let attempt = 0; attempt < 2; attempt++) {
       const d = await relocate();
       if (!isBound(this.page.url()) || !isBound(d.frameUrl))
-        throw new BlindfillError('ORIGIN_MISMATCH', 'the page changed to an origin the item does not bind; refusing to type');
+        throw new BlindfillError(
+          'ORIGIN_MISMATCH',
+          'the page changed to an origin the item does not bind; refusing to type',
+        );
       try {
         const method = await this.fillOnce(d, str);
         await sleep(160); // SPA frameworks may re-render and wipe the value right after input

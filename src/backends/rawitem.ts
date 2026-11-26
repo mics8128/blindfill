@@ -69,9 +69,11 @@ export abstract class RawItemBackend implements Backend {
   }
 
   async totpCode(ref: ItemRef): Promise<string> {
-    if (!this.capabilities.has('TOTP')) throw new BlindfillError('UNSUPPORTED', `${this.id} has no TOTP support`);
+    if (!this.capabilities.has('TOTP'))
+      throw new BlindfillError('UNSUPPORTED', `${this.id} has no TOTP support`);
     const code = (await this.fetchTotp(ref)).trim();
-    if (!/^\d{6,8}$/.test(code)) throw new BlindfillError('BACKEND', `${this.id} returned an unexpected TOTP value`);
+    if (!/^\d{6,8}$/.test(code))
+      throw new BlindfillError('BACKEND', `${this.id} returned an unexpected TOTP value`);
     return code;
   }
 }

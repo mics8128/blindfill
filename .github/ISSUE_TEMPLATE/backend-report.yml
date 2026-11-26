@@ -1,4 +1,4 @@
-name: "Backend report: I tested backend X"
+name: 'Backend report: I tested backend X'
 description: Report a live run of a backend so it can be promoted to Community-verified
 labels: [backend-report]
 body:

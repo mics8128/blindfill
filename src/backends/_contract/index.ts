@@ -11,6 +11,8 @@ export interface ContractSetup {
   ids?: { main?: string; missing?: string; android?: string };
   /** a search string that finds the FAKE item by name/path */
   query?: string;
+  /** expected item name (defaults to FAKE.name) */
+  name?: string;
 }
 export interface ContractOptions {
   /** Backend can hold custom fields (Hidden vs Text). */
@@ -38,6 +40,7 @@ export function runBackendContract(
     let missing = { backend: label, id: FAKE.missingId };
     let androidId: string = FAKE.androidId;
     let query = 'shop';
+    let itemName: string = FAKE.name;
     async function make(locked = false) {
       const s = await setup({ locked });
       if (s.cleanup) cleanups.push(s.cleanup);
@@ -45,6 +48,7 @@ export function runBackendContract(
       missing = { backend: label, id: s.ids?.missing ?? FAKE.missingId };
       androidId = s.ids?.android ?? FAKE.androidId;
       query = s.query ?? 'shop';
+      itemName = s.name ?? FAKE.name;
       return s.backend;
     }
 
@@ -91,7 +95,7 @@ export function runBackendContract(
     it('meta: readable values + secret field NAMES only, no secret values anywhere', async () => {
       const b = await make();
       const m = await b.meta(ref);
-      expect(m.name).toBe(FAKE.name);
+      expect(m.name).toBe(itemName);
       expect(m.username).toBe(FAKE.username);
       expect(m.uris.map((u) => u.uri)).toContain(FAKE.uri);
       expect(m.secretFields).toContain('password');
@@ -157,7 +161,7 @@ export function runBackendContract(
 
     it('missing item: NOT_FOUND', async () => {
       const b = await make();
-            await expect(b.meta(missing)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(b.meta(missing)).rejects.toMatchObject({ code: 'NOT_FOUND' });
       await expect(b.openSecret(missing, 'password')).rejects.toMatchObject({ code: 'NOT_FOUND' });
     });
 

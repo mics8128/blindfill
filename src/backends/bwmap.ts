@@ -65,4 +65,3 @@ export function mapBwItem(raw: BwRawItem, backendId = 'bw'): ItemMeta {
     notes: control.notesReadable ? (raw.notes ?? undefined) : undefined,
   };
 }
-

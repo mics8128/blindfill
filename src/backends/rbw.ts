@@ -17,7 +17,14 @@ interface RbwItem {
   fields?: { name?: string; value?: string | null; type?: string }[] | null;
 }
 
-const MATCH: Record<string, number> = { domain: 0, host: 1, starts_with: 2, exact: 3, regular_expression: 4, never: 5 };
+const MATCH: Record<string, number> = {
+  domain: 0,
+  host: 1,
+  starts_with: 2,
+  exact: 3,
+  regular_expression: 4,
+  never: 5,
+};
 const FTYPE: Record<string, number> = { text: 0, hidden: 1, boolean: 2, linked: 3 };
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 
@@ -31,7 +38,10 @@ export function rbwToRaw(i: RbwItem): BwRawItem {
       username: i.data?.username,
       password: i.data?.password,
       totp: i.data?.totp,
-      uris: (i.data?.uris ?? []).map((u) => ({ uri: u.uri, match: u.match_type ? (MATCH[u.match_type] ?? 5) : null })),
+      uris: (i.data?.uris ?? []).map((u) => ({
+        uri: u.uri,
+        match: u.match_type ? (MATCH[u.match_type] ?? 5) : null,
+      })),
     },
     // unknown / missing types => undefined => Secret
     fields: (i.fields ?? []).map((f) => ({ name: f.name, value: f.value ?? '', type: FTYPE[f.type ?? ''] })),
@@ -59,8 +69,10 @@ export class RbwBackend extends RawItemBackend {
     const r = await this.#run(this.#bin, args, { env: { RBW_NONINTERACTIVE: '1' } });
     if (r.code !== 0) {
       const msg = safeErr(r.stderr || r.stdout);
-      if (/locked|unlock|pinentry|not logged in|agent/i.test(msg)) throw new BlindfillError('LOCKED', `rbw vault is locked: ${msg}`);
-      if (/no entry|not found|couldn't find/i.test(msg)) throw new BlindfillError('NOT_FOUND', 'item not found');
+      if (/locked|unlock|pinentry|not logged in|agent/i.test(msg))
+        throw new BlindfillError('LOCKED', `rbw vault is locked: ${msg}`);
+      if (/no entry|not found|couldn't find/i.test(msg))
+        throw new BlindfillError('NOT_FOUND', 'item not found');
       throw new BlindfillError('BACKEND', `rbw ${args[0]} failed: ${msg}`);
     }
     return r.stdout;
@@ -80,7 +92,8 @@ export class RbwBackend extends RawItemBackend {
       .filter(Boolean)
       .map((l) => l.split('\t'));
     let ids: string[];
-    if (q.query !== undefined) ids = rows.filter((r) => (r[1] ?? '').toLowerCase().includes(q.query!.toLowerCase())).map((r) => r[0]);
+    if (q.query !== undefined)
+      ids = rows.filter((r) => (r[1] ?? '').toLowerCase().includes(q.query!.toLowerCase())).map((r) => r[0]);
     else if (q.target) {
       // rbw list cannot show URIs: scan up to 50 entries and let the binding filter decide
       ids = rows.slice(0, 50).map((r) => r[0]);

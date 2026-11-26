@@ -52,16 +52,24 @@ export class PassBackend extends RawItemBackend {
     this.#lister =
       o.lister ??
       (async () => {
-        if (this.#variant === 'gopass') return (await this.#cmd(['ls', '--flat'])).split('\n').map((s) => s.trim()).filter(Boolean);
+        if (this.#variant === 'gopass')
+          return (await this.#cmd(['ls', '--flat']))
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean);
         return walk(process.env.PASSWORD_STORE_DIR ?? join(homedir(), '.password-store'));
       });
   }
   async #cmd(args: string[]): Promise<string> {
-    const r = await this.#run(this.#bin, args, { env: { GPG_TTY: '', PINENTRY_USER_DATA: 'blindfill-noninteractive' } });
+    const r = await this.#run(this.#bin, args, {
+      env: { GPG_TTY: '', PINENTRY_USER_DATA: 'blindfill-noninteractive' },
+    });
     if (r.code !== 0) {
       const msg = safeErr(r.stderr || r.stdout);
-      if (/not in the password store|entry not found|not found/i.test(msg)) throw new BlindfillError('NOT_FOUND', 'item not found');
-      if (/decrypt|pinentry|no secret key|locked|cancel|passphrase|agent/i.test(msg)) throw new BlindfillError('LOCKED', `store locked or cannot decrypt: ${msg}`);
+      if (/not in the password store|entry not found|not found/i.test(msg))
+        throw new BlindfillError('NOT_FOUND', 'item not found');
+      if (/decrypt|pinentry|no secret key|locked|cancel|passphrase|agent/i.test(msg))
+        throw new BlindfillError('LOCKED', `store locked or cannot decrypt: ${msg}`);
       throw new BlindfillError('BACKEND', `${this.#variant} ${args[0]} failed: ${msg}`);
     }
     return r.stdout;
@@ -71,11 +79,13 @@ export class PassBackend extends RawItemBackend {
     if (r.code !== 0) throw new BlindfillError('BACKEND', `${this.#variant} --version failed`);
     return r.stdout.replace(/\s+/g, ' ').trim().slice(0, 60);
   }
+  /** pass has no lock state: list the store, then decrypt the first entry to prove gpg can unlock. */
   async unlock(): Promise<void> {
-    await this.#lister().catch((e) => {
+    const names = await this.#lister().catch((e) => {
       if (e instanceof BlindfillError) throw e;
-      throw new BlindfillError('LOCKED', 'password store not readable');
+      throw new BlindfillError('BACKEND', 'password store not readable');
     });
+    if (names[0]) await this.getRaw({ backend: this.id, id: names[0] });
   }
   protected async listRaw(q: FindQuery): Promise<BwRawItem[]> {
     const names = await this.#lister();
@@ -85,7 +95,10 @@ export class PassBackend extends RawItemBackend {
       const labels = new URL(q.target.origin).hostname.split('.');
       const needle = (labels.length > 1 ? labels[labels.length - 2] : labels[0]).toLowerCase();
       hits = names.filter((n) => n.toLowerCase().includes(needle));
-    } else if (q.target?.kind === 'android') hits = names.filter((n) => n.includes(q.target!.kind === 'android' ? (q.target as { pkg: string }).pkg : ''));
+    } else if (q.target?.kind === 'android')
+      hits = names.filter((n) =>
+        n.includes(q.target!.kind === 'android' ? (q.target as { pkg: string }).pkg : ''),
+      );
     else throw new BlindfillError('POLICY', 'find needs a target or a query');
     return Promise.all(hits.slice(0, 20).map((id) => this.getRaw({ backend: this.id, id })));
   }

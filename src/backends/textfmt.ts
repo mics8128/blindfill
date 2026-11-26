@@ -14,7 +14,13 @@ export interface KV {
 const USER_KEYS = new Set(['username', 'user', 'login', 'email']);
 const URL_KEYS = /^(url|uri|website|site)\d*$/i;
 
-export function kvToRaw(id: string, name: string, password: string | undefined, kvs: KV[], notes?: string): BwRawItem {
+export function kvToRaw(
+  id: string,
+  name: string,
+  password: string | undefined,
+  kvs: KV[],
+  notes?: string,
+): BwRawItem {
   const readableList = new Set(
     kvs
       .filter((k) => k.key.toLowerCase() === 'blindfill.readable')
@@ -32,7 +38,8 @@ export function kvToRaw(id: string, name: string, password: string | undefined, 
     if (lk === 'blindfill.readable') continue;
     if (USER_KEYS.has(lk) && username === undefined) username = value;
     else if (URL_KEYS.test(k)) uris.push({ uri: value.trim(), match: null });
-    else if (lk === 'otpauth' || lk === 'otp' || lk === 'totp' || value.startsWith('otpauth://')) totp = value;
+    else if (lk === 'otpauth' || lk === 'otp' || lk === 'totp' || value.startsWith('otpauth://'))
+      totp = value;
     else if (isControlField(k)) fields.push({ name: k, value, type: 0 });
     else fields.push({ name: k, value, type: readableList.has(lk) ? 0 : 1 });
   }
