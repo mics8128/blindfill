@@ -21,6 +21,29 @@ real form, and returns only structure and an outcome. Secret values are write-on
 
 > **Status: alpha (0.1.0-alpha.0).** Read [SECURITY.md](SECURITY.md) for the threat model and known gaps first.
 
+## Examples: the password never goes through the LLM
+
+Output below is illustrative; field names may differ slightly.
+
+1. **Sign in.** The agent calls `fill` with an item id and a login URL. blindfill reads the password from `bw`, types it into the form and returns `{"ok": true, "url": ".../home"}`. The model sees only the outcome, never the password.
+2. **Phishing and prompt injection.** A lookalike page (`examp1e.com` instead of `example.com`) or a cross-origin iframe is refused **before any secret is read**. A malicious page cannot talk the agent into typing the password somewhere else.
+3. **One-time codes.** `totp_code` returns the current 6-digit code (it is readable and fillable, like text). The TOTP seed never leaves the backend.
+4. **Locked after fill.** After a fill, the session refuses page text, DOM and screenshots, so a page that echoes the password back cannot leak it to the model.
+
+## Supported backends and browsers
+
+| Backend                                                                                          | Tier                           | Notes                                                                                                             |
+| ------------------------------------------------------------------------------------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Bitwarden / Vaultwarden (`bw`)                                                                   | verified (mock CLI + fixtures) | Item JSON shape also checked by hand against a live Vaultwarden. blindfill end to end on a live vault: not yet.   |
+| 1Password (`op`), rbw, pass, gopass, KeePassXC (`keepassxc-cli`), Secret Service (`secret-tool`) | blind-written, unverified      | Pass the shared contract tests on fixtures only. Run `blindfill backend selftest <id>` and open a backend report. |
+
+| Target                                                          | Status                 |
+| --------------------------------------------------------------- | ---------------------- |
+| Chromium (Playwright bundled, or any Chromium via loopback CDP) | supported, tested      |
+| Firefox / Camoufox, WebKit/Safari                               | not supported yet      |
+| Android                                                         | not implemented (stub) |
+| Passkeys                                                        | not supported          |
+
 ## What works (verified by the test suite)
 
 - Web actuator (Playwright + Chromium) with origin binding, cross-origin-iframe refusal, honeypot
