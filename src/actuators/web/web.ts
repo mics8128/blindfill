@@ -1,9 +1,14 @@
-import { chromium, type Browser, type ElementHandle, type Frame, type Page } from 'playwright-core';
+import type { ElementHandle, Frame, Page } from 'playwright-core';
 import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
 import { DESCRIBE_FIELD, FIND_SUBMIT, IS_FOCUSED, VALUE_EQUALS } from './dom.js';
 import { pick, pickNamed, scoreRole, type FieldDescriptor, type Pick, type Role } from './heuristics.js';
+import { getProvider } from './providers/registry.js';
+import type { ProviderCapabilities, ProviderConnection, ProviderOptions } from './providers/types.js';
+import { assertLoopbackEndpoint } from './providers/util.js';
+
+export { assertLoopbackEndpoint };
 
 export interface Detected {
   desc: FieldDescriptor;
@@ -50,21 +55,6 @@ export interface EvidenceResult {
   url: string;
 }
 
-const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
-export function assertLoopbackEndpoint(endpoint: string): void {
-  let u: URL;
-  try {
-    u = new URL(endpoint);
-  } catch {
-    throw new BlindfillError('ACTUATOR', 'invalid CDP endpoint');
-  }
-  if (!['http:', 'ws:'].includes(u.protocol) || !LOOPBACK.has(u.hostname))
-    throw new BlindfillError(
-      'ACTUATOR',
-      'CDP endpoint must be a loopback address (127.0.0.1, localhost, ::1)',
-    );
-}
-
 /** Selectors for outcome evidence must be structural; no value/text/pseudo probing (oracle hardening). */
 export function assertSafeEvidenceSelector(sel: string): void {
   if (
@@ -91,47 +81,57 @@ function wrap(e: unknown, what: string): BlindfillError {
 export class WebActuator {
   readonly kind = 'web' as const;
   policy: SessionPolicy;
+  readonly capabilities: ProviderCapabilities;
+  readonly providerId: string;
 
   private constructor(
     readonly page: Page,
-    private browser: Browser | null,
-    private ownsBrowser: boolean,
+    private conn: ProviderConnection | null,
+    providerId: string,
     policy?: SessionPolicy,
+    caps?: ProviderCapabilities,
   ) {
     this.policy = policy ?? new SessionPolicy();
+    this.providerId = providerId;
+    this.capabilities = conn?.capabilities ??
+      caps ?? { evaluateIsolatedWorld: false, cdp: false, ownsBrowser: false, pagesSurviveDisconnect: true };
   }
 
-  /** Mode 1: Playwright-launched browser (bundled Chromium). */
-  static async launch(opts: { headless?: boolean; executablePath?: string; policy?: SessionPolicy } = {}) {
-    const browser = await chromium.launch({
-      headless: opts.headless ?? true,
-      executablePath: opts.executablePath,
-    });
-    const page = await (await browser.newContext()).newPage();
-    return new WebActuator(page, browser, true, opts.policy);
+  /** Generic entry: any registered browser provider (see docs/browsers.md). */
+  static async fromProvider(providerId: string, opts: ProviderOptions = {}, policy?: SessionPolicy) {
+    const conn = await getProvider(providerId).connect(opts);
+    return new WebActuator(conn.page, conn, providerId, policy);
+  }
+
+  /** Mode 1: Playwright-launched browser (bundled Chromium or opts.executablePath / BLINDFILL_CHROMIUM). */
+  static launch(opts: { headless?: boolean; executablePath?: string; policy?: SessionPolicy } = {}) {
+    return WebActuator.fromProvider('chromium-launch', opts, opts.policy);
   }
 
   /** Mode 2: attach over CDP. Loopback endpoints only. */
-  static async connectCDP(
+  static connectCDP(
     endpoint: string,
     opts: { urlIncludes?: string; pageIndex?: number; policy?: SessionPolicy } = {},
   ) {
-    assertLoopbackEndpoint(endpoint);
-    const browser = await chromium.connectOverCDP(endpoint);
-    const ctx = browser.contexts()[0] ?? (await browser.newContext());
-    let pages = ctx.pages();
-    if (pages.length === 0) pages = [await ctx.newPage()];
-    let page: Page | undefined;
-    if (opts.pageIndex !== undefined) page = pages[opts.pageIndex];
-    else if (opts.urlIncludes) page = pages.find((p) => p.url().includes(opts.urlIncludes!));
-    else page = [...pages].reverse().find((p) => /^https?:/.test(p.url())) ?? pages[pages.length - 1];
-    if (!page) throw new BlindfillError('ACTUATOR', 'no matching page in the attached browser');
-    return new WebActuator(page, browser, false, opts.policy);
+    return WebActuator.fromProvider('chromium-cdp', { ...opts, endpoint }, opts.policy);
   }
 
-  /** Mode 3: in-process Playwright Page owned by the caller (never closed by us). */
+  /** Mode 2b: attach to a Playwright browser server (Firefox / Camoufox). Loopback only. */
+  static connectFirefox(
+    endpoint: string,
+    opts: {
+      urlIncludes?: string;
+      pageIndex?: number;
+      playwrightModule?: string;
+      policy?: SessionPolicy;
+    } = {},
+  ) {
+    return WebActuator.fromProvider('firefox-connect', { ...opts, endpoint }, opts.policy);
+  }
+
+  /** Mode 3: in-process Playwright Page owned by the caller (never closed by us). Any browser. */
   static fromPage(page: Page, policy?: SessionPolicy) {
-    return new WebActuator(page, null, false, policy);
+    return new WebActuator(page, null, 'borrowed-page', policy);
   }
 
   /** Real identity as observed from the browser, never as claimed by the caller. */
@@ -455,6 +455,6 @@ export class WebActuator {
   }
 
   async close(): Promise<void> {
-    if (this.browser) await this.browser.close().catch(() => undefined);
+    if (this.conn) await this.conn.close();
   }
 }

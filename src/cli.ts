@@ -2,14 +2,15 @@
 import './harden.js';
 import { parseArgs } from 'node:util';
 import { readFileSync } from 'node:fs';
-import { loadConfig } from './config.js';
+import { attachSettings, loadConfig } from './config.js';
 import { BACKEND_INFO, createBackend, unverifiedNotice } from './backends/registry.js';
 import { runSelftest } from './backends/selftest.js';
 import { Engine, type FillRequest } from './engine.js';
 import { globalScrubber } from './core/scrubber.js';
 import { audit } from './core/audit.js';
 import { BlindfillError } from './core/types.js';
-import { attach, loadSession, startSession, stopSession } from './actuators/web/session.js';
+import { attach, attachSession, loadSession, startSession, stopSession } from './actuators/web/session.js';
+import { redactEndpoint, resolveEndpoint } from './actuators/web/providers/util.js';
 import type { Expect } from './actuators/web/web.js';
 
 const VERSION = (() => {
@@ -57,6 +58,11 @@ const { values, positionals } = parseArgs({
     fields: { type: 'string' },
     url: { type: 'string' },
     cdp: { type: 'string' },
+    endpoint: { type: 'string' },
+    'endpoint-file': { type: 'string' },
+    browser: { type: 'string' },
+    page: { type: 'string' },
+    executable: { type: 'string' },
     backend: { type: 'string' },
     role: { type: 'string' },
     'expect-url': { type: 'string' },
@@ -97,9 +103,18 @@ async function engineFor(needBrowser: boolean): Promise<Engine> {
   const n = unverifiedNotice(backend);
   if (n) note(n);
   if (!needBrowser) return new Engine(backend);
-  const cdp = (values.cdp as string | undefined) ?? cfg.web?.cdp;
-  const { actuator, persist } = await attach({ cdp });
+  const { actuator, persist } = await attach(attachSettings(cfg, flagSettings()));
   return new Engine(backend, actuator, persist);
+}
+
+function flagSettings() {
+  return {
+    endpoint: values.endpoint as string | undefined,
+    cdp: values.cdp as string | undefined,
+    endpointFile: values['endpoint-file'] as string | undefined,
+    browser: values.browser as string | undefined,
+    page: values.page as string | undefined,
+  };
 }
 
 function fillRequest(): FillRequest {
@@ -156,9 +171,20 @@ async function main(): Promise<number> {
         const headless = values.headed
           ? false
           : ((values.headless as boolean | undefined) ?? cfg.web?.headless ?? true);
-        const s = await startSession({ headless, executablePath: cfg.web?.executablePath });
+        const s = await startSession({
+          headless,
+          executablePath: (values.executable as string | undefined) ?? cfg.web?.executablePath,
+        });
         audit({ event: 'session', outcome: 'started' });
-        out({ started: true, cdp: s.cdp, headless });
+        out({ started: true, browser: s.browser, endpoint: s.cdp, cdp: s.cdp, headless });
+        return 0;
+      }
+      if (sub === 'attach') {
+        const cfg = loadConfig();
+        const a = attachSettings(cfg, flagSettings());
+        const r = await attachSession({ ...a });
+        audit({ event: 'session', outcome: 'attached' });
+        out({ attached: true, ...r, locked: false });
         return 0;
       }
       if (sub === 'stop') {
@@ -169,10 +195,23 @@ async function main(): Promise<number> {
       }
       if (sub === 'status') {
         const s = loadSession();
-        out(s ? { running: true, cdp: s.cdp, locked: s.policy.locked, owned: s.owned } : { running: false });
+        out(
+          s
+            ? {
+                running: true,
+                browser: s.browser ?? 'chromium-cdp',
+                endpoint: redactEndpoint(
+                  resolveEndpoint({ endpoint: s.cdp || undefined, endpointFile: s.endpointFile }),
+                ),
+                endpointFile: s.endpointFile,
+                locked: s.policy.locked,
+                owned: s.owned,
+              }
+            : { running: false },
+        );
         return 0;
       }
-      throw new BlindfillError('POLICY', 'usage: blindfill session start|stop|status');
+      throw new BlindfillError('POLICY', 'usage: blindfill session start|attach|stop|status');
     }
     case 'item': {
       if (sub !== 'show') throw new BlindfillError('POLICY', 'usage: blindfill item show --item <id>');
@@ -208,8 +247,11 @@ async function main(): Promise<number> {
       const e = await engineFor(true);
       const r =
         cmd === 'probe'
-          ? await e.probe()
-          : await e.candidates(values.role as 'username' | 'password' | 'totp' | undefined);
+          ? await e.probe(values.url as string | undefined)
+          : await e.candidates(
+              values.role as 'username' | 'password' | 'totp' | undefined,
+              values.url as string | undefined,
+            );
       await disconnect(e);
       out(r);
       return 0;
@@ -227,15 +269,18 @@ async function main(): Promise<number> {
       const target = sub;
       if (!target) throw new BlindfillError('POLICY', 'usage: blindfill login <url|web:origin> [--item id]');
       const url = target.startsWith('web:') ? target.slice(4) : target;
-      if (!loadSession() && !values.cdp && !loadConfig().web?.cdp) {
+      const aset = attachSettings(loadConfig(), flagSettings());
+      if (!loadSession() && !aset.endpoint && !aset.endpointFile) {
         const cfg = loadConfig();
         const s = await startSession({
           headless: values.headed
             ? false
             : ((values.headless as boolean | undefined) ?? cfg.web?.headless ?? true),
-          executablePath: cfg.web?.executablePath,
+          executablePath: (values.executable as string | undefined) ?? cfg.web?.executablePath,
         });
-        note(`blindfill: started a browser session (${s.cdp}); stop it with: blindfill session stop`);
+        note(
+          `blindfill: started a browser session (${redactEndpoint(s.cdp)}); stop it with: blindfill session stop`,
+        );
       }
       const e = await engineFor(true);
       try {

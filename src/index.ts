@@ -8,3 +8,13 @@ export { Engine } from './engine.js';
 export type { FillRequest, FillResult } from './engine.js';
 export { loadConfig } from './config.js';
 export type { Config } from './config.js';
+export { withPage } from './library.js';
+export type { WithPageOptions } from './library.js';
+export { SessionPolicy } from './core/policy.js';
+export { getProvider, listProviders, registerProvider } from './actuators/web/providers/index.js';
+export type {
+  BrowserProvider,
+  ProviderCapabilities,
+  ProviderConnection,
+  ProviderOptions,
+} from './actuators/web/providers/index.js';

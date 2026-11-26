@@ -285,6 +285,18 @@ describe('web actuator e2e (local fake sites)', () => {
     await expect(eng.fill({ item: 'good' })).rejects.toMatchObject({ code: 'ORIGIN_MISMATCH' });
   });
 
+  it('regression: probe/candidates honour a url argument on a blank page; non-http urls refused', async () => {
+    const { eng } = await engine(); // blank page
+    await expect(eng.probe()).rejects.toThrow(/not an http\(s\) page/);
+    const p = await eng.probe(good('/simple'));
+    expect(p.origin).toBe(`http://good.localhost:${sites.port}`);
+    expect(p.candidates.some((c) => c.guess?.role === 'password')).toBe(true);
+    const c = await eng.candidates('password', good('/simple'));
+    expect(c.candidates.length).toBeGreaterThan(0);
+    await expect(eng.probe('file:///etc/passwd')).rejects.toMatchObject({ code: 'POLICY' });
+    await expect(eng.probe('javascript:alert(1)')).rejects.toMatchObject({ code: 'POLICY' });
+  });
+
   it('non-http pages are refused', async () => {
     const { eng } = await engine();
     await page.goto('about:blank');

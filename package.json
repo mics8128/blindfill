@@ -75,5 +75,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.74.0",
     "vitest": "^5.1.2"
+  },
+  "optionalDependencies": {
+    "playwright-core-compat": "npm:playwright-core@1.62.0"
   }
 }

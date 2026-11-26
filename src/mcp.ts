@@ -3,7 +3,7 @@ import './harden.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { loadConfig } from './config.js';
+import { attachSettings, loadConfig } from './config.js';
 import { createBackend, unverifiedNotice } from './backends/registry.js';
 import { Engine } from './engine.js';
 import { globalScrubber } from './core/scrubber.js';
@@ -28,8 +28,9 @@ async function getEngine(): Promise<Engine> {
   const backend = createBackend(cfg.backend ?? 'bw', cfg);
   const n = unverifiedNotice(backend);
   if (n) process.stderr.write(n + '\n');
-  if (cfg.web?.cdp || loadSession()) {
-    const { actuator, persist } = await attach({ cdp: cfg.web?.cdp });
+  const aset = attachSettings(cfg);
+  if (aset.endpoint || aset.endpointFile || loadSession()) {
+    const { actuator, persist } = await attach(aset);
     engine = new Engine(backend, actuator, persist);
   } else {
     ownedActuator = await WebActuator.launch({
@@ -66,6 +67,10 @@ const itemSel = {
   item: z.string().optional().describe('Backend item id (preferred).'),
   query: z.string().optional().describe('Search text; must match exactly one item.'),
 };
+const urlArg = z
+  .string()
+  .optional()
+  .describe('Navigate here first (http/https only), then inspect. Without it the current page is used.');
 const expectShape = z
   .object({
     urlIncludes: z.string().optional().describe('Success if the final URL (origin+path) contains this.'),
@@ -89,17 +94,17 @@ export function buildServer(): McpServer {
     'probe',
     {
       description: `Describe the form fields of the current page (structure only: names, types, labels; never values) and list vault items bound to this origin. ${CONTRACT}`,
-      inputSchema: {},
+      inputSchema: { url: urlArg },
     },
-    () => run(async () => (await getEngine()).probe()),
+    ({ url }) => run(async () => (await getEngine()).probe(url)),
   );
   server.registerTool(
     'candidates',
     {
       description: `List candidate input fields (names only, no values). Refused after a secret fill. ${CONTRACT}`,
-      inputSchema: { role: z.enum(['username', 'password', 'totp']).optional() },
+      inputSchema: { role: z.enum(['username', 'password', 'totp']).optional(), url: urlArg },
     },
-    ({ role }) => run(async () => (await getEngine()).candidates(role)),
+    ({ role, url }) => run(async () => (await getEngine()).candidates(role, url)),
   );
   server.registerTool(
     'item_show',

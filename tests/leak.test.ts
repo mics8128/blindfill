@@ -123,8 +123,9 @@ describe('leak test: canary password never appears anywhere', () => {
     const totp = await cli('totp', '--item', 'leak-item');
     expect(JSON.parse(totp.stdout).code).toMatch(/^\d{6}$/);
 
-    const probe0 = await cli('probe', '--url', good('/simple')); // --url is ignored by probe: page is blank
-    expect([0, 1]).toContain(probe0.code);
+    const probe0 = await cli('probe', '--url', good('/simple')); // regression: probe honours --url on a blank page
+    expect(probe0.code).toBe(0);
+    expect(JSON.parse(probe0.stdout).origin).toBe(`http://good.localhost:${sites.port}`);
 
     const refused = await cli(
       'fill',

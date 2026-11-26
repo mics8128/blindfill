@@ -120,8 +120,12 @@ export class Engine {
     return { code, item: ref.id, note: 'valid for ~30 seconds' };
   }
 
-  async probe(): Promise<ProbeResult & { items?: { id: string; name?: string }[] }> {
+  async probe(url?: string): Promise<ProbeResult & { items?: { id: string; name?: string }[] }> {
     const act = this.actuator();
+    if (url) {
+      act.policy.assertReadable('page probe'); // locked sessions must not navigate either
+      await act.navigate(url);
+    }
     const p = await act.probe();
     let items: { id: string; name?: string }[] | undefined;
     try {
@@ -136,8 +140,13 @@ export class Engine {
     return { ...p, items };
   }
 
-  async candidates(role?: Role): Promise<{ origin: string; candidates: CandidateInfo[] }> {
-    const p = await this.actuator().probe();
+  async candidates(role?: Role, url?: string): Promise<{ origin: string; candidates: CandidateInfo[] }> {
+    const act = this.actuator();
+    if (url) {
+      act.policy.assertReadable('page probe');
+      await act.navigate(url);
+    }
+    const p = await act.probe();
     const c = role ? p.candidates.filter((x) => x.guess?.role === role) : p.candidates;
     return { origin: p.origin, candidates: c };
   }
