@@ -234,3 +234,99 @@ describe('item generate / create / password-policy (bw, mock)', () => {
     expect(tty.stdout).toContain('terminal');
   }, 60_000);
 });
+
+describe('item admin', () => {
+  it('list / status expose names and classes, never values', async () => {
+    const eng = new Engine(backend());
+    const raw = stored().find((i) => i.name === 'gen-e2e')!;
+    const l = JSON.stringify(await eng.itemList('gen-'));
+    const st = JSON.stringify(await eng.itemStatus({ item: raw.id }));
+    outputs.push(l, st);
+    expect(l).toContain('gen-e2e');
+    expect(st).toContain('"class":"secret"');
+    expect(st).toContain('"registration_allowed":true');
+    for (const o of [l, st]) expect(o).not.toContain(raw.login.password);
+  });
+
+  it('rename: unique names only, nothing else changes', async () => {
+    const eng = new Engine(backend());
+    const raw = stored().find((i) => i.name === 'gen-e2e')!;
+    await expect(eng.itemRename({ item: raw.id }, 'gen-1')).rejects.toThrow(/already exists/);
+    await eng.itemRename({ item: raw.id }, 'gen-e2e-renamed');
+    const after = stored().find((i) => i.id === raw.id)!;
+    expect(after.name).toBe('gen-e2e-renamed');
+    expect(after.login.password).toBe(raw.login.password);
+  });
+
+  it('edit: readable fields freely; origins / blindfill.* / secrets only with a human; secrets never readable', async () => {
+    const eng = new Engine(backend());
+    const raw = stored().find((i) => i.name === 'gen-1')!;
+    await eng.itemEdit({ item: raw.id }, { set: { store_id: 'S-9' }, human: false });
+    expect(
+      stored()
+        .find((i) => i.id === raw.id)!
+        .fields.find((f) => f.name === 'store_id')!.value,
+    ).toBe('S-9');
+    await eng.itemEdit({ item: raw.id }, { unset: ['store_id'], human: false });
+    expect(
+      stored()
+        .find((i) => i.id === raw.id)!
+        .fields.some((f) => f.name === 'store_id'),
+    ).toBe(false);
+    const sensitive: Partial<Parameters<Engine['itemEdit']>[1]>[] = [
+      { origins: ['https://evil.example'] },
+      { set: { 'blindfill.registration': 'allow' } },
+      { set: { 'Blindfill.Rules': '{}' } },
+      { secrets: { password: 'new-secret-value-1!' } },
+    ];
+    for (const s of sensitive)
+      await expect(eng.itemEdit({ item: raw.id }, { ...s, human: false })).rejects.toThrow(
+        /human at a terminal/,
+      );
+    expect(stored().find((i) => i.id === raw.id)!.login.password).not.toBe('new-secret-value-1!');
+    await expect(
+      eng.itemEdit({ item: raw.id }, { set: { password: 'x' }, human: true }),
+    ).rejects.toMatchObject({ code: 'SECRET_ACCESS' });
+    await expect(eng.itemEdit({ item: raw.id }, { human: true })).rejects.toThrow(/nothing to change/);
+    await expect(
+      eng.itemEdit({ item: raw.id }, { secrets: { nosuch: 'x' }, human: true }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      eng.itemEdit({ item: raw.id }, { origins: ['https://x.example/path'], human: true }),
+    ).rejects.toMatchObject({ code: 'POLICY' });
+    const r = await eng.itemEdit(
+      { item: raw.id },
+      { origins: ['https://ok.example'], secrets: { password: 'new-secret-value-1!' }, human: true },
+    );
+    outputs.push(JSON.stringify(r));
+    expect(JSON.stringify(r)).not.toContain('new-secret-value-1!');
+    const after = stored().find((i) => i.id === raw.id)!;
+    expect(after.login.password).toBe('new-secret-value-1!');
+    expect((after as unknown as { login: { uris: { uri: string }[] } }).login.uris[0].uri).toBe(
+      'https://ok.example',
+    );
+  });
+
+  it('there is no reveal command (CLI refuses, usage lists none)', async () => {
+    const cfg = join(dir, 'config.json');
+    const r = await new Promise<{ code: number; stdout: string }>((res) =>
+      execFile(
+        process.execPath,
+        ['--import', 'tsx', 'src/cli.ts', 'item', 'reveal', '--item', 'x'],
+        {
+          env: {
+            ...process.env,
+            BLINDFILL_CONFIG: cfg,
+            BW_SESSION: 'mock-session-token',
+            BLINDFILL_STATE_DIR: join(dir, 'state'),
+          },
+          cwd: resolve('.'),
+        },
+        (e, stdout, stderr) =>
+          res({ code: e ? ((e as { code?: number }).code ?? 1) : 0, stdout: stdout + stderr }),
+      ),
+    );
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain('usage');
+  }, 30_000);
+});

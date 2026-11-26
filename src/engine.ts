@@ -1,4 +1,4 @@
-import type { Backend } from './backends/spi.js';
+import type { Backend, ItemPatch } from './backends/spi.js';
 import { audit } from './core/audit.js';
 import { checkWebBinding, SubmitGuard } from './core/policy.js';
 import { globalScrubber } from './core/scrubber.js';
@@ -214,6 +214,144 @@ export class Engine {
 
   handoffStatus(): Record<string, unknown> {
     return this.handoffView();
+  }
+
+  // ---- item administration (no value of a secret-class field is ever read or printed) ----
+
+  async itemList(query = ''): Promise<unknown> {
+    const refs = await this.backend.find({ query });
+    const items = [];
+    for (const r of refs.slice(0, 100)) {
+      const m = await this.backend.meta(r);
+      items.push({
+        id: r.id,
+        name: m.name,
+        origins: m.uris.map((u) => u.uri),
+        fields: ['username', ...(m.hasTotp ? ['totp'] : []), ...m.secretFields, ...Object.keys(m.readable)],
+        rules: m.control.rules === undefined ? 0 : 1,
+      });
+    }
+    return { status: 'completed', items, truncated: refs.length > 100 };
+  }
+
+  /** Structural status: which fields exist and how they are classified; no values. */
+  async itemStatus(sel: ItemSelector): Promise<unknown> {
+    const ref = await this.resolveItem(sel);
+    const m = await this.backend.meta(ref);
+    const parsed = (() => {
+      try {
+        return this.rulesFor(ref, m).rules.map((r) => ({
+          id: r.id,
+          mode: r.mode ?? 'login',
+          origin: r.top_origin,
+        }));
+      } catch {
+        return 'invalid';
+      }
+    })();
+    return {
+      status: 'completed',
+      id: ref.id,
+      name: m.name,
+      backend: this.backend.id,
+      origins: m.uris,
+      fields: [
+        ...(m.username ? [{ name: 'username', class: 'readable' }] : []),
+        ...Object.keys(m.readable).map((name) => ({ name, class: 'readable' })),
+        ...m.secretFields.map((name) => ({ name, class: 'secret' })),
+        ...(m.hasTotp ? [{ name: 'totp', class: 'totp' }] : []),
+      ],
+      rules: parsed,
+      registration_allowed: m.control.registration,
+      password_policy: m.control.passwordPolicy !== undefined,
+      submit: m.control.submit,
+      secrets_exposed: false,
+    };
+  }
+
+  async itemRename(sel: ItemSelector, newName: string): Promise<unknown> {
+    const ref = await this.resolveItem(sel);
+    await this.assertNameFree(newName);
+    await this.writable().updateItem(ref, { name: newName });
+    audit({ event: 'item', backend: this.backend.id, item: ref.id, outcome: 'renamed' });
+    return { status: 'completed', id: ref.id, name: newName };
+  }
+
+  /**
+   * Edit one item. Replacing origins, setting any blindfill.* control field and writing a secret-class value
+   * widen or change what can be filled, so the caller must assert a human is at a terminal (`human: true`;
+   * the CLI passes isTTY). Plain readable fields do not need it. Secret values are written, never read.
+   */
+  async itemEdit(
+    sel: ItemSelector,
+    req: {
+      origins?: string[];
+      username?: string;
+      set?: Record<string, string>;
+      unset?: string[];
+      secrets?: Record<string, string>;
+      human: boolean;
+    },
+  ): Promise<unknown> {
+    const b = this.writable();
+    const ref = await this.resolveItem(sel);
+    const meta = await this.backend.meta(ref);
+    const patch: ItemPatch = {};
+    const fields: Record<string, string | null> = {};
+    const control = (n: string) => n.toLowerCase().startsWith('blindfill.');
+    const changed: string[] = [];
+    if (req.origins) {
+      patch.uris = req.origins.map((o) => Engine.canonicalOrigin(o));
+      changed.push('origins');
+    }
+    if (req.username !== undefined) {
+      patch.username = req.username;
+      changed.push('username');
+    }
+    for (const [n, v] of Object.entries(req.set ?? {})) {
+      if (meta.secretFields.includes(n) || n === 'password' || n === 'totp')
+        throw new BlindfillError(
+          'SECRET_ACCESS',
+          `"${n}" is a secret-class field: use the hidden secret prompt`,
+        );
+      if (control(n) && n.toLowerCase() === 'blindfill.password_policy')
+        validatePasswordPolicy(JSON.parse(v));
+      fields[n] = v;
+      changed.push(n);
+    }
+    for (const n of req.unset ?? []) {
+      if (meta.secretFields.includes(n))
+        throw new BlindfillError('SECRET_ACCESS', `"${n}" is a secret-class field`);
+      fields[n] = null;
+      changed.push(n);
+    }
+    if (Object.keys(fields).length) patch.fields = fields;
+    const sensitive =
+      !!req.origins || Object.keys(fields).some(control) || Object.keys(req.secrets ?? {}).length > 0;
+    if (sensitive && !req.human)
+      throw new BlindfillError(
+        'POLICY',
+        'changing origins, blindfill.* control fields or secret values needs a human at a terminal',
+      );
+    for (const n of Object.keys(req.secrets ?? {}))
+      if (!meta.secretFields.includes(n))
+        throw new BlindfillError('NOT_FOUND', `item has no secret field "${n}"`);
+    if (!changed.length && !Object.keys(req.secrets ?? {}).length)
+      throw new BlindfillError('POLICY', 'nothing to change');
+    if (Object.keys(patch).length) await b.updateItem(ref, patch);
+    for (const [n, v] of Object.entries(req.secrets ?? {})) {
+      globalScrubber.register(v);
+      await b.updateSecret(ref, n, v);
+      changed.push(`${n} (secret)`);
+    }
+    audit({
+      event: 'item',
+      backend: b.id,
+      item: ref.id,
+      fields: changed.map((c) => c.split(' ')[0]),
+      outcome: 'edited',
+    });
+    return { status: 'completed', id: ref.id, changed, secret_exposed: false };
   }
 
   // ---- item creation (needs backend capability WRITE) ----

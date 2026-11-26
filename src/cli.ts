@@ -31,6 +31,9 @@ Commands:
   login <url|web:origin>      open the page, pick the bound item, fill username+password, submit once
   fill                        fill fields on the current page (--fields username,password,totp,<name>)
   item show                   show an item: readable fields only (secret field NAMES, never values)
+  item list [text]            list items (names, origins, field names); item status <id> structural status
+  item rename <id> <name>     rename; item edit <id> [--origin o ...] [--username u] [--set N=V] [--unset N] [--secret N]
+                              (origins, blindfill.* and --secret need a terminal; there is deliberately no reveal)
   item generate <name>        generate a password (CSPRNG, optional --policy-file) and save it as a new item; never printed
   item create [name]          create an item; username/password are read from the terminal (hidden)
   item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy
@@ -75,6 +78,9 @@ const { values, positionals } = parseArgs({
     page: { type: 'string' },
     rule: { type: 'string' },
     reason: { type: 'string' },
+    set: { type: 'string', multiple: true },
+    unset: { type: 'string', multiple: true },
+    secret: { type: 'string', multiple: true },
     username: { type: 'string' },
     'display-name': { type: 'string' },
     length: { type: 'string' },
@@ -303,8 +309,64 @@ async function main(): Promise<number> {
         );
         return 0;
       }
+      const sel = {
+        item: (values.item as string | undefined) ?? undefined,
+        query: values.query as string | undefined,
+      };
+      if (sub === 'list') {
+        out(await (await engineFor(false)).itemList(positionals[2] ?? ''));
+        return 0;
+      }
+      if (sub === 'status') {
+        out(await (await engineFor(false)).itemStatus({ ...sel, item: sel.item ?? positionals[2] }));
+        return 0;
+      }
+      if (sub === 'rename') {
+        const [, , a, b2] = positionals;
+        const byFlag = !!(sel.item || sel.query);
+        const nn = byFlag ? a : b2;
+        if (!nn) throw new BlindfillError('POLICY', 'usage: blindfill item rename <item id> <new name>');
+        out(await (await engineFor(false)).itemRename(byFlag ? sel : { item: a }, nn));
+        return 0;
+      }
+      if (sub === 'edit') {
+        const human = !!(process.stdin.isTTY && process.stderr.isTTY);
+        const set: Record<string, string> = {};
+        for (const kv of (values.set as string[] | undefined) ?? []) {
+          const i = kv.indexOf('=');
+          if (i < 1) throw new BlindfillError('POLICY', '--set needs NAME=VALUE');
+          set[kv.slice(0, i)] = kv.slice(i + 1);
+        }
+        const secrets: Record<string, string> = {};
+        for (const n of (values.secret as string[] | undefined) ?? []) {
+          if (!human) throw new BlindfillError('POLICY', 'secret values are entered at a terminal');
+          const v = await readHidden(`New value for ${n}: `);
+          if (v !== (await readHidden(`Confirm ${n}: `)))
+            throw new BlindfillError('POLICY', 'the two values differ; nothing was saved');
+          secrets[n] = v;
+        }
+        out(
+          await (
+            await engineFor(false)
+          ).itemEdit(
+            { ...sel, item: sel.item ?? positionals[2] },
+            {
+              origins: origins.length ? origins : undefined,
+              username: values.username as string | undefined,
+              set,
+              unset: values.unset as string[] | undefined,
+              secrets,
+              human,
+            },
+          ),
+        );
+        return 0;
+      }
       if (sub !== 'show')
-        throw new BlindfillError('POLICY', 'usage: blindfill item show|generate|create|password-policy');
+        throw new BlindfillError(
+          'POLICY',
+          'usage: blindfill item show|list|status|rename|edit|generate|create|password-policy',
+        );
       const e = await engineFor(false);
       out(
         await e.itemShow({
