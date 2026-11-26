@@ -56,7 +56,7 @@ describe.skipIf(!enabled)('bw against a live vault (opt-in)', () => {
     const b = backend();
     const ref = await b.createItem!({
       name: `blindfill-live-${tag}`,
-      username: `live-${tag}`,
+      username: `live-${tag}@example.test`, // the fake form's email field validates the format
       uris: [O()],
       password: PW,
       totpSeed: 'JBSWY3DPEHPK3PXP',
@@ -67,17 +67,14 @@ describe.skipIf(!enabled)('bw against a live vault (opt-in)', () => {
     const eng = await engine();
     const shown = await eng.itemShow({ item: ref.id });
     outputs.push(JSON.stringify(shown));
-    expect(shown).toMatchObject({ username: `live-${tag}` });
+    expect(shown).toMatchObject({ username: `live-${tag}@example.test` });
     expect((await eng.totpCode({ item: ref.id })).code).toMatch(/^\d{6}$/);
     sites.received.length = 0;
-    const r = await eng.fill({
-      item: ref.id,
-      url: `${O()}/simple`,
-      submit: true,
-      expect: { urlIncludes: '/home' },
-    });
+    // the fake site rejects anything but its canary, so the outcome is a failure page; what matters is the POST
+    const r = await eng.fill({ item: ref.id, url: `${O()}/simple`, submit: true });
     outputs.push(JSON.stringify(r));
-    expect(r).toMatchObject({ outcome: 'success', locked: true });
+    expect(r).toMatchObject({ locked: true, submitted: true });
+    await vi.waitFor(() => expect(sites.received).toHaveLength(1), { timeout: 5000 });
     expect(sites.received[0].fields.password).toBe(PW);
     for (const o of outputs) expect(o).not.toContain(PW);
   }, 120_000);
