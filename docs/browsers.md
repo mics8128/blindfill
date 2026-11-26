@@ -42,7 +42,9 @@ Tested (opt-in, `BLINDFILL_TEST_FIREFOX=1 npx vitest run tests/firefox.test.ts`)
 client playwright-core 1.62.0 via `playwright-core-compat`. 6 tests pass: connect, probe, fill+submit once with
 post-fill lock, lookalike origin refused, honeypot and SPA forms, `withPage`, CLI `session attach --endpoint-file`.
 The test skips cleanly when the flag or the Camoufox runtime is missing. Not tested: the owner's own long-running Camoufox.
-Also passed 6/6 on the owner's Mac (macOS arm64, 2026-11-27) after installing the same layout:
+Also passed 6/6 on the owner's Mac (macOS arm64, 2026-11-27) with 158.0.1-beta.41 and, after
+`python -m camoufox set official/stable && python -m camoufox fetch`, with **159.0-beta.43** (latest stable; package
+camoufox 0.5.9 / Playwright 1.62.0 unchanged, so `playwright-core-compat` stays 1.62.0). Layout:
 `uv venv --python 3.12 ~/.local/share/camoufox-runtime`, `uv pip install 'camoufox[geoip]==0.5.9'`,
 `XDG_CACHE_HOME=~/.local/share/camoufox-data python -m camoufox fetch`, then `npm ci` (for `playwright-core-compat`).
 
