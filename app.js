@@ -47,7 +47,9 @@
     f3h: '抵擋釣魚與提示詞注入',
     f3: '網頁沒辦法誘使代理人把密碼填到別處：目標由密碼庫項目與實際觀察到的網站來源決定，不是由呼叫者決定。',
     f4h: '出狀況就停下來',
-    f4: '欄位不明確、遇到誘餌欄位、網站來源不符，或結果不明：blindfill 會停止並回報，不亂猜，也不重試。',
+    f4: '誘餌欄位會被略過。欄位不明確、網站來源不符，或結果不明時：blindfill 會停止並回報，不亂猜，也不重試。',
+    feat_src:
+      '來源：<a href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a> 與 <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>。',
     f5h: 'CLI、MCP 與函式庫',
     f5: '可以用 <code>blindfill</code> CLI、走 stdio 的 MCP 伺服器，或在自己的 Playwright 頁面上使用 TypeScript 函式庫。',
     f6h: '用誘餌密碼做洩漏測試',
@@ -71,7 +73,7 @@
     cls_e4: '自由格式備註（可能藏有機密）',
     cls_def: '預設不行，可逐項目開啟',
     cls_fine:
-      '等級取決於密碼庫本身的欄位類型，所以你可以在平常的密碼庫介面裡控制。無法判斷的資料一律當作 Secret。',
+      '等級取決於密碼庫本身的欄位類型，所以你可以在平常的密碼庫介面裡控制。無法判斷的資料一律當作 Secret。<a href="https://github.com/mics8128/blindfill/blob/main/docs/ARCHITECTURE.md" rel="noopener">來源</a>。',
     cmp_h: '和常見做法有什麼不同',
     cmp_p: '以下是對各種做法一般運作方式的描述，不是效能測試。實際產品各有差異，請以你使用的那一個為準。',
     cmp_cap: '讓代理人登入的各種做法比較',
@@ -101,8 +103,8 @@
     cmp_a4: '無法防護。防線是綁定正確的網站來源',
     cmp_b4: '無法防護',
     cmp_c4x: '無法防護',
-    cmp_d4: '無法防護',
-    cmp_e4: '無法防護',
+    cmp_d4: '依擴充功能而異',
+    cmp_e4: '不一定',
     cmp_r5: '在哪裡執行',
     cmp_a5: '在你的電腦上，使用你自己的密碼庫 CLI',
     cmp_b5: '模型運行的地方',
@@ -118,7 +120,8 @@
     cmp_fine:
       '這些做法也可以搭配使用。要注意的是，填寫後的上鎖只涵蓋 blindfill 自己的介面：如果代理人另外有工具連到同一個瀏覽器，它仍可透過那個工具讀取 DOM。',
     sup_h: '目前支援什麼',
-    sup_p: '以下是 0.1.0-alpha.0 的狀態，直接取自專案文件。',
+    sup_p:
+      '以下是 main 分支（commit fa64962，0.1.0-alpha.0）的狀態，取自專案文件：<a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>、<a href="https://github.com/mics8128/blindfill/blob/main/docs/browsers.md" rel="noopener">browsers.md</a>。',
     sup_bh: '密碼管理員',
     p_mock: '模擬環境驗證',
     sup_bw:
@@ -128,18 +131,22 @@
       '<b>1Password</b>（<code>op</code>）、<b>rbw</b>、<b>pass</b>、<b>gopass</b>、<b>KeePassXC</b>、<b>Secret Service</b>：只通過錄製資料的契約測試，從未接觸過真實密碼庫。',
     sup_th: '瀏覽器與平台',
     p_ok: '支援，已測試',
-    sup_chr: '<b>Chromium</b>：Playwright 內建版本，或任何透過本機 CDP 連線的 Chromium。',
+    sup_chr:
+      '<b>Chromium</b>：Playwright 內建版本、以 <code>--executable</code> 指定的任何 Chromium 版本，或本機 CDP 連線。',
     p_optin: '需手動啟用',
     sup_ff:
-      '<b>Firefox / Camoufox</b>：在真實的 Camoufox 版本上通過 6 項選用測試。你自己長時間運行的 Camoufox 則尚未測試。',
+      '<b>Firefox / Camoufox</b>：透過本機 Playwright 伺服器連線，在選用測試中對 Camoufox 158.0.1-beta.41 與 159.0-beta.43 測試過。你自己長時間運行的實例則尚未測試。',
     p_sep: '獨立實例',
     sup_ego: '<b>Ego Lite</b>：只能以另外啟動、空白設定檔的獨立實例使用，無法連上你正在執行的那一個。',
-    p_plan: '規劃中',
-    sup_plan: '<b>WebKit／Safari、Android、passkey</b>：目前尚未支援。',
+    p_pk: '有限支援',
+    sup_pk:
+      '<b>Passkey</b>：僅限網頁登入，僅限 Chromium（CDP 虛擬驗證器），只針對模擬的依賴方測試過。不回寫計數器，也不支援註冊。',
+    p_plan: '尚未支援',
+    sup_plan: '<b>WebKit／Safari</b>：尚未支援。<b>Android</b>：尚未實作（只是空殼）。',
     lim_h: '它（目前）做不到的事',
     lim_ah: '還沒做',
     lim_a1: '只支援網頁。Android 還沒有實作（只是一個會丟出錯誤的空殼）。',
-    lim_a2: '不支援 passkey。',
+    lim_a2: 'Passkey：僅限 Chromium 上的網頁登入。不回寫計數器，也不支援註冊。',
     lim_a3: '不支援 WebKit／Safari。Firefox／Camoufox 需手動啟用。',
     lim_a4: '沒有任何後端在真實密碼庫上做過完整端到端驗證。',
     lim_a5: '偵測不到 Shadow DOM、封閉的 iframe 與 canvas 輸入框，遇到時會直接停止。',
@@ -159,22 +166,54 @@
     q3: '支援哪些密碼管理員？',
     a3: 'Bitwarden／Vaultwarden（透過 <code>bw</code>）是唯一以模擬環境驗證過的後端。1Password、rbw、pass、gopass、KeePassXC 與 Secret Service 都是依文件撰寫、尚未驗證。<code>blindfill backend selftest &lt;id&gt;</code> 會用假項目跑一次完整流程，歡迎回報結果。',
     q4: '支援哪些瀏覽器？',
-    a4: 'Chromium 受支援且已測試。Firefox／Camoufox 需手動啟用，在真實的 Camoufox 版本上通過 6 項測試。Ego Lite 只能以另外啟動、空白設定檔的實例使用。不支援 WebKit。',
+    a4: 'Chromium 受支援且已測試。Firefox／Camoufox 需手動啟用：透過本機 Playwright 伺服器，在 Camoufox 158.0.1-beta.41 與 159.0-beta.43 上測試過。Ego Lite 只能以另外啟動、空白設定檔的實例使用。不支援 WebKit。',
     q5: '手機和 passkey 呢？',
-    a5: '兩者都在規劃中，目前都不能用。Android 只是空殼，passkey 需要簽章功能，也還沒有做出來。',
+    a5: 'Android 尚未實作（只是空殼）。Passkey 僅限 Chromium 上的網頁登入，只針對模擬的依賴方測試過：不回寫計數器，也不支援註冊。',
     q6: '可以直接用在我的正式帳號上嗎？',
     a6: '它是 alpha 軟體，沒有經過獨立審查。建議先用拋棄式或影響不大的帳號試用，並讀過上面的威脅模型。',
     q7: '要付費嗎？授權是什麼？',
     a7: '免費，以 MIT 授權開源。',
     ins_h: '給你的代理人一個漏不出去的登入',
-    ins_p: '套件還沒有發佈到 npm，下面這行是之後的安裝方式。目前請從原始碼建置。',
+    ins_p:
+      '套件還沒有發佈到 npm（那邊的 <code>latest</code> 只是空的佔位套件），所以請不要執行 <code>npx blindfill</code>。請從原始碼建置。',
     copy: '複製',
-    ins_note: '需要 Node 20 以上。尚未發佈：在第一次發行之前，這行指令還找不到套件。',
+    ins_note:
+      '需要 Node 20 以上；目前唯一以模擬環境驗證過的後端需要 Bitwarden CLI（<code>bw</code>）。步驟依照 README 的「Try it」。',
+    aria_primary: '主要導覽',
+    aria_lang: '語言',
+    aria_theme: '切換深色／淺色主題',
+    aria_term: '終端機示範紀錄',
+    aria_src: '從原始碼建置的指令',
+    aria_facts: '重點摘要',
+    d_title: 'blindfill 登入流程',
+    d_desc:
+      '代理人請 blindfill 在某個網址上填入某個項目。blindfill 從密碼庫讀出密碼，把項目的網址與瀏覽器回報的網站來源比對，再把密碼填進頁面欄位。代理人只收到結果。',
+    d_desc_t:
+      '代理人請 blindfill 在某個網址上填入某個項目。blindfill 從密碼庫讀出密碼，檢查網站來源，再把密碼填進頁面欄位。代理人只收到結果。',
+    d_agent: '代理人／LLM',
+    d_agent2: '只看得到結果',
+    d_core1: '檢查網站來源',
+    d_core2: '遮蔽輸出・上鎖',
+    d_page: '瀏覽器頁面',
+    d_page2: '真正的登入表單',
+    d_vault: '你的密碼庫',
+    d_ok: '只回傳 ok／網址',
+    d_typed: '密碼直接填入',
+    d_origin: '實際的網站來源',
+    d_read: '檢查通過後才讀取密碼',
+    d_bad: '✕ 密碼庫與欄位都沒有路徑通回模型',
+    d_read1: '檢查通過後',
+    d_read2: '才讀取',
+    d_typed1: '直接填入',
+    d_typed2: '欄位',
+    d_bad1: '✕ 密碼庫與欄位都沒有',
+    d_bad2: '路徑通回模型',
     cta_gh2: '到 GitHub 加星或 fork',
     cta_docs: '閱讀 README',
     foot1: 'blindfill 是開源（MIT）的 alpha 專案，尚未經過獨立的資安審查。',
   };
 
+  var enAria = {};
   var nodes = Array.prototype.slice.call(document.querySelectorAll('[data-i18n],[data-i18n-html]'));
   var en = {};
   nodes.forEach(function (n) {
@@ -197,6 +236,11 @@
     nodes.forEach(function (n) {
       var k = n.getAttribute('data-i18n') || n.getAttribute('data-i18n-html');
       if (dict[k] != null) n.innerHTML = dict[k];
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-aria]'), function (n) {
+      var k = n.getAttribute('data-i18n-aria');
+      if (!(k in enAria)) enAria[k] = n.getAttribute('aria-label');
+      n.setAttribute('aria-label', (lang === 'zh-TW' ? zh : enAria)[k]);
     });
     root.lang = lang;
     document.title = meta[lang].title;
