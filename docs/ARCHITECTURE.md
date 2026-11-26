@@ -1,10 +1,12 @@
-# Blindfill — architecture (draft v0.1, 2026-11-27)
+# Blindfill — architecture (v0.2, 2026-11-27)
 
 > Let AI agents sign in to anything without ever seeing the password.
 
-Status: design draft. Nothing here is implemented in this repo yet. Parts are marked
-**[from olliepm]** where a proven prototype exists in `ollie-password-management`
-(private, uncommitted mobile code) and could be ported.
+Status: alpha. M0 and M1 are implemented (see section 9 for what is built, stubbed and
+unverified); passkeys, Android and several olliepm features are not built yet. Parts marked
+**[from olliepm]** were ported or are being ported from the Python prototype
+`ollie-password-management`. Code samples below are language-neutral sketches; the real
+interfaces are TypeScript (`src/backends/spi.ts`, `src/actuators/web/providers/types.ts`).
 
 ## 1. Problem and non-goals
 
@@ -106,25 +108,34 @@ confirm in two minutes and paste the output into an issue.
 
 ### 3.2 Actuator SPI (where secrets are typed)
 
-```python
-class Actuator(Protocol):
-    kind: str                                   # "web" | "android" | later "desktop"
-    def identify(self) -> Target: ...           # real identity, observed, not self-reported
-    def probe(self) -> list[FieldCandidate]: ...# structure only, no values
-    def sink(self, field: FieldCandidate) -> Sink: ...
-    def submit(self) -> Outcome: ...            # once
+```ts
+interface Actuator {
+  kind: 'web' | 'android'                  // later 'desktop'
+  identify(): Target                       // observed identity, never self-reported
+  probe(): FieldCandidate[]                // structure only, no values
+  sink(field: FieldCandidate): Sink
+  submit(): Outcome                        // at most once
+}
 ```
 
-- **Web actuator** **[from olliepm]**: Playwright `Page`. Attach modes: in-process page
-  (`share_page`), Chromium CDP on loopback, Playwright-launched browser. Observed origin
-  comes from the page URL, not from the caller.
-- **Android actuator** **[from olliepm, unverified on real secrets]**: host-side scrcpy
-  control channel (INJECT_TEXT), no `adb shell input text`, no clipboard, no UIAutomator
-  setText. Identity = device serial + Android user + package + APK signer SHA-256
-  (checked with `apksigner`). Two-stage roadmap:
-  1. host injection as above (works today, focus-based, not atomic);
+- **Web actuator** (implemented, Playwright): the browser is obtained from a pluggable
+  **BrowserProvider** (`src/actuators/web/providers/`, contract in `docs/browsers.md`):
+  `chromium-launch` (also any Chromium-based build via `--executable` / `BLINDFILL_CHROMIUM`,
+  e.g. Ego Lite with an empty profile), `chromium-cdp` (loopback only), `firefox-connect`
+  (Playwright browser server, e.g. Camoufox; endpoint or `--endpoint-file`), and
+  `borrowed-page` (library API `withPage`). Providers declare capabilities such as an isolated
+  evaluate world, so heuristics use DOM evidence, never page globals. Observed origin comes
+  from the page URL and frame URL, not from the caller. Adding a browser = adding one provider
+  file plus its tests. A provider that cannot be attached to an already-running browser (no CDP,
+  no Playwright server) is not faked; Ego Lite's running instance is explicitly unsupported
+  until a traffic and operation-log review is done (`docs/browsers.md`).
+- **Android actuator** **[from olliepm, unverified on real secrets]**: currently a stub that
+  throws. Plan: host-side scrcpy control channel (INJECT_TEXT), no `adb shell input text`, no
+  clipboard, no UIAutomator setText. Identity = device serial + Android user + package + APK
+  signer SHA-256 (checked with `apksigner`). Two-stage roadmap:
+  1. host injection as above (focus-based, not atomic);
   2. optional companion **AutofillService** APK for atomic, system-attested fills.
-- Later: desktop (accessibility APIs), iOS (probably impossible without Autofill extension).
+- Later: desktop (accessibility APIs), iOS (probably impossible without an Autofill extension).
 
 ### 3.3 Target model
 
@@ -186,6 +197,22 @@ flow.
 - Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
   creates a digest (as olliepm does) the engine checks at fill time.
 
+### 3.8 Passkeys (planned, M2)
+
+Checked against a live Vaultwarden on 2026-11-27: `bw` returns `login.fido2Credentials`
+(`credentialId`, `rpId`, `keyAlgorithm` ECDSA, `keyCurve` P-256, `keyValue` PKCS8 base64url,
+`userHandle`, `counter`, `discoverable`) and accepts them on `bw create item`. The data was
+inserted by script, not created by a Bitwarden client, so real-client encoding is unverified.
+
+- A passkey is not filled as text: it needs a signature over a challenge. Add an operation
+  `sign` next to `fill`; the private key (Secret class) never leaves the engine.
+- Web: either a Chromium virtual authenticator over CDP, or (works on Firefox too) blindfill
+  intercepts `navigator.credentials.get/create` in the page and signs locally. `rpId` must match
+  the page origin, which reuses the origin-binding policy.
+- `counter` write-back and registration (`create`, writing the new key back to the vault) are
+  open design points.
+- Android: Credential Manager prompts need biometric/device unlock; not promised.
+
 ## 4. Threat model (short)
 
 | Threat                              | Handled by                                                 |
@@ -202,18 +229,18 @@ flow.
 
 ```
 blindfill/
-  src/blindfill/
-    core/        engine, policy, scrubber, audit, grants
-    backends/    bw.py secret_service.py op.py keepassxc.py pass_.py ...  (+ _contract.py)
-    actuators/   web/ android/
-    rules/       heuristics.py  sites/*.json
-    cli.py  mcp.py
-  tests/
-    contract/    backend contract tests (recorded fixtures per backend)
-    sites/       local fake login pages (multi-step, shadow DOM, iframes, SPA)
-    android/     emulator + synthetic app
-  docs/  backends/*.md  SECURITY.md  ARCHITECTURE.md
-  examples/      claude-code, openclaw, cursor MCP configs
+  src/
+    core/        types, field classes, SecretHandle, scrubber, audit, policy
+    backends/    bw, op, rbw, pass, gopass, keepassxc, secret-service, registry, selftest
+      _contract/ contract suite every backend must pass
+    actuators/
+      web/       dom, heuristics, session, web.ts, providers/ (browser providers)
+      android/   stub
+    engine.ts  config.ts  library.ts (withPage)  cli.ts  mcp.ts  harden.ts
+    rules.ts  profiles.ts  password.ts        (in progress: field rules, login recipes, generator)
+  tests/         unit, contract, e2e on local fake sites, leak test, opt-in Firefox tests
+  docs/          ARCHITECTURE.md  RELEASING.md  browsers.md  backends/
+  examples/      MCP config, login script
 ```
 
 ## 6. Testing strategy
@@ -250,23 +277,32 @@ Goal: install in one command, no toolchain explanation.
   first class there. Revisit only if a CDP-only core is wanted.
 - Keep the `SecretHandle` boundary clean so the core can later move to Rust/Go.
 
-## 9. Roadmap
+## 9. Roadmap and status
 
-- **M0** repo, name, invariants, SECURITY.md, backend/actuator SPI, contract tests.
-- **M1** `bw` + `secret-service` backends; web actuator ported from olliepm; CLI + MCP;
-  migrate our own 15 items; one week of dogfooding.
-- **M2** Android actuator ported (host injection) with signer pinning; real-device test on
-  our own accounts only after explicit approval.
-- **M3** blind-written backends (`op`, `keepassxc-cli`, `pass`, `rbw`); selftest command;
-  public release and backend matrix.
+- **M0 done** repo, invariants, SECURITY.md, backend/actuator SPI, contract tests, CI,
+  tag-triggered release workflow (npm Trusted Publishing).
+- **M1 done (alpha)**: `bw` backend (mock CLI and fixtures; JSON shape checked by hand on a live
+  Vaultwarden; no end-to-end run on a live vault yet), web actuator, CLI + MCP, leak test.
+  Blind-written and unverified: `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`.
+- **M1.5 in progress** olliepm parity for web: browser providers (done, Firefox/Camoufox passed
+  against a real Camoufox build, owner's running instance untested), field rules and profiles,
+  discover/diagnose/verify, registration with generated passwords, human handoff.
+  Tracked in `docs/MIGRATING-FROM-OLLIEPM.md` once written.
+- **M2** passkeys (`sign`, section 3.8) for web; Android actuator ported (host injection) with
+  signer pinning; real-device tests on our own accounts only after explicit approval.
+- **M3** community verification of the blind-written backends, public release and backend matrix.
 - **M4** companion AutofillService; community rule packs; desktop actuator exploration.
+- Optional: an attach provider for the already-running Ego Lite, only after an outbound-traffic
+  capture and an operation-log check show filled values do not leak; never labelled "supported".
 
 ## 10. Open questions
 
-1. Final name and whether to claim the GitHub org / PyPI / npm names now.
-2. License.
-3. Rules location: item custom field vs notes vs both (must be validated on a real Vaultwarden
-   item; Bitwarden clients may truncate or hide hidden-type fields).
-4. Whether Bitwarden item URIs of type `androidapp://` are returned intact by the CLI and by
-   Vaultwarden (to be verified with a test item in the agent collection).
-5. How strict the default web match should be (Host vs Base domain).
+Decided: name `blindfill`; license MIT; TypeScript/Node; TOTP code is readable like text.
+
+1. Rules location: item custom field vs notes vs both (validate on a real Vaultwarden item;
+   Bitwarden clients may truncate or hide hidden-type fields).
+2. Does Vaultwarden return `androidapp://` URIs intact for items created by the real clients?
+   (Created by script: returned intact; real-client check pending.)
+3. How strict the default web match should be (Host vs Base domain). Current default: Host.
+4. Passkey encoding written by real Bitwarden clients, counter write-back, and registration.
+5. Ego Lite attach provider: needs the traffic and operation-log review first.
