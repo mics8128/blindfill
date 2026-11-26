@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "description": "Placeholder. Reserved name.",
   "license": "UNLICENSED",
-  "repository": "github:mics8128/blindfill",
-  "files": ["README.md"]
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mics8128/blindfill.git"
+  },
+  "files": [
+    "README.md"
+  ]
 }
