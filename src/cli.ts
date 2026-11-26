@@ -12,6 +12,7 @@ import { BlindfillError } from './core/types.js';
 import { attach, attachSession, loadSession, startSession, stopSession } from './actuators/web/session.js';
 import { redactEndpoint, resolveEndpoint } from './actuators/web/providers/util.js';
 import type { Expect } from './actuators/web/web.js';
+import { createProfile, loadProfile, type ProfileDoc } from './profiles.js';
 
 const VERSION = (() => {
   try {
@@ -34,6 +35,11 @@ Commands:
   candidates [--role r]       list field candidates (names only)
   backend list                list backends and their support tier
   backend selftest [id]       round-trip a fake item through a backend (--fixture for offline)
+  register --rule <id>        fill a registration form from an opted-in item (fill-only unless --submit)
+  page list|discover|diagnose|verify
+                              open pages (origin+path), planned fields, structural diagnosis, outcome evidence
+  profile init|validate|login login recipes: init <name> --item id --origin o --rule id; validate <name>;
+                              login <name> [--check|--diagnose] [--submit] [--page n] [--revision sha]
   session start|stop|status   manage the local Chromium session
   mcp                         run the MCP server on stdio
 
@@ -62,6 +68,14 @@ const { values, positionals } = parseArgs({
     'endpoint-file': { type: 'string' },
     browser: { type: 'string' },
     page: { type: 'string' },
+    rule: { type: 'string' },
+    name: { type: 'string' },
+    origin: { type: 'string' },
+    revision: { type: 'string' },
+    'success-selector': { type: 'string' },
+    check: { type: 'boolean' },
+    diagnose: { type: 'boolean' },
+    registration: { type: 'boolean' },
     executable: { type: 'string' },
     backend: { type: 'string' },
     role: { type: 'string' },
@@ -130,6 +144,7 @@ function fillRequest(): FillRequest {
     url: values.url as string | undefined,
     submit: values.submit === true && values['no-submit'] !== true,
     expect: expectSpec(),
+    rule: values.rule as string | undefined,
   };
 }
 
@@ -255,6 +270,127 @@ async function main(): Promise<number> {
       await disconnect(e);
       out(r);
       return 0;
+    }
+    case 'register': {
+      const e = await engineFor(true);
+      try {
+        const req = fillRequest();
+        if (!req.rule) throw new BlindfillError('POLICY', 'register needs --rule <registration rule id>');
+        out(await e.register({ ...req, rule: req.rule }));
+      } finally {
+        await disconnect(e);
+      }
+      return 0;
+    }
+    case 'page': {
+      if (sub === 'list') {
+        const e = await engineFor(true);
+        try {
+          out(e.pages());
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      if (sub === 'discover' || sub === 'diagnose') {
+        const e = await engineFor(true);
+        try {
+          const req = fillRequest();
+          out(
+            sub === 'discover'
+              ? await e.discover({ ...req, registration: values.registration === true })
+              : await e.diagnose({ item: req.item, query: req.query, rule: req.rule, url: req.url }),
+          );
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      if (sub === 'verify') {
+        const success = values['success-selector'] as string | undefined;
+        if (!success)
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill page verify --success-selector <css> [--fail-selector <css>]',
+          );
+        const e = await engineFor(true);
+        try {
+          out(await e.verify({ success, failure: values['fail-selector'] as string | undefined }));
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      throw new BlindfillError('POLICY', 'usage: blindfill page list|discover|diagnose|verify');
+    }
+    case 'profile': {
+      const name = positionals[2];
+      if (!name) throw new BlindfillError('POLICY', 'usage: blindfill profile init|validate|login <name>');
+      if (sub === 'validate') {
+        const p = loadProfile(name);
+        out({ status: 'valid', name: p.name, revision: p.revision, origin: p.doc.web.origin });
+        return 0;
+      }
+      if (sub === 'init') {
+        const item = values.item as string | undefined;
+        const origin = values.origin as string | undefined;
+        const rule = values.rule as string | undefined;
+        if (!item || !origin || !rule)
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill profile init <name> --item <id> --origin <origin> --rule <rule id> [--fields a,b] [--submit]',
+          );
+        const e = await engineFor(false);
+        const meta = await e.itemShow({ item });
+        const doc: ProfileDoc = {
+          version: 1,
+          item,
+          item_name: meta.name,
+          web: {
+            origin,
+            rule,
+            ...(values.fields
+              ? {
+                  fields: String(values.fields)
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                }
+              : {}),
+            submit: values.submit === true,
+          },
+        };
+        const { path, profile } = createProfile(name, doc);
+        out({ status: 'created', name, path, revision: profile.revision });
+        return 0;
+      }
+      if (sub === 'login') {
+        const p = loadProfile(name);
+        if (values.revision && values.revision !== p.revision)
+          throw new BlindfillError(
+            'POLICY',
+            'profile_revision_mismatch: the recipe changed since it was reviewed; re-validate it',
+          );
+        const e = await engineFor(true);
+        try {
+          out(
+            await e.runProfile(p, {
+              check: values.check === true,
+              diagnose: values.diagnose === true,
+              submit: values.submit === true ? true : values['no-submit'] === true ? false : undefined,
+              page:
+                values.page !== undefined && /^\d+$/.test(String(values.page))
+                  ? Number(values.page)
+                  : undefined,
+              expect: expectSpec(),
+            }),
+          );
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
+      throw new BlindfillError('POLICY', 'usage: blindfill profile init|validate|login <name>');
     }
     case 'fill': {
       const e = await engineFor(true);

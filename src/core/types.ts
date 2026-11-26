@@ -47,6 +47,10 @@ export interface ControlFields {
   signers: string[];
   rules?: unknown;
   notesReadable: boolean;
+  /** opt-in (blindfill.registration=allow): the item may be used with register_credentials */
+  registration: boolean;
+  /** blindfill.password_policy JSON (data only) */
+  passwordPolicy?: unknown;
 }
 
 /**

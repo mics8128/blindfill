@@ -137,10 +137,69 @@ export function buildServer(): McpServer {
           .optional()
           .describe('Navigate here first. The binding is checked against where the browser ends up.'),
         submit: z.boolean().optional().describe('Submit once after filling (default false).'),
+        rule: z
+          .string()
+          .optional()
+          .describe('Explicit field-rule id from the item rules (chosen by origin when omitted).'),
         expect: expectShape,
       },
     },
     (a) => run(async () => (await getEngine()).fill(a)),
+  );
+  server.registerTool(
+    'list_pages',
+    {
+      description: `List the open pages of the attached browser context as origin + path only (no query, no titles, no values). ${CONTRACT}`,
+      inputSchema: {},
+    },
+    () => run(async () => (await getEngine()).pages()),
+  );
+  server.registerTool(
+    'discover_fields',
+    {
+      description: `Plan a fill without doing it: which item fields and rule would be used on this page. Reads no secret and touches no field. Refused after a secret fill. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        url: urlArg,
+        rule: z.string().optional(),
+        registration: z.boolean().optional().describe('Plan a registration rule instead of a login.'),
+        submit: z.boolean().optional().describe('Also validate that the rule submit control is usable.'),
+      },
+    },
+    (a) => run(async () => (await getEngine()).discover(a)),
+  );
+  server.registerTool(
+    'diagnose_fields',
+    {
+      description: `Structural, value-free diagnosis of the page (counts, tags, types, DOM paths; never values or raw attributes) and of the rule mapping when a rule is given. Refused after a secret fill. ${CONTRACT}`,
+      inputSchema: { ...itemSel, url: urlArg, rule: z.string().optional() },
+    },
+    (a) => run(async () => (await getEngine()).diagnose(a)),
+  );
+  server.registerTool(
+    'verify_login',
+    {
+      description: `Report whether caller-supplied page evidence (CSS selectors) is visible: success/failure booleans only. It proves nothing about identity. Allowed after the lock. ${CONTRACT}`,
+      inputSchema: {
+        success: z.string().describe('Structural CSS selector that is visible when logged in.'),
+        failure: z.string().optional().describe('Structural CSS selector visible on failure.'),
+      },
+    },
+    (a) => run(async () => (await getEngine()).verify(a)),
+  );
+  server.registerTool(
+    'register_credentials',
+    {
+      description: `Fill an account-registration form using the stored password of an item that opted in (custom field blindfill.registration=allow) and an explicit registration rule. The same stored value is typed into the password and confirmation fields; nothing is returned. Fill-only unless submit=true; at most one submit; never retried. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        rule: z.string().describe('Registration rule id (required; never inferred).'),
+        url: z.string().optional(),
+        submit: z.boolean().optional(),
+        expect: expectShape,
+      },
+    },
+    (a) => run(async () => (await getEngine()).register(a)),
   );
   server.registerTool(
     'fill_totp',

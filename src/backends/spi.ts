@@ -32,7 +32,12 @@ export interface Backend {
   totpCode(ref: ItemRef): Promise<string>;
 }
 
-export const DEFAULT_CONTROL: ControlFields = { submit: 'once', signers: [], notesReadable: false };
+export const DEFAULT_CONTROL: ControlFields = {
+  submit: 'once',
+  signers: [],
+  notesReadable: false,
+  registration: false,
+};
 
 /** Parse blindfill.* control fields given as name -> value. Shared by backends. */
 export function parseControl(fields: Record<string, string>): ControlFields {
@@ -46,7 +51,14 @@ export function parseControl(fields: Record<string, string>): ControlFields {
         .map((s) => s.trim())
         .filter(Boolean);
     else if (key === 'blindfill.notes') c.notesReadable = v.trim().toLowerCase() === 'readable';
-    else if (key === 'blindfill.rules') {
+    else if (key === 'blindfill.registration') c.registration = v.trim().toLowerCase() === 'allow';
+    else if (key === 'blindfill.password_policy') {
+      try {
+        c.passwordPolicy = JSON.parse(v);
+      } catch {
+        c.passwordPolicy = undefined;
+      }
+    } else if (key === 'blindfill.rules') {
       try {
         c.rules = JSON.parse(v);
       } catch {

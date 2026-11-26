@@ -165,7 +165,7 @@ const meta = (uris: { uri: string; match: any }[], extra: Partial<ItemMeta> = {}
   readable: {},
   secretFields: ['password'],
   hasTotp: false,
-  control: { submit: 'once', signers: [], notesReadable: false },
+  control: { submit: 'once', signers: [], notesReadable: false, registration: false },
   ...extra,
 });
 
@@ -226,7 +226,7 @@ describe('policy: match types', () => {
   });
   it('android binding needs package + pinned signer', () => {
     const m = meta([{ uri: 'androidapp://com.x.y', match: 'host' }], {
-      control: { submit: 'once', signers: ['aa:bb:cc'], notesReadable: false },
+      control: { submit: 'once', signers: ['aa:bb:cc'], notesReadable: false, registration: false },
     });
     expect(checkAndroidBinding('com.x.y', 'AABBCC', m).ok).toBe(true);
     expect(checkAndroidBinding('com.x.y', 'AABBCD', m).ok).toBe(false);
