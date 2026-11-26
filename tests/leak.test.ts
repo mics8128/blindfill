@@ -233,6 +233,7 @@ describe('leak test: canary password never appears anywhere', () => {
       'discover_fields',
       'fill',
       'fill_totp',
+      'human_handoff',
       'item_show',
       'list_pages',
       'probe',
@@ -263,6 +264,16 @@ describe('leak test: canary password never appears anywhere', () => {
     expect(dsc.content[0].text).toContain('"planned"');
     const dg = await call('diagnose_fields', { item: 'leak-rule', rule: 'main' });
     expect(dg.content[0].text).toContain('values_exposed');
+    const hp = await call('human_handoff', { action: 'pause', reason: 'captcha' });
+    expect(hp.content[0].text).toContain('"paused"');
+    expect((await call('fill', { item: 'leak-item', url: good('/simple'), submit: true })).isError).toBe(
+      true,
+    );
+    expect((await call('probe')).isError).toBe(true);
+    expect((await call('list_pages')).isError).toBeFalsy();
+    const hr = await call('human_handoff', { action: 'resume' });
+    expect(hr.content[0].text).toContain('"active"');
+    sites.received.length = 0;
     const bad = await call('fill', {
       item: 'leak-item',
       url: `http://evil.localhost:${sites.port}/simple`,

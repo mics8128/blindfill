@@ -39,6 +39,7 @@ Commands:
   candidates [--role r]       list field candidates (names only)
   backend list                list backends and their support tier
   backend selftest [id]       round-trip a fake item through a backend (--fixture for offline)
+  handoff pause|resume|status hand the browser to a person (CAPTCHA/consent/MFA); agent actions are refused meanwhile
   register --rule <id>        fill a registration form from an opted-in item (fill-only unless --submit)
   page list|discover|diagnose|verify
                               open pages (origin+path), planned fields, structural diagnosis, outcome evidence
@@ -73,6 +74,7 @@ const { values, positionals } = parseArgs({
     browser: { type: 'string' },
     page: { type: 'string' },
     rule: { type: 'string' },
+    reason: { type: 'string' },
     username: { type: 'string' },
     'display-name': { type: 'string' },
     length: { type: 'string' },
@@ -230,6 +232,7 @@ async function main(): Promise<number> {
                 ),
                 endpointFile: s.endpointFile,
                 locked: s.policy.locked,
+                paused: s.policy.paused ?? null,
                 owned: s.owned,
               }
             : { running: false },
@@ -341,6 +344,22 @@ async function main(): Promise<number> {
             );
       await disconnect(e);
       out(r);
+      return 0;
+    }
+    case 'handoff': {
+      const e = await engineFor(true);
+      try {
+        if (sub === 'pause') out(e.handoffPause(String(values.reason ?? 'other')));
+        else if (sub === 'resume') out(e.handoffResume());
+        else if (sub === 'status') out(e.handoffStatus());
+        else
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill handoff pause --reason captcha|consent|mfa|other | resume | status',
+          );
+      } finally {
+        await disconnect(e);
+      }
       return 0;
     }
     case 'register': {

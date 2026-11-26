@@ -147,6 +147,25 @@ export function buildServer(): McpServer {
     (a) => run(async () => (await getEngine()).fill(a)),
   );
   server.registerTool(
+    'human_handoff',
+    {
+      description: `Hand the browser to a human (CAPTCHA, consent screen, push-MFA) or take it back. action=pause stops every agent-driven browser action until action=resume; status shows the state. You only ever see origin+path of open pages; resume does not clear the post-fill lock. ${CONTRACT}`,
+      inputSchema: {
+        action: z.enum(['pause', 'resume', 'status']),
+        reason: z.enum(['captcha', 'consent', 'mfa', 'other']).optional().describe('Required for pause.'),
+      },
+    },
+    ({ action, reason }) =>
+      run(async () => {
+        const e = await getEngine();
+        return action === 'pause'
+          ? e.handoffPause(reason ?? 'other')
+          : action === 'resume'
+            ? e.handoffResume()
+            : e.handoffStatus();
+      }),
+  );
+  server.registerTool(
     'list_pages',
     {
       description: `List the open pages of the attached browser context as origin + path only (no query, no titles, no values). ${CONTRACT}`,

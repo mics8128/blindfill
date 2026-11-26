@@ -124,6 +124,8 @@ interface RulesV1 {
 const fieldRole = (n: string): Role | null =>
   n === 'username' || n === 'password' || n === 'totp' ? n : null;
 
+export const HANDOFF_REASONS = ['captcha', 'consent', 'mfa', 'other'] as const;
+
 export class Engine {
   constructor(
     private backend: Backend,
@@ -132,6 +134,12 @@ export class Engine {
   ) {}
 
   private actuator(): WebActuator {
+    const w = this.rawActuator();
+    w.policy.assertActive('this action');
+    return w;
+  }
+
+  private rawActuator(): WebActuator {
     if (!this.web) throw new BlindfillError('ACTUATOR', 'no browser attached');
     return this.web;
   }
@@ -150,6 +158,62 @@ export class Engine {
         `${refs.length} items match; pass an explicit item id. Candidates: ${refs.map((r) => `${r.id} (${r.name ?? '?'})`).join(', ')}`,
       );
     return refs[0];
+  }
+
+  // ---- human handoff: a person takes the browser (CAPTCHA, consent, push-MFA); blindfill steps aside ----
+
+  private handoffView(): Record<string, unknown> {
+    const act = this.rawActuator();
+    const pages = act.listPages();
+    return {
+      status: act.policy.paused ? 'paused' : 'active',
+      reason: act.policy.paused?.reason ?? null,
+      since: act.policy.paused?.since ?? null,
+      locked: act.policy.locked,
+      pages,
+      secrets_exposed: false,
+    };
+  }
+
+  /**
+   * Pause: from now every agent-driven action (fill, probe, discover, diagnose, verify, register, totp fill)
+   * is refused until resume. The agent learns only origin+path of open pages. The human works in the
+   * visible browser; blindfill never transmits, records or inspects what they do.
+   */
+  handoffPause(reason: string): Record<string, unknown> {
+    const act = this.rawActuator();
+    if (!HANDOFF_REASONS.includes(reason as never))
+      throw new BlindfillError('POLICY', `reason must be one of: ${HANDOFF_REASONS.join(', ')}`);
+    if (act.policy.paused) throw new BlindfillError('POLICY', 'session is already paused');
+    act.policy.paused = { reason, since: new Date().toISOString() };
+    this.persist();
+    audit({ event: 'session', backend: this.backend.id, outcome: `paused:${reason}` });
+    return {
+      ...this.handoffView(),
+      note: 'a human now has the browser; agent actions are refused until handoff resume',
+    };
+  }
+
+  /**
+   * Resume. Nothing is trusted from the pause: the post-fill lock and one-shot counters are untouched, and
+   * the next fill re-checks origin binding against wherever the page is now. The human is not authenticated
+   * (an agent could call resume itself); the controls here limit what an agent can do, not who it is.
+   */
+  handoffResume(): Record<string, unknown> {
+    const act = this.rawActuator();
+    if (!act.policy.paused) throw new BlindfillError('POLICY', 'session is not paused');
+    const reason = act.policy.paused.reason;
+    act.policy.paused = null;
+    this.persist();
+    audit({ event: 'session', backend: this.backend.id, outcome: `resumed:${reason}` });
+    return {
+      ...this.handoffView(),
+      note: 'resumed; lock and one-shot counters unchanged; bindings are re-checked on the next action',
+    };
+  }
+
+  handoffStatus(): Record<string, unknown> {
+    return this.handoffView();
   }
 
   // ---- item creation (needs backend capability WRITE) ----
@@ -595,7 +659,7 @@ export class Engine {
 
   /** Pages of the attached browser context (origin + path only). */
   pages(): unknown {
-    return { status: 'completed', pages: this.actuator().listPages() };
+    return { status: 'completed', pages: this.rawActuator().listPages() };
   }
 
   /** Run a recipe: select one already-open page whose origin matches; no navigation, no new authority. */
