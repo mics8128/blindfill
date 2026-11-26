@@ -12,6 +12,7 @@ import { BlindfillError } from './core/types.js';
 import { attach, attachSession, loadSession, startSession, stopSession } from './actuators/web/session.js';
 import { redactEndpoint, resolveEndpoint } from './actuators/web/providers/util.js';
 import type { Expect } from './actuators/web/web.js';
+import { strictJson } from './rules.js';
 import { createProfile, loadProfile, type ProfileDoc } from './profiles.js';
 
 const VERSION = (() => {
@@ -30,6 +31,9 @@ Commands:
   login <url|web:origin>      open the page, pick the bound item, fill username+password, submit once
   fill                        fill fields on the current page (--fields username,password,totp,<name>)
   item show                   show an item: readable fields only (secret field NAMES, never values)
+  item generate <name>        generate a password (CSPRNG, optional --policy-file) and save it as a new item; never printed
+  item create [name]          create an item; username/password are read from the terminal (hidden)
+  item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy
   totp [--fill]               print the current TOTP code, or fill it into the page
   probe                       describe the current page's form fields (structure only)
   candidates [--role r]       list field candidates (names only)
@@ -69,8 +73,14 @@ const { values, positionals } = parseArgs({
     browser: { type: 'string' },
     page: { type: 'string' },
     rule: { type: 'string' },
+    username: { type: 'string' },
+    'display-name': { type: 'string' },
+    length: { type: 'string' },
+    'policy-file': { type: 'string' },
+    'no-registration': { type: 'boolean' },
+    totp: { type: 'boolean' },
     name: { type: 'string' },
-    origin: { type: 'string' },
+    origin: { type: 'string', multiple: true },
     revision: { type: 'string' },
     'success-selector': { type: 'string' },
     check: { type: 'boolean' },
@@ -229,7 +239,69 @@ async function main(): Promise<number> {
       throw new BlindfillError('POLICY', 'usage: blindfill session start|attach|stop|status');
     }
     case 'item': {
-      if (sub !== 'show') throw new BlindfillError('POLICY', 'usage: blindfill item show --item <id>');
+      const origins = (values.origin as string[] | undefined) ?? [];
+      const policyFile = values['policy-file'] as string | undefined;
+      const policy = policyFile ? strictJson(readFileSync(policyFile, 'utf8')) : undefined;
+      if (sub === 'generate') {
+        const name = positionals[2];
+        if (!name || !values.username)
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill item generate <name> --origin <https origin> [--origin ...] --username <u> [--display-name n] [--length n] [--policy-file f] [--no-registration]',
+          );
+        const e = await engineFor(false);
+        out(
+          await e.itemGenerate({
+            name,
+            origins,
+            username: String(values.username),
+            displayName: values['display-name'] as string | undefined,
+            length: values.length ? Number(values.length) : undefined,
+            policy,
+            registration: values['no-registration'] === true ? false : true,
+          }),
+        );
+        return 0;
+      }
+      if (sub === 'create') {
+        if (!process.stdin.isTTY || !process.stderr.isTTY)
+          throw new BlindfillError(
+            'POLICY',
+            'item create reads the password from a terminal; use item generate for scripted use',
+          );
+        const username = String(values.username ?? (await readLine('Username: ')));
+        const password = await readHidden('Password: ');
+        if (password !== (await readHidden('Confirm password: ')))
+          throw new BlindfillError('POLICY', 'the two passwords differ; nothing was saved');
+        const seed = values.totp ? await readHidden('TOTP seed: ') : undefined;
+        const e = await engineFor(false);
+        out(
+          await e.itemCreate({
+            name: positionals[2],
+            origins,
+            username,
+            password,
+            totpSeed: seed || undefined,
+            policy,
+          }),
+        );
+        return 0;
+      }
+      if (sub === 'password-policy') {
+        const e = await engineFor(false);
+        out(
+          await e.itemPasswordPolicy(
+            {
+              item: (values.item as string | undefined) ?? positionals[2],
+              query: values.query as string | undefined,
+            },
+            policy,
+          ),
+        );
+        return 0;
+      }
+      if (sub !== 'show')
+        throw new BlindfillError('POLICY', 'usage: blindfill item show|generate|create|password-policy');
       const e = await engineFor(false);
       out(
         await e.itemShow({
@@ -333,7 +405,7 @@ async function main(): Promise<number> {
       }
       if (sub === 'init') {
         const item = values.item as string | undefined;
-        const origin = values.origin as string | undefined;
+        const origin = (values.origin as string[] | undefined)?.[0];
         const rule = values.rule as string | undefined;
         if (!item || !origin || !rule)
           throw new BlindfillError(
@@ -431,6 +503,48 @@ async function main(): Promise<number> {
       process.stderr.write(HELP);
       return 1;
   }
+}
+
+function readLine(prompt: string): Promise<string> {
+  return new Promise((res) => {
+    process.stderr.write(prompt);
+    process.stdin.setEncoding('utf8');
+    process.stdin.once('data', (d) => {
+      process.stdin.pause();
+      res(String(d).replace(/\r?\n$/, ''));
+    });
+  });
+}
+/** Read without echo (TTY only). The typed value is never printed. */
+function readHidden(prompt: string): Promise<string> {
+  return new Promise((res, rej) => {
+    process.stderr.write(prompt);
+    const stdin = process.stdin;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    let buf = '';
+    const onData = (ch: string) => {
+      for (const c of ch) {
+        if (c === '\u0003') {
+          stdin.setRawMode(false);
+          stdin.off('data', onData);
+          process.stderr.write('\n');
+          return rej(new BlindfillError('POLICY', 'cancelled'));
+        }
+        if (c === '\r' || c === '\n') {
+          stdin.setRawMode(false);
+          stdin.pause();
+          stdin.off('data', onData);
+          process.stderr.write('\n');
+          return res(buf);
+        }
+        if (c === '\u007f') buf = buf.slice(0, -1);
+        else buf += c;
+      }
+    };
+    stdin.on('data', onData);
+  });
 }
 
 /** Disconnect from a CDP-attached browser without closing it. */

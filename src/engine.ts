@@ -14,7 +14,12 @@ import type {
 import type { Role } from './actuators/web/heuristics.js';
 import { loadLocalRules, parseRulesValue, type ParsedRules, type Rule } from './rules.js';
 import type { Profile } from './profiles.js';
-import { passwordMatches, validatePasswordPolicy, type PasswordPolicy } from './password.js';
+import {
+  generatePassword,
+  passwordMatches,
+  validatePasswordPolicy,
+  type PasswordPolicy,
+} from './password.js';
 
 export interface ItemSelector {
   /** backend item id */
@@ -145,6 +150,152 @@ export class Engine {
         `${refs.length} items match; pass an explicit item id. Candidates: ${refs.map((r) => `${r.id} (${r.name ?? '?'})`).join(', ')}`,
       );
     return refs[0];
+  }
+
+  // ---- item creation (needs backend capability WRITE) ----
+
+  private writable(): Backend & Required<Pick<Backend, 'createItem' | 'updateSecret' | 'updateItem'>> {
+    const b = this.backend;
+    if (!b.capabilities.has('WRITE') || !b.createItem || !b.updateSecret || !b.updateItem)
+      throw new BlindfillError(
+        'UNSUPPORTED',
+        `backend "${b.id}" cannot write items; create the item in the vault app`,
+      );
+    return b as never;
+  }
+
+  /** Exact origin only: https (or http on loopback for local development); no path, query or credentials. */
+  static canonicalOrigin(value: string): string {
+    let u: URL;
+    try {
+      u = new URL(value);
+    } catch {
+      throw new BlindfillError('POLICY', 'invalid origin');
+    }
+    const loopback =
+      u.hostname === 'localhost' ||
+      u.hostname.endsWith('.localhost') ||
+      u.hostname === '127.0.0.1' ||
+      u.hostname === '[::1]';
+    if (
+      !(u.protocol === 'https:' || (u.protocol === 'http:' && loopback)) ||
+      (u.pathname !== '/' && u.pathname !== '') ||
+      u.search ||
+      u.hash ||
+      u.username ||
+      u.password
+    )
+      throw new BlindfillError(
+        'POLICY',
+        'origin must be an exact https origin (scheme://host[:port]); http only for localhost',
+      );
+    return u.origin;
+  }
+
+  private async assertNameFree(name: string): Promise<void> {
+    if (
+      !name ||
+      name.length > 100 ||
+      [...name].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)
+    )
+      throw new BlindfillError('POLICY', 'item name must be 1-100 printable characters');
+    const same = (await this.backend.find({ query: name })).filter((r) => r.name === name);
+    if (same.length) throw new BlindfillError('POLICY', 'an item with this name already exists');
+  }
+
+  /**
+   * Generate a password under an optional data-only policy and save it as a new item. The value is written
+   * straight to the backend and is never returned, printed or logged. Does not touch any website.
+   * The item is created with blindfill.registration=allow unless `registration` is false (generating a
+   * password is how a registration is prepared).
+   */
+  async itemGenerate(req: {
+    name: string;
+    origins: string[];
+    username: string;
+    displayName?: string;
+    length?: number;
+    policy?: unknown;
+    registration?: boolean;
+  }): Promise<Record<string, unknown>> {
+    const b = this.writable();
+    if (!req.username || (req.displayName !== undefined && !req.displayName))
+      throw new BlindfillError('POLICY', 'username must be non-empty');
+    if (!req.origins?.length) throw new BlindfillError('POLICY', 'at least one origin is required');
+    const origins = req.origins.map((o) => Engine.canonicalOrigin(o));
+    const policy = req.policy === undefined ? undefined : validatePasswordPolicy(req.policy);
+    await this.assertNameFree(req.name);
+    const password = generatePassword(policy, req.length);
+    globalScrubber.register(password);
+    const fields: Record<string, string> = {};
+    if (req.displayName !== undefined) fields.display_name = req.displayName;
+    if (req.registration !== false) fields['blindfill.registration'] = 'allow';
+    if (policy) fields['blindfill.password_policy'] = JSON.stringify(policy);
+    const ref = await b.createItem({
+      name: req.name,
+      username: req.username,
+      uris: origins,
+      password,
+      fields,
+    });
+    audit({ event: 'item', backend: b.id, item: ref.id, outcome: 'generated' });
+    return {
+      status: 'completed',
+      id: ref.id,
+      name: req.name,
+      origins,
+      password_generated: true,
+      secret_exposed: false,
+      registration_enabled: req.registration !== false,
+      registration_outcome: 'not_attempted',
+    };
+  }
+
+  /** Create an item from values the caller already holds (the CLI reads the password from a TTY). */
+  async itemCreate(req: {
+    name?: string;
+    origins: string[];
+    username: string;
+    password: string;
+    totpSeed?: string;
+    policy?: unknown;
+  }): Promise<Record<string, unknown>> {
+    const b = this.writable();
+    if (!req.origins?.length) throw new BlindfillError('POLICY', 'at least one origin is required');
+    const origins = req.origins.map((o) => Engine.canonicalOrigin(o));
+    const name = req.name ?? `${new URL(origins[0]).host}/${req.username}`;
+    await this.assertNameFree(name);
+    globalScrubber.register(req.password);
+    if (req.totpSeed) globalScrubber.register(req.totpSeed);
+    const policy = req.policy === undefined ? undefined : validatePasswordPolicy(req.policy);
+    const ref = await b.createItem({
+      name,
+      username: req.username,
+      uris: origins,
+      password: req.password,
+      totpSeed: req.totpSeed,
+      fields: policy ? { 'blindfill.password_policy': JSON.stringify(policy) } : undefined,
+    });
+    audit({ event: 'item', backend: b.id, item: ref.id, outcome: 'created' });
+    return { status: 'completed', id: ref.id, name, origins, secret_exposed: false };
+  }
+
+  /** Read or replace only the non-secret password policy of an item; never changes the password. */
+  async itemPasswordPolicy(sel: ItemSelector, policy?: unknown): Promise<Record<string, unknown>> {
+    const ref = await this.resolveItem(sel);
+    if (policy !== undefined) {
+      const v = validatePasswordPolicy(policy);
+      await this.writable().updateItem(ref, { fields: { 'blindfill.password_policy': JSON.stringify(v) } });
+      audit({ event: 'item', backend: this.backend.id, item: ref.id, outcome: 'policy_updated' });
+    }
+    const meta = await this.backend.meta(ref);
+    return {
+      status: 'completed',
+      id: ref.id,
+      password_policy: meta.control.passwordPolicy ?? null,
+      policy_updated: policy !== undefined,
+      password_changed: false,
+    };
   }
 
   async itemShow(sel: ItemSelector): Promise<ReadableItem> {

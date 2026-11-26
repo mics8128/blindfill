@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Mock `bw` for tests. Items come from the JSON file in BLINDFILL_MOCK_BW_ITEMS.
 // Requires BW_SESSION=mock-session-token, otherwise behaves like a locked vault.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { createHmac } from 'node:crypto';
 
 const args = process.argv.slice(2).filter((a) => a !== '--nointeraction');
@@ -56,4 +57,19 @@ if (verb === 'list' && what === 'items') {
   const it = items.find((i) => i.id === arg);
   if (!it || !it.login?.totp) fail('Not found.');
   console.log(totp(it.login.totp));
+} else if ((verb === 'create' || verb === 'edit') && what === 'item') {
+  // body comes by stdin (base64 JSON); passing it as an argument would expose it in ps, so reject that
+  if (verb === 'create' ? arg !== undefined : arg2 !== undefined) fail('mock: item JSON must come by stdin');
+  const body = JSON.parse(Buffer.from(readFileSync(0, 'utf8').trim(), 'base64').toString('utf8'));
+  const file = process.env.BLINDFILL_MOCK_BW_ITEMS;
+  if (verb === 'create') {
+    body.id = randomUUID();
+    items.push(body);
+  } else {
+    const i = items.findIndex((x) => x.id === arg);
+    if (i < 0) fail('Not found.');
+    items[i] = { ...body, id: arg };
+  }
+  writeFileSync(file, JSON.stringify(items));
+  console.log(JSON.stringify(verb === 'create' ? body : items.find((x) => x.id === arg)));
 } else fail('mock: unsupported command ' + args.join(' '));
