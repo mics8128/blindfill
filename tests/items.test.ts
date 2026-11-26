@@ -279,7 +279,7 @@ describe('item admin', () => {
     const sensitive: Partial<Parameters<Engine['itemEdit']>[1]>[] = [
       { origins: ['https://evil.example'] },
       { set: { 'blindfill.registration': 'allow' } },
-      { set: { 'Blindfill.Rules': '{}' } },
+      { set: { 'Blindfill.Rules': '{"version":2,"rules":[]}' } },
       { secrets: { password: 'new-secret-value-1!' } },
     ];
     for (const s of sensitive)

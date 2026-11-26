@@ -34,22 +34,34 @@
 | Bitwarden / Vaultwarden（`bw`）                                                                     | 已驗證（模擬 CLI + 測試資料） | 項目 JSON 格式另以人工對照過真實 Vaultwarden。blindfill 對真實 Vault 的端到端測試：尚未。   |
 | 1Password（`op`）、rbw、pass、gopass、KeePassXC（`keepassxc-cli`）、Secret Service（`secret-tool`） | 盲寫、未驗證                  | 僅在測試資料上通過共用契約測試。歡迎執行 `blindfill backend selftest <id>` 並提交後端回報。 |
 
-| 目標                                                        | 狀態             |
-| ----------------------------------------------------------- | ---------------- |
-| Chromium（Playwright 內建，或透過本機 CDP 連接的 Chromium） | 支援，已測試     |
-| Firefox / Camoufox、WebKit/Safari                           | 尚未支援         |
-| Android                                                     | 尚未實作（空殼） |
-| Passkey                                                     | 不支援           |
+| 瀏覽器                                                                            | 狀態                                                                                             |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Chromium：Playwright 內建、任何 Chromium 組建（`--executable`），或本機回環 CDP   | 支援，已測試                                                                                     |
+| Firefox / Camoufox，透過本機回環 Playwright 伺服器（`--browser firefox-connect`） | 已測試（選用測試套件），版本為 Camoufox 158.0.1-beta.41 與 159.0-beta.43；長時間執行的實例未測試 |
+| Ego Lite                                                                          | 僅限獨立、空白設定檔的實例（`--executable`）；不支援連接執行中的應用程式                         |
+| WebKit / Safari                                                                   | 不支援                                                                                           |
+| Android                                                                           | 尚未實作（stub）                                                                                 |
+| Passkey                                                                           | 網頁登入，僅 Chromium（以假 relying party 測試）；不回寫計數器、不支援註冊                       |
+
+瀏覽器提供者及其契約：[docs/browsers.md](docs/browsers.md)。
 
 ## 已可運作（由測試套件驗證）
 
-- Web actuator（Playwright + Chromium）：來源綁定、拒絕跨來源 iframe、略過蜜罐（honeypot）欄位、等待 SPA 渲染、按鍵事件備援、單次送出、填寫後鎖定。
-- Bitwarden `bw` 後端（以模擬 CLI 與測試資料驗證），另有六個後端屬於**盲寫且未經驗證**（見 `docs/backends/`）。
-- CLI 與 MCP 伺服器（stdio）。洩漏測試會以 canary 密碼掃描所有輸出與狀態檔案。
+- **網頁填寫**：依密碼庫項目綁定來源、拒絕跨來源 iframe、略過蜜罐欄位、等待 SPA、單次送出、填寫後鎖定。
+- **欄位規則與登入設定檔**：在項目（`blindfill.rules`）或本機設定檔中為各網站指定精確選擇器，用於啟發式無法辨識的表單。規則選擇器為純 CSS，不含值或狀態探測。
+- **頁面工具**：`page discover|diagnose|verify|list` 只回報結構與布林值，絕不回傳內容值；工作階段鎖定時一律拒絕。
+- **註冊**：`item generate` 以 CSPRNG 產生密碼並建立項目，密碼不會顯示；`register` 將其輸入綁定來源上的註冊表單（密碼與確認欄位）。
+- **項目管理**：`item list|status|rename|edit`。機密值、來源與 `blindfill.*` 欄位只能在終端機中變更。沒有 `item reveal`。
+- **人工接手**：`handoff pause|resume` 將瀏覽器交給人處理 CAPTCHA、同意頁或 MFA；期間拒絕代理動作，且恢復後鎖定仍然有效。
+- **介面**：CLI、MCP 伺服器（stdio）與函式庫 API（`withPage(page, …)`）。
+- **洩漏測試**：填寫、規則、設定檔、頁面工具、註冊、項目管理與人工接手皆透過 CLI 與 MCP 執行，使用 canary 密碼與產生的密碼；所有輸出、錯誤、`DEBUG=pw:api` 日誌與狀態檔案都以原文、URL、Base64 與十六進位形式搜尋。
 
 ## 尚未完成
 
-- Android actuator（僅為會拋出錯誤的 stub）。所有後端都尚未以真實保險庫驗證。尚未發布。尚不支援 passkey。
+- Android actuator（stub）。Passkey 計數器回寫與註冊。WebKit。
+- `bw` 對真實密碼庫的端到端測試。其餘六個後端為盲寫且未驗證。
+- 尚未發布到 npm（`latest` 為空的佔位版本）。
+- 從 olliepm 遷移：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。
 
 ## 快速試用
 

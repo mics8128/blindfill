@@ -239,6 +239,22 @@ export function buildServer(): McpServer {
     (a) => run(async () => (await getEngine()).fillTotp(a)),
   );
   server.registerTool(
+    'passkey_sign',
+    {
+      description: `Sign in with the item's passkey (Chromium only). The item must bind this page and its rpId must cover the host; the private key goes to a temporary browser authenticator and is never returned. Pass click (structural CSS) for the page's passkey button; answered at most once. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        url: urlArg,
+        click: z
+          .string()
+          .optional()
+          .describe('Button that starts the page passkey sign-in (structural CSS).'),
+        expect: expectShape,
+      },
+    },
+    (a) => run(async () => (await getEngine()).passkey(a)),
+  );
+  server.registerTool(
     'session_stop',
     {
       description: `Stop the browser session and clear the post-fill lock and one-shot counters. ${CONTRACT}`,

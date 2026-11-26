@@ -37,25 +37,42 @@ Output below is illustrative; field names may differ slightly.
 | Bitwarden / Vaultwarden (`bw`)                                                                   | verified (mock CLI + fixtures) | Item JSON shape also checked by hand against a live Vaultwarden. blindfill end to end on a live vault: not yet.   |
 | 1Password (`op`), rbw, pass, gopass, KeePassXC (`keepassxc-cli`), Secret Service (`secret-tool`) | blind-written, unverified      | Pass the shared contract tests on fixtures only. Run `blindfill backend selftest <id>` and open a backend report. |
 
-| Target                                                          | Status                 |
-| --------------------------------------------------------------- | ---------------------- |
-| Chromium (Playwright bundled, or any Chromium via loopback CDP) | supported, tested      |
-| Firefox / Camoufox, WebKit/Safari                               | not supported yet      |
-| Android                                                         | not implemented (stub) |
-| Passkeys                                                        | not supported          |
+| Browser                                                                            | Status                                                                                                     |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Chromium: Playwright bundled, any Chromium build (`--executable`), or loopback CDP | supported, tested                                                                                          |
+| Firefox / Camoufox via a loopback Playwright server (`--browser firefox-connect`)  | tested (opt-in suite) against Camoufox 158.0.1-beta.41 and 159.0-beta.43; a long-running instance untested |
+| Ego Lite                                                                           | only as a separate, empty-profile instance (`--executable`); attaching to the running app is unsupported   |
+| WebKit / Safari                                                                    | not supported                                                                                              |
+| Android                                                                            | not implemented (stub)                                                                                     |
+| Passkeys                                                                           | web sign-in, Chromium only (tested against a fake relying party); no counter write-back, no registration   |
+
+Browser providers and their contract: [docs/browsers.md](docs/browsers.md).
 
 ## What works (verified by the test suite)
 
-- Web actuator (Playwright + Chromium) with origin binding, cross-origin-iframe refusal, honeypot
-  skipping, SPA waits, key-event fallback, one-shot submit, post-fill lock.
-- Bitwarden `bw` backend (against a mock CLI and fixtures), plus six other backends that are
-  **blind-written and unverified** (see `docs/backends/`).
-- CLI and MCP server (stdio). A leak test greps all output and state files for a canary password.
+- **Web fill**: origin binding from the vault item, cross-origin-iframe refusal, honeypot skipping, SPA
+  waits, one-shot submit, post-fill lock.
+- **Field rules and login profiles**: exact selectors per site in the item (`blindfill.rules`) or a local
+  profile, for forms heuristics cannot read. Rule selectors are plain CSS without value or state probes.
+- **Page tools**: `page discover|diagnose|verify|list` report structure and booleans, never values, and are
+  refused while the session is locked.
+- **Registration**: `item generate` creates an item with a CSPRNG password that is never shown;
+  `register` types it into a sign-up form (password and confirmation) on a bound origin.
+- **Item admin**: `item list|status|rename|edit`. Secret values, origins and `blindfill.*` fields change only
+  at a terminal. There is no `item reveal`.
+- **Human handoff**: `handoff pause|resume` hands the browser to a person for a CAPTCHA, consent or MFA;
+  agent actions are refused meanwhile, and the lock survives resume.
+- **Interfaces**: CLI, MCP server (stdio) and a library API (`withPage(page, …)`).
+- **Leak test**: fill, rules, profiles, page tools, registration, item admin and handoff run through the CLI
+  and MCP with a canary password and a generated one; all output, errors, `DEBUG=pw:api` logs and state
+  files are searched in raw, URL, Base64 and hex forms.
 
 ## Not done
 
-- Android actuator (stub that throws). No live-vault verification of any backend. Not published.
-  Passkeys are not supported.
+- Android actuator (stub). Passkey counter write-back and registration. WebKit.
+- `bw` end to end against a live vault. The other six backends are blind-written and unverified.
+- Not published to npm (`latest` is an empty placeholder).
+- Moving from olliepm: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).
 
 ## Try it
 

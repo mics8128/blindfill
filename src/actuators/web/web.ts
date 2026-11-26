@@ -2,6 +2,8 @@ import type { ElementHandle, Frame, Page } from 'playwright-core';
 import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
+import type { SecretHandle } from '../../core/secret.js';
+import type { BwFido2Credential } from '../../backends/bwmap.js';
 import {
   DESCRIBE_FIELD,
   DIAGNOSE,
@@ -612,7 +614,72 @@ export class WebActuator {
     }
   }
 
+  /**
+   * Passkey sign-in (ARCHITECTURE 3.8): the credential is loaded into a per-page Chromium virtual
+   * authenticator over CDP, the page's own navigator.credentials.get() uses it, and it is removed
+   * after the first assertion or the timeout. The private key goes handle -> CDP -> Chromium; the
+   * page and the caller never receive it.
+   */
+  async passkeyAssert(
+    handle: SecretHandle,
+    opts: { click?: string; timeoutMs?: number } = {},
+  ): Promise<{ asserted: boolean; signCount: number | null }> {
+    if (!this.capabilities.cdp)
+      throw new BlindfillError('UNSUPPORTED', 'passkeys need a Chromium provider with CDP');
+    if (opts.click) assertSafeEvidenceSelector(opts.click);
+    const cdp = await this.page.context().newCDPSession(this.page);
+    let authenticatorId: string | undefined;
+    try {
+      await cdp.send('WebAuthn.enable', { enableUI: false });
+      ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+          protocol: 'ctap2',
+          ctap2Version: 'ctap2_1',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
+      }));
+      const asserted = new Promise<number>((res) =>
+        cdp.on('WebAuthn.credentialAsserted', (e) => res(e.credential.signCount)),
+      );
+      await handle.into(async (buf) => {
+        const c = JSON.parse(buf.toString('utf8')) as BwFido2Credential;
+        await cdp.send('WebAuthn.addCredential', {
+          authenticatorId: authenticatorId!,
+          credential: {
+            credentialId: credentialIdBase64(c.credentialId ?? ''),
+            isResidentCredential: true,
+            rpId: c.rpId ?? '',
+            privateKey: Buffer.from(c.keyValue ?? '', 'base64url').toString('base64'),
+            userHandle: c.userHandle ? Buffer.from(c.userHandle, 'base64url').toString('base64') : undefined,
+            signCount: Number(c.counter ?? 0) || 0,
+          },
+        });
+      });
+      if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
+      const n = await Promise.race([asserted, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
+      return { asserted: n !== null, signCount: n };
+    } catch (e) {
+      throw wrap(e, 'passkey');
+    } finally {
+      if (authenticatorId)
+        await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId }).catch(() => undefined);
+      await cdp.detach().catch(() => undefined);
+    }
+  }
+
   async close(): Promise<void> {
     if (this.conn) await this.conn.close();
   }
+}
+
+/** Bitwarden stores a credential id as a GUID, or as `b64.<base64url>` for imported passkeys. */
+export function credentialIdBase64(id: string): string {
+  if (id.startsWith('b64.')) return Buffer.from(id.slice(4), 'base64url').toString('base64');
+  const hex = id.replace(/-/g, '');
+  if (!/^[0-9a-f]{32}$/i.test(hex)) throw new BlindfillError('BACKEND', 'unrecognised passkey credential id');
+  return Buffer.from(hex, 'hex').toString('base64');
 }

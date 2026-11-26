@@ -42,6 +42,10 @@ export async function startSites(): Promise<{
       req.on('end', () => {
         const fields = Object.fromEntries(new URLSearchParams(raw));
         received.push({ host, path: u.pathname, fields });
+        if (u.pathname === '/passkey') {
+          res.writeHead(200).end(); // the test verifies the assertion itself
+          return;
+        }
         if (fields.password === CANARY || fields.a2 === CANARY) {
           res.writeHead(302, { location: '/home' });
           res.end();
@@ -55,6 +59,24 @@ export async function startSites(): Promise<{
         return html(page('Sign in', `<h1>Sign in</h1>${loginForm()}`));
       case '/home':
         return html(page('Home', '<h1 id="welcome">Welcome back</h1>'));
+      case '/passkey':
+        // relying party: asks for any discoverable passkey for this host, posts the assertion
+        return html(
+          page(
+            'Passkey',
+            '<h1>Sign in</h1><button id="pk" type="button">Sign in with a passkey</button>',
+            `const b = (x) => btoa(String.fromCharCode(...new Uint8Array(x))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+            document.getElementById('pk').onclick = async () => {
+              const challenge = crypto.getRandomValues(new Uint8Array(32));
+              const c = await navigator.credentials.get({ publicKey: { challenge, rpId: location.hostname, userVerification: 'preferred' } });
+              const r = c.response;
+              const body = new URLSearchParams({ id: c.id, authenticatorData: b(r.authenticatorData),
+                clientDataJSON: b(r.clientDataJSON), signature: b(r.signature), userHandle: r.userHandle ? b(r.userHandle) : '' });
+              const res = await fetch('/passkey', { method: 'POST', body });
+              location.href = res.ok ? '/home' : '/passkey?fail=1';
+            };`,
+          ),
+        );
       case '/step1':
         return html(
           page(

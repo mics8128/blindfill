@@ -69,7 +69,8 @@ export function parseControl(fields: Record<string, string>): ControlFields {
   const c: ControlFields = { ...DEFAULT_CONTROL, signers: [] };
   for (const [k, v] of Object.entries(fields)) {
     const key = k.toLowerCase();
-    if (key === 'blindfill.submit') c.submit = v.trim().toLowerCase() === 'none' ? 'none' : 'once';
+    // anything but an explicit "once" means no submit (fail closed)
+    if (key === 'blindfill.submit') c.submit = v.trim().toLowerCase() === 'once' ? 'once' : 'none';
     else if (key === 'blindfill.signers')
       c.signers = v
         .split(/[,\s]+/)
@@ -81,13 +82,13 @@ export function parseControl(fields: Record<string, string>): ControlFields {
       try {
         c.passwordPolicy = JSON.parse(v);
       } catch {
-        c.passwordPolicy = undefined;
+        c.passwordPolicy = v; // kept raw: validatePasswordPolicy refuses it instead of skipping the policy
       }
     } else if (key === 'blindfill.rules') {
       try {
         c.rules = JSON.parse(v);
       } catch {
-        c.rules = undefined; // malformed rules are ignored, never guessed
+        c.rules = v; // kept raw: parseRulesValue refuses it instead of falling back to heuristics
       }
     }
   }

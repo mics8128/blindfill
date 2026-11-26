@@ -197,20 +197,27 @@ flow.
 - Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
   creates a digest (as olliepm does) the engine checks at fill time.
 
-### 3.8 Passkeys (planned, M2)
+### 3.8 Passkeys (web sign-in built; Chromium only)
 
 Checked against a live Vaultwarden on 2026-11-27: `bw` returns `login.fido2Credentials`
 (`credentialId`, `rpId`, `keyAlgorithm` ECDSA, `keyCurve` P-256, `keyValue` PKCS8 base64url,
 `userHandle`, `counter`, `discoverable`) and accepts them on `bw create item`. The data was
 inserted by script, not created by a Bitwarden client, so real-client encoding is unverified.
 
-- A passkey is not filled as text: it needs a signature over a challenge. Add an operation
-  `sign` next to `fill`; the private key (Secret class) never leaves the engine.
-- Web: either a Chromium virtual authenticator over CDP, or (works on Firefox too) blindfill
-  intercepts `navigator.credentials.get/create` in the page and signs locally. `rpId` must match
-  the page origin, which reuses the origin-binding policy.
-- `counter` write-back and registration (`create`, writing the new key back to the vault) are
-  open design points.
+- Built: `Engine.passkey` (CLI `passkey`, MCP `passkey_sign`). Order: item binding checked
+  against the page, then the item's `passkey.rpId` must equal the page host or a parent of it,
+  then one-shot per session+origin, then the key is read. `WebActuator.passkeyAssert` loads it into a
+  per-page Chromium virtual authenticator over CDP (`WebAuthn.addCredential`), clicks the
+  caller's structural `click` selector, waits for the first `credentialAsserted`, and removes the
+  authenticator. The page runs its own `navigator.credentials.get`; Chromium signs. Tested
+  against a fake relying party that verifies the signature (`tests/passkey.test.ts`).
+- Why CDP and not page-script interception: the key stays in the browser process, never in page
+  JS. Cost: Chromium providers only (`capabilities.cdp`); Firefox/Camoufox and borrowed pages get
+  `UNSUPPORTED`.
+- While armed (up to 15 s), any frame of that page whose origin WebAuthn accepts for the rpId could
+  request the assertion; blindfill does not see which frame asked.
+- Open: `counter` write-back (the result reports `sign_count`, `counter_written_back: false`),
+  registration (`create`), and credentials created by real Bitwarden clients.
 - Android: Credential Manager prompts need biometric/device unlock; not promised.
 
 ## 4. Threat model (short)

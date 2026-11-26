@@ -34,22 +34,34 @@ AI エージェントを、**パスワードを一切見せることなく**Web 
 | Bitwarden / Vaultwarden（`bw`）                                                                     | 検証済み（モック CLI + フィクスチャ） | アイテム JSON の形式は実際の Vaultwarden でも手動で確認済み。実 Vault での blindfill のエンドツーエンド検証は未実施。                        |
 | 1Password（`op`）、rbw、pass、gopass、KeePassXC（`keepassxc-cli`）、Secret Service（`secret-tool`） | 手探り実装・未検証                    | フィクスチャ上で共通コントラクトテストに合格しているのみ。`blindfill backend selftest <id>` を実行してバックエンドレポートをお寄せください。 |
 
-| 対象                                                                | 状況             |
-| ------------------------------------------------------------------- | ---------------- |
-| Chromium（Playwright 同梱、またはループバック CDP 経由の Chromium） | 対応・テスト済み |
-| Firefox / Camoufox、WebKit/Safari                                   | 未対応           |
-| Android                                                             | 未実装（スタブ） |
-| Passkey                                                             | 未対応           |
+| ブラウザ                                                                                    | 状況                                                                                                                |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Chromium：Playwright 同梱、任意の Chromium ビルド（`--executable`）、またはループバック CDP | 対応、テスト済み                                                                                                    |
+| Firefox / Camoufox（ループバックの Playwright サーバー経由、`--browser firefox-connect`）   | テスト済み（オプトインのスイート）：Camoufox 158.0.1-beta.41 と 159.0-beta.43。長時間稼働するインスタンスは未テスト |
+| Ego Lite                                                                                    | 独立した空プロファイルのインスタンスのみ（`--executable`）。実行中のアプリへの接続は非対応                          |
+| WebKit / Safari                                                                             | 非対応                                                                                                              |
+| Android                                                                                     | 未実装（スタブ）                                                                                                    |
+| Passkey                                                                                     | Web ログインのみ、Chromium のみ（偽の relying party でテスト済み）。カウンターの書き戻しと登録は非対応              |
+
+ブラウザプロバイダーとその契約：[docs/browsers.md](docs/browsers.md)。
 
 ## 動作するもの（テストスイートで検証済み）
 
-- Web アクチュエーター（Playwright + Chromium）: オリジン束縛、クロスオリジン iframe の拒否、ハニーポット（honeypot）のスキップ、SPA の描画待機、キーイベントによるフォールバック、1 回限りの送信、入力後のロック。
-- Bitwarden `bw` バックエンド（モック CLI とフィクスチャで検証）。ほかに、**手探りで書かれ未検証**のバックエンドが 6 つあります（`docs/backends/` を参照）。
-- CLI と MCP サーバー（stdio）。リークテストが、canary パスワードをすべての出力と状態ファイルから検索します。
+- **Web フォーム入力**：保管庫アイテムによるオリジン紐付け、クロスオリジン iframe の拒否、ハニーポットのスキップ、SPA の待機、1 回限りの送信、入力後ロック。
+- **フィールドルールとログインプロファイル**：ヒューリスティクスで読めないフォーム向けに、サイトごとの正確なセレクターをアイテム（`blindfill.rules`）またはローカルプロファイルで指定。ルールのセレクターは値や状態の探査を含まない純粋な CSS。
+- **ページツール**：`page discover|diagnose|verify|list` は構造と真偽値のみを報告し、値は返さない。セッションがロック中は拒否される。
+- **登録**：`item generate` は CSPRNG で生成した（表示されない）パスワードを持つアイテムを作成。`register` はそれを紐付け済みオリジンの登録フォーム（パスワードと確認欄）に入力する。
+- **アイテム管理**：`item list|status|rename|edit`。秘密の値、オリジン、`blindfill.*` フィールドはターミナルでのみ変更できる。`item reveal` は存在しない。
+- **人への引き継ぎ**：`handoff pause|resume` で CAPTCHA、同意、MFA のためにブラウザを人に渡す。その間エージェントの操作は拒否され、再開後もロックは維持される。
+- **インターフェース**：CLI、MCP サーバー（stdio）、ライブラリ API（`withPage(page, …)`）。
+- **漏えいテスト**：入力、ルール、プロファイル、ページツール、登録、アイテム管理、引き継ぎを CLI と MCP 経由で、canary パスワードと生成パスワードを使って実行。すべての出力、エラー、`DEBUG=pw:api` ログ、状態ファイルを、生、URL、Base64、16 進の各形式で検索する。
 
 ## 未対応
 
-- Android アクチュエーター（例外を投げるだけのスタブ）。どのバックエンドも実際のボールトでは未検証。未公開。パスキー（passkey）は未対応。
+- Android アクチュエーター（スタブ）。Passkey のカウンター書き戻しと登録。WebKit。
+- `bw` の実際の保管庫に対するエンドツーエンド。他の 6 バックエンドは盲検で書かれており未検証。
+- npm には未公開（`latest` は空のプレースホルダー）。
+- olliepm からの移行：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。
 
 ## 試してみる
 

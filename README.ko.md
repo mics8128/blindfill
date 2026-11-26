@@ -34,22 +34,34 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 | Bitwarden / Vaultwarden(`bw`)                                                                 | 검증됨(모의 CLI + 픽스처) | 항목 JSON 형식은 실제 Vaultwarden에서도 수동으로 확인했습니다. 실제 Vault에서의 blindfill 엔드투엔드 검증은 아직 하지 않았습니다. |
 | 1Password(`op`), rbw, pass, gopass, KeePassXC(`keepassxc-cli`), Secret Service(`secret-tool`) | 블라인드 작성, 미검증     | 픽스처에서 공통 계약 테스트만 통과했습니다. `blindfill backend selftest <id>`를 실행하고 백엔드 리포트를 남겨 주세요.             |
 
-| 대상                                                         | 상태           |
-| ------------------------------------------------------------ | -------------- |
-| Chromium(Playwright 번들, 또는 루프백 CDP로 연결한 Chromium) | 지원, 테스트됨 |
-| Firefox / Camoufox, WebKit/Safari                            | 아직 미지원    |
-| Android                                                      | 미구현(스텁)   |
-| Passkey                                                      | 미지원         |
+| 브라우저                                                                         | 상태                                                                                                     |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Chromium: Playwright 번들, 임의의 Chromium 빌드(`--executable`), 또는 루프백 CDP | 지원, 테스트됨                                                                                           |
+| Firefox / Camoufox (루프백 Playwright 서버 경유, `--browser firefox-connect`)    | 테스트됨(옵트인 스위트): Camoufox 158.0.1-beta.41 및 159.0-beta.43. 장시간 실행 중인 인스턴스는 미테스트 |
+| Ego Lite                                                                         | 별도의 빈 프로필 인스턴스로만 지원(`--executable`). 실행 중인 앱에 연결하는 것은 미지원                  |
+| WebKit / Safari                                                                  | 미지원                                                                                                   |
+| Android                                                                          | 미구현(스텁)                                                                                             |
+| Passkey                                                                          | 웹 로그인만, Chromium 전용(가짜 relying party로 테스트). 카운터 기록과 등록은 미지원                     |
+
+브라우저 제공자와 그 계약: [docs/browsers.md](docs/browsers.md).
 
 ## 동작하는 것 (테스트 스위트로 검증됨)
 
-- Web 액추에이터(Playwright + Chromium): 오리진 바인딩, 교차 출처 iframe 거부, 허니팟(honeypot) 필드 건너뛰기, SPA 렌더링 대기, 키 이벤트 폴백, 1회성 제출, 입력 후 잠금.
-- Bitwarden `bw` 백엔드(모의 CLI와 픽스처로 검증), 그리고 **블라인드로 작성되어 검증되지 않은** 백엔드 6개(`docs/backends/` 참고).
-- CLI 및 MCP 서버(stdio). 유출 테스트가 canary 비밀번호를 모든 출력과 상태 파일에서 검색합니다.
+- **웹 입력**: 보관함 항목에 따른 오리진 바인딩, 교차 오리진 iframe 거부, 허니팟 건너뛰기, SPA 대기, 1회 제출, 입력 후 잠금.
+- **필드 규칙과 로그인 프로필**: 휴리스틱이 읽지 못하는 폼을 위해 사이트별 정확한 셀렉터를 항목(`blindfill.rules`) 또는 로컬 프로필에 지정. 규칙 셀렉터는 값이나 상태 탐색이 없는 순수 CSS.
+- **페이지 도구**: `page discover|diagnose|verify|list`는 구조와 불리언만 보고하며 값은 절대 반환하지 않음. 세션이 잠긴 동안은 거부됨.
+- **등록**: `item generate`는 표시되지 않는 CSPRNG 비밀번호가 담긴 항목을 생성. `register`는 이를 바인딩된 오리진의 가입 폼(비밀번호와 확인란)에 입력.
+- **항목 관리**: `item list|status|rename|edit`. 비밀 값, 오리진, `blindfill.*` 필드는 터미널에서만 변경 가능. `item reveal`은 없음.
+- **사람에게 인계**: `handoff pause|resume`으로 CAPTCHA, 동의, MFA를 위해 브라우저를 사람에게 넘김. 그동안 에이전트 동작은 거부되고, 재개 후에도 잠금은 유지됨.
+- **인터페이스**: CLI, MCP 서버(stdio), 라이브러리 API(`withPage(page, …)`).
+- **유출 테스트**: 입력, 규칙, 프로필, 페이지 도구, 등록, 항목 관리, 인계를 CLI와 MCP로 canary 비밀번호와 생성된 비밀번호를 사용해 실행. 모든 출력, 오류, `DEBUG=pw:api` 로그, 상태 파일을 원문, URL, Base64, 16진수 형태로 검색.
 
 ## 미완료
 
-- Android 액추에이터(예외를 던지는 스텁). 어떤 백엔드도 실제 볼트로는 검증되지 않았습니다. 아직 배포되지 않았습니다. 패스키(passkey)는 지원하지 않습니다.
+- Android 액추에이터(스텁). Passkey 카운터 기록과 등록. WebKit.
+- `bw`의 실제 보관함 대상 엔드투엔드. 나머지 여섯 백엔드는 맹목적으로 작성되어 미검증.
+- npm에 미게시(`latest`는 빈 플레이스홀더).
+- olliepm에서 이전: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).
 
 ## 사용해 보기
 

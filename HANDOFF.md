@@ -46,10 +46,13 @@ Item 7 is not done:
   once against a real Camoufox build (opt-in: `BLINDFILL_TEST_FIREFOX=1`); the owner's running
   Camoufox and its contexts were not tested.
 - `bw` backend: tested with a mock `bw` and fixtures only. Not run end to end against the live
-  Vault (`https://vault.esapp.net`). Passkey data shape was checked by hand with `bw` (create and
-  read back of a fake item, since deleted); real-client-created passkeys unverified.
+  Vault (`https://vault.esapp.net`); the opt-in `tests/live-bw.test.ts` (`BLINDFILL_TEST_LIVE_BW=1`
+  plus an unlocked `BW_SESSION`) does that with throw-away items. Passkey data shape was checked by
+  hand with `bw` (create and read back of a fake item, since deleted); real-client-created passkeys unverified.
+- Passkeys: web sign-in through a Chromium virtual authenticator, tested against a fake relying
+  party that verifies the signature. No counter write-back, no registration, no Firefox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
-- Not supported: Android, passkey signing, WebKit, Firefox on an already-running browser,
+- Not supported: Android, passkey registration, WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
 
