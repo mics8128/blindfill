@@ -4,3 +4,6 @@ dist
 *.log
 .env*
 .blindfill-state
+
+# landing page screenshots
+site/_shots/
