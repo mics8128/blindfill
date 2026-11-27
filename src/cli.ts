@@ -38,6 +38,8 @@ Commands:
   item create [name]          create an item; username/password are read from the terminal (hidden)
   item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy
   passkey --click <css>       sign in with the item's passkey: Chromium only; the page's WebAuthn request is answered once
+  android fill|passkey        arm the companion APK on --serial <adb serial> for one fill of --item (app must be bound
+                              by androidapp:// + blindfill.signers); waits --timeout seconds (default 60)
   totp [--fill]               print the current TOTP code, or fill it into the page
   probe                       describe the current page's form fields (structure only)
   candidates [--role r]       list field candidates (names only)
@@ -102,6 +104,8 @@ const { values, positionals } = parseArgs({
     'expect-selector': { type: 'string' },
     'fail-selector': { type: 'string' },
     click: { type: 'string' },
+    serial: { type: 'string' },
+    timeout: { type: 'string' },
     'expect-timeout': { type: 'string' },
     submit: { type: 'boolean' },
     'no-submit': { type: 'boolean' },
@@ -382,6 +386,27 @@ async function main(): Promise<number> {
         await e.itemShow({
           item: values.item as string | undefined,
           query: values.query as string | undefined,
+        }),
+      );
+      return 0;
+    }
+    case 'android': {
+      if (sub !== 'fill' && sub !== 'passkey')
+        throw new BlindfillError(
+          'POLICY',
+          'usage: blindfill android fill|passkey --item <id> --serial <adb serial>',
+        );
+      const serial = (values.serial as string | undefined) ?? process.env.ANDROID_SERIAL;
+      if (!serial)
+        throw new BlindfillError('POLICY', 'usage: pass --serial <adb serial> (or ANDROID_SERIAL)');
+      const e = await engineFor(false);
+      out(
+        await e.androidOffer({
+          item: values.item as string | undefined,
+          query: values.query as string | undefined,
+          serial,
+          kind: sub === 'passkey' ? 'passkey' : 'password',
+          timeoutMs: values.timeout ? Number(values.timeout) * 1000 : undefined,
         }),
       );
       return 0;

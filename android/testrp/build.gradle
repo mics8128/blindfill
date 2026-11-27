@@ -1,0 +1,22 @@
+plugins { id 'com.android.application' }
+
+// Test-only relying party for tests/android.test.ts. Debug build (run-as reads its result file).
+android {
+    namespace = 'io.github.mics8128.blindfill.testrp'
+    compileSdk = 36
+    defaultConfig {
+        applicationId = 'io.github.mics8128.blindfill.testrp'
+        minSdk = 34
+        targetSdk = 36
+        versionCode = 1
+        versionName = '0.1.0'
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.credentials:credentials:1.6.0'
+}

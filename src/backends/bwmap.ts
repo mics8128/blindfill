@@ -1,5 +1,5 @@
 import { classifyBwFieldType, isControlField } from '../core/fields.js';
-import type { ItemMeta, ItemRef, ItemUri, MatchType } from '../core/types.js';
+import { BlindfillError, type ItemMeta, type ItemRef, type ItemUri, type MatchType } from '../core/types.js';
 import { parseControl } from './spi.js';
 
 /** Bitwarden match-type enum. null/undefined => default => Host (stricter than Bitwarden's base domain). */
@@ -38,6 +38,14 @@ export interface BwFido2Credential {
   keyValue?: string | null;
   userHandle?: string | null;
   counter?: string | number | null;
+}
+
+/** Bitwarden stores a credential id as a GUID, or as `b64.<base64url>` for imported passkeys. Returns standard base64. */
+export function credentialIdBase64(id: string): string {
+  if (id.startsWith('b64.')) return Buffer.from(id.slice(4), 'base64url').toString('base64');
+  const hex = id.replace(/-/g, '');
+  if (!/^[0-9a-f]{32}$/i.test(hex)) throw new BlindfillError('BACKEND', 'unrecognised passkey credential id');
+  return Buffer.from(hex, 'hex').toString('base64');
 }
 
 /** Map Bitwarden item JSON to ItemMeta. Secret VALUES are dropped here; only names survive. */
