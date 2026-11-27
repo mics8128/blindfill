@@ -240,6 +240,54 @@ describe('explicit field rules', () => {
     expect(sites.received[0].fields.password).toBe(CANARY);
   });
 
+  describe('form rule with a js submit outside the form (eccang shape)', () => {
+    const leaked = () => sites.requested.filter((u) => /CANARY|alice|^\/login\?/.test(u));
+
+    it('fills, clicks the outside <a> once, success; nothing in any URL', async () => {
+      const { eng } = await engine();
+      const r = keep(
+        await eng.fill({
+          item: 'outside',
+          url: good('/outside'),
+          submit: true,
+          expect: { urlIncludes: '/home' },
+        }),
+      );
+      expect(r).toMatchObject({ filled: ['username', 'password'], submitted: true, outcome: 'success' });
+      expect(sites.received).toHaveLength(1);
+      expect(sites.received[0]).toMatchObject({
+        path: '/login',
+        fields: { email: CANARY_USER, password: CANARY },
+      });
+      expect(leaked()).toEqual([]);
+    });
+
+    it.each(['enter', 'submit'])(
+      'the GET form submitted natively (trap=%s): values never reach a URL',
+      async (trap) => {
+        const { eng } = await engine();
+        keep(await eng.fill({ item: 'outside', url: good(`/outside?trap=${trap}`), submit: true }));
+        await page.waitForTimeout(300);
+        expect(leaked()).toEqual([]);
+      },
+    );
+
+    it.each([
+      ['outside-both', '/outside-split'],
+      ['outside-framed', '/outside-framed'],
+    ])(
+      '%s: a submit control in another frame / origin is refused before any secret is read',
+      async (id, path) => {
+        const { eng, act } = await engine();
+        const err = await eng.fill({ item: id, url: good(path), submit: true }).catch((e) => e);
+        expect(err).toMatchObject({ code: 'POLICY' });
+        expect(String(err.message)).toMatch(/submit control/);
+        expect(act.policy.locked).toBe(false);
+        expect(sites.received).toHaveLength(0);
+      },
+    );
+  });
+
   it('default submit: a GET login form and a cross-origin form action are refused after fill (nothing sent)', async () => {
     for (const path of ['/login-get', '/login-xorigin']) {
       const { eng } = await engine();

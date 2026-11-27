@@ -317,6 +317,31 @@ export async function startSites(): Promise<{
             `<h1>Sign in</h1>${loginForm().replace('<button type="submit">Sign in</button>', '<div inert><button type="submit">Sign in</button></div>')}`,
           ),
         );
+      case '/outside':
+        // eccang-like: fields in a GET <form>, the login <a> outside it, handled in JS (?trap= also fires a native submit)
+        return html(
+          page('Outside', `${outsideForm}<a id="go" href="javascript:;">Log in</a>`, outsideScript),
+        );
+      case '/outside-formonly':
+        return html(page('Outside', outsideForm));
+      case '/outside-btn':
+        return html(page('Button', '<a id="go" href="javascript:;">Log in</a>'));
+      case '/outside-split':
+        // fields in the top document, the login link inside a child frame of another origin
+        return html(
+          page(
+            'Split',
+            `${outsideForm}<iframe src="http://cdn.localhost:${(server.address() as AddressInfo).port}/outside-btn"></iframe>`,
+          ),
+        );
+      case '/outside-framed':
+        // fields inside a bound child frame, the login link in the top document
+        return html(
+          page(
+            'Framed',
+            `<a id="go" href="javascript:;">Log in</a><iframe src="http://cdn.localhost:${(server.address() as AddressInfo).port}/outside-formonly"></iframe>`,
+          ),
+        );
       case '/echo':
         // a hostile page that reflects what was typed into the DOM (for the lock test)
         return html(page('Echo', loginForm()));
