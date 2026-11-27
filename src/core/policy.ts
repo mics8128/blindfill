@@ -110,9 +110,10 @@ export function checkWebBinding(observedUrl: string, meta: ItemMeta): MatchResul
   return { ok: false, reason: `origin not bound by item (${last.reason})` };
 }
 
+/** Like Bitwarden: the package must match; a blindfill.signers pin, when the item has one, must match too. */
 export function checkAndroidBinding(pkg: string, signer: string | undefined, meta: ItemMeta): MatchResult {
   if (!androidPackages(meta).includes(pkg)) return { ok: false, reason: 'package not bound by item' };
-  if (meta.control.signers.length === 0) return { ok: false, reason: 'item has no blindfill.signers pin' };
+  if (meta.control.signers.length === 0) return { ok: true, reason: 'package match (no signer pin)' };
   if (!signer) return { ok: false, reason: 'signer not observed' };
   const norm = (s: string) => s.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
   if (!meta.control.signers.map(norm).includes(norm(signer))) return { ok: false, reason: 'signer mismatch' };

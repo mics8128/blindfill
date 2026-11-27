@@ -1,10 +1,19 @@
-import { createHash, createPrivateKey, sign } from 'node:crypto';
-import { AndroidActuator } from './actuators/android/index.js';
-import { credentialIdBase64, type BwFido2Credential } from './backends/bwmap.js';
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
+import { AndroidActuator, type PhoneRequest } from './actuators/android/index.js';
+import { bwCredentialId, credentialIdBase64, type BwFido2Credential } from './backends/bwmap.js';
 import type { Backend, ItemPatch } from './backends/spi.js';
 import { audit } from './core/audit.js';
-import { androidPackages, checkAndroidBinding, checkWebBinding, SubmitGuard } from './core/policy.js';
+import {
+  androidPackages,
+  checkAndroidBinding,
+  checkWebBinding,
+  SubmitGuard,
+  webUris,
+} from './core/policy.js';
+import type { MatchResult } from './core/policy.js';
 import { globalScrubber } from './core/scrubber.js';
+import { SecretHandle } from './core/secret.js';
+import { noneAttestation } from './core/webauthn.js';
 import { BlindfillError, formatTarget, type ItemMeta, type ItemRef, type Target } from './core/types.js';
 import type {
   Detected,
@@ -14,6 +23,7 @@ import type {
   CandidateInfo,
   WebActuator,
 } from './actuators/web/web.js';
+import { assertSafeEvidenceSelector } from './actuators/web/web.js';
 import type { Role } from './actuators/web/heuristics.js';
 import { loadLocalRules, parseRulesValue, type ParsedRules, type Rule } from './rules.js';
 import type { Profile } from './profiles.js';
@@ -23,6 +33,45 @@ import {
   validatePasswordPolicy,
   type PasswordPolicy,
 } from './password.js';
+
+/**
+ * A setup key (base32, spaces/dashes allowed, any case) or an otpauth://totp URI, as stored by the backend:
+ * the bare seed, or the URI when it sets a non-default algorithm, digits or period. Errors never echo input.
+ */
+export function normalizeTotpSeed(raw: string): string {
+  globalScrubber.register(raw.trim());
+  const bad = () =>
+    new BlindfillError(
+      'POLICY',
+      'the element holds no TOTP setup key (base32, 16-128 chars) or otpauth://totp URI',
+    );
+  const found = raw.match(/otpauth:\/\/\S+/i)?.[0];
+  let uri: URL | undefined;
+  if (found) {
+    try {
+      uri = new URL(found);
+    } catch {
+      throw bad();
+    }
+    if (uri.host.toLowerCase() !== 'totp') throw bad();
+  }
+  const seed = (uri ? (uri.searchParams.get('secret') ?? '') : raw)
+    .replace(/[\s-]+/g, '')
+    .replace(/=+$/, '')
+    .toUpperCase();
+  if (!/^[A-Z2-7]{16,128}$/.test(seed)) throw bad();
+  globalScrubber.register(seed);
+  const p = uri?.searchParams;
+  const custom =
+    !!p &&
+    ((p.get('algorithm') ?? 'SHA1').toUpperCase() !== 'SHA1' ||
+      (p.get('digits') ?? '6') !== '6' ||
+      (p.get('period') ?? '30') !== '30');
+  if (!uri || !custom) return seed;
+  uri.searchParams.set('secret', seed);
+  globalScrubber.register(uri.toString());
+  return uri.toString();
+}
 
 export interface ItemSelector {
   /** backend item id */
@@ -265,7 +314,6 @@ export class Engine {
         ...(m.hasTotp ? [{ name: 'totp', class: 'totp' }] : []),
       ],
       rules: parsed,
-      registration_allowed: m.control.registration,
       password_policy: m.control.passwordPolicy !== undefined,
       submit: m.control.submit,
       secrets_exposed: false,
@@ -334,15 +382,19 @@ export class Engine {
       changed.push(n);
     }
     if (Object.keys(fields).length) patch.fields = fields;
+    // blindfill.rules is agent-editable (owner decision 2026-11-27); other control fields are not
     const sensitive =
-      !!req.origins || Object.keys(fields).some(control) || Object.keys(req.secrets ?? {}).length > 0;
+      !!req.origins ||
+      Object.keys(fields).some((n) => control(n) && n.toLowerCase() !== 'blindfill.rules') ||
+      Object.keys(req.secrets ?? {}).length > 0;
     if (sensitive && !req.human)
       throw new BlindfillError(
         'POLICY',
         'changing origins, blindfill.* control fields or secret values needs a human at a terminal',
       );
     for (const n of Object.keys(req.secrets ?? {}))
-      if (!meta.secretFields.includes(n))
+      // "totp" names the item's TOTP seed for the backend; seeds are added only by totp enroll
+      if (n === 'totp' || !meta.secretFields.includes(n))
         throw new BlindfillError('NOT_FOUND', 'item has no secret field with that name');
     if (!changed.length && !Object.keys(req.secrets ?? {}).length)
       throw new BlindfillError('POLICY', 'nothing to change');
@@ -416,8 +468,7 @@ export class Engine {
   /**
    * Generate a password under an optional data-only policy and save it as a new item. The value is written
    * straight to the backend and is never returned, printed or logged. Does not touch any website.
-   * The item is created with blindfill.registration=allow unless `registration` is false (generating a
-   * password is how a registration is prepared).
+   * `noPassword` saves the item without one, for sites registered with a passkey only.
    */
   async itemGenerate(req: {
     name: string;
@@ -426,25 +477,31 @@ export class Engine {
     displayName?: string;
     length?: number;
     policy?: unknown;
-    registration?: boolean;
+    /** also bind this Android app (androidapp://<pkg>); no signer pin unless a person adds one */
+    androidApp?: string;
+    noPassword?: boolean;
   }): Promise<Record<string, unknown>> {
     const b = this.writable();
     if (!req.username || (req.displayName !== undefined && !req.displayName))
       throw new BlindfillError('POLICY', 'username must be non-empty');
-    if (!req.origins?.length) throw new BlindfillError('POLICY', 'at least one origin is required');
-    const origins = req.origins.map((o) => Engine.canonicalOrigin(o));
+    if (!req.origins?.length && !req.androidApp)
+      throw new BlindfillError('POLICY', 'at least one origin or an Android app is required');
+    if (req.androidApp && !/^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$/.test(req.androidApp))
+      throw new BlindfillError('POLICY', 'invalid Android package name');
+    if (req.noPassword && (req.policy !== undefined || req.length !== undefined))
+      throw new BlindfillError('POLICY', 'a password policy or length needs a password (drop --no-password)');
+    const origins = (req.origins ?? []).map((o) => Engine.canonicalOrigin(o));
     const policy = req.policy === undefined ? undefined : validatePasswordPolicy(req.policy);
     await this.assertNameFree(req.name);
-    const password = generatePassword(policy, req.length);
-    globalScrubber.register(password);
+    const password = req.noPassword ? undefined : generatePassword(policy, req.length);
+    if (password) globalScrubber.register(password);
     const fields: Record<string, string> = {};
     if (req.displayName !== undefined) fields.display_name = req.displayName;
-    if (req.registration !== false) fields['blindfill.registration'] = 'allow';
     if (policy) fields['blindfill.password_policy'] = JSON.stringify(policy);
     const ref = await b.createItem({
       name: req.name,
       username: req.username,
-      uris: origins,
+      uris: req.androidApp ? [...origins, `androidapp://${req.androidApp}`] : origins,
       password,
       fields,
     });
@@ -454,9 +511,9 @@ export class Engine {
       id: ref.id,
       name: req.name,
       origins,
-      password_generated: true,
+      ...(req.androidApp ? { android_app: req.androidApp } : {}),
+      password_generated: !req.noPassword,
       secret_exposed: false,
-      registration_enabled: req.registration !== false,
       registration_outcome: 'not_attempted',
     };
   }
@@ -524,6 +581,57 @@ export class Engine {
     const code = await this.backend.totpCode(ref);
     audit({ event: 'totp', backend: this.backend.id, item: ref.id, outcome: 'returned' });
     return { code, item: ref.id, note: 'valid for ~30 seconds' };
+  }
+
+  /**
+   * Add a TOTP seed to an item that has none, read by blindfill from one element of the current page
+   * (a setup key, or an otpauth:// URI in its href, value or text). The seed goes straight to the backend;
+   * nothing about it is returned, printed or logged. Add-only: an existing seed is never replaced.
+   */
+  async totpEnroll(req: ItemSelector & { selector: string }): Promise<Record<string, unknown>> {
+    const b = this.writable();
+    if (!b.capabilities.has('TOTP'))
+      throw new BlindfillError('UNSUPPORTED', `backend "${b.id}" does not store TOTP seeds`);
+    const act = this.actuator();
+    const { target, url } = act.identify();
+    const tname = formatTarget(target);
+    const ref = await this.resolveItem(req, target);
+    const meta = await b.meta(ref);
+    const refuse = (err: BlindfillError): never => {
+      audit({
+        event: 'refused',
+        backend: b.id,
+        item: ref.id,
+        target: tname,
+        reason: `${err.code}: totp enroll`,
+      });
+      throw err;
+    };
+    const bind = checkWebBinding(url, meta);
+    if (!bind.ok)
+      refuse(
+        new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`),
+      );
+    if (meta.hasTotp)
+      refuse(
+        new BlindfillError('POLICY', 'this item already has a TOTP seed; enroll only adds, never replaces'),
+      );
+    let seed: string;
+    try {
+      seed = normalizeTotpSeed(await act.readSetupKey(req.selector));
+      // the page may have navigated while we read: the element must still be on a bound page
+      if (!checkWebBinding(act.identify().url, meta).ok)
+        throw new BlindfillError(
+          'ORIGIN_MISMATCH',
+          'the page left the bound origin while reading; nothing saved',
+        );
+    } catch (e) {
+      return refuse(e as BlindfillError);
+    }
+    globalScrubber.register(seed);
+    await b.updateSecret(ref, 'totp', seed);
+    audit({ event: 'item', backend: b.id, item: ref.id, target: tname, outcome: 'totp_enrolled' });
+    return { status: 'completed', id: ref.id, totp_enrolled: true, secret_exposed: false };
   }
 
   async probe(url?: string): Promise<ProbeResult & { items?: { id: string; name?: string }[] }> {
@@ -685,6 +793,11 @@ export class Engine {
           new BlindfillError('SECRET_ACCESS', `"${name}" is a private key: it is never typed into a field`),
         );
       else if (meta.secretFields.includes(name)) kind = 'secret';
+      else if (name === 'password')
+        return refuse(
+          'no password',
+          new BlindfillError('NOT_FOUND', 'this item has no password (passkey-only); nothing was filled'),
+        );
       else if (name === 'username' ? !!meta.username : name in meta.readable) kind = 'readable';
       else
         return refuse(
@@ -977,8 +1090,8 @@ export class Engine {
   }
 
   /**
-   * Account registration with an item that opted in (blindfill.registration=allow) and an explicit
-   * registration rule. The stored password is read ONCE and typed into the password field and (unless the
+   * Account registration with an item that binds the page and an explicit registration rule.
+   * The stored password is read ONCE and typed into the password field and (unless the
    * rule says the form has none) the separate confirmation field; equality is checked inside the page and
    * only a boolean comes back. Fill-only unless submit=true; at most one submit; never retried.
    */
@@ -990,11 +1103,6 @@ export class Engine {
       throw new BlindfillError('POLICY', 'registration fields come from the rule; do not pass fields');
     const act = this.actuator();
     const peek = await this.resolveForRegistration(req);
-    if (!peek.meta.control.registration)
-      throw new BlindfillError(
-        'POLICY',
-        'this item has not opted in to registration (custom field blindfill.registration=allow)',
-      );
     const p = await this.prepare({ ...req, url: undefined, item: peek.ref.id }, 'registration', {
       confirmField: true,
     });
@@ -1148,14 +1256,39 @@ export class Engine {
   }
 
   /**
-   * Passkey sign-in (web, Chromium with CDP). Checks the item binding and the passkey's rpId against
-   * the page before the key is read, then lets the page's own WebAuthn request use it once.
-   * The counter is not written back to the vault (ARCHITECTURE 3.8, open point).
+   * Raise the vault's passkey counter after a signature (owner decision 2026-11-27: no terminal needed).
+   * Never retried: a failure is audited and reported, and the next sign-in repeats the counter.
+   */
+  private async writeCounter(ref: ItemRef, credentialId: string, counter: number, target: string) {
+    if (counter === 0) return { counter_written_back: false }; // Bitwarden semantics: 0 stays 0
+    try {
+      if (!this.backend.raisePasskeyCounter) throw new BlindfillError('UNSUPPORTED', 'no counter write');
+      await this.backend.raisePasskeyCounter(ref, credentialId, counter);
+      return { counter_written_back: true };
+    } catch (e) {
+      const code = e instanceof BlindfillError ? e.code : 'BACKEND';
+      audit({
+        event: 'passkey',
+        backend: this.backend.id,
+        item: ref.id,
+        target,
+        outcome: 'counter_write_failed',
+        reason: code,
+      });
+      return { counter_written_back: false, counter_error: code };
+    }
+  }
+
+  /**
+   * Passkey sign-in (web: Chromium over CDP, Firefox/Camoufox over Marionette). Checks the item binding and the passkey's rpId against
+   * the page before the key is read, then lets the page's own WebAuthn request use it once, then
+   * writes the reported counter back to the vault.
    */
   async passkey(
     req: ItemSelector & { url?: string; click?: string; expect?: Expect },
   ): Promise<Record<string, unknown>> {
     const act = this.actuator();
+    if (req.click) assertSafeEvidenceSelector(req.click); // a bad selector must not burn the one-shot
     if (req.url) await act.navigate(req.url);
     const { target, url } = act.identify();
     const tname = formatTarget(target);
@@ -1185,7 +1318,7 @@ export class Engine {
     act.policy.recordSecretFill(target.origin, 'passkey');
     this.persist();
     const h = await this.backend.openSecret(ref, 'passkey');
-    const r = await act.passkeyAssert(h, { click: req.click });
+    const r = await act.passkeyAssert(h, { click: req.click, backupEligible: meta.control.passkeyBe });
     const ev = r.asserted && req.expect ? await act.evidence(req.expect) : undefined;
     audit({
       event: 'passkey',
@@ -1199,28 +1332,138 @@ export class Engine {
       origin: target.origin,
       item: { id: ref.id, name: meta.name },
       sign_count: r.signCount,
-      counter_written_back: false,
+      ...(r.asserted && r.signCount !== null
+        ? await this.writeCounter(ref, r.credentialId, r.signCount, tname)
+        : { counter_written_back: false }),
       outcome: ev?.outcome ?? 'unknown',
+      // owner decision 2026-11-27: Firefox signs BE=1 passkeys too, though only with BE=0 (no W3C
+      // SetCredentialProperties in Marionette yet); a relying party that checks BE rejects it
+      ...(act.passkeyRoute === 'marionette' && meta.control.passkeyBe
+        ? {
+            note: 'this passkey was created backup-eligible (BE=1) and Firefox can only sign with BE=0; if the site rejects the sign-in, use Chromium',
+          }
+        : {}),
     };
   }
 
   /**
+   * Passkey registration (web: Chromium or Firefox/Camoufox), add only (owner decision 2026-11-27, no terminal):
+   * the item must bind the page and hold no passkey.
+   * The page's own navigator.credentials.create() is answered once by an empty virtual authenticator;
+   * the new key goes from the browser into the vault (one `bw edit`), never to the caller.
+   */
+  async passkeyRegister(
+    req: ItemSelector & { url?: string; click?: string; expect?: Expect; timeoutMs?: number },
+  ): Promise<Record<string, unknown>> {
+    const act = this.actuator();
+    if (req.click) assertSafeEvidenceSelector(req.click); // a bad selector must not burn the one-shot
+    if (req.url) await act.navigate(req.url);
+    const { target, url } = act.identify();
+    const tname = formatTarget(target);
+    const ref = await this.resolveItem(req, target);
+    const meta = await this.backend.meta(ref);
+    const refuse = (reason: string, err: BlindfillError): never => {
+      audit({ event: 'refused', backend: this.backend.id, item: ref.id, target: tname, reason });
+      throw err;
+    };
+    const bind = checkWebBinding(url, meta);
+    if (!bind.ok)
+      refuse(
+        bind.reason,
+        new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`),
+      );
+    if (meta.secretFields.includes('passkey'))
+      refuse(
+        'passkey exists',
+        new BlindfillError(
+          'POLICY',
+          'the item already holds a passkey; replacing one needs a person at a terminal',
+        ),
+      );
+    if (!this.backend.addPasskey)
+      throw new BlindfillError('UNSUPPORTED', `${this.backend.id} cannot store passkeys`);
+    act.policy.assertFirstSecretFill(target.origin, 'passkey-register');
+    act.policy.recordSecretFill(target.origin, 'passkey-register');
+    this.persist();
+    const base = { origin: target.origin, item: { id: ref.id, name: meta.name } };
+    const c = await act.passkeyCreate({ click: req.click, timeoutMs: req.timeoutMs });
+    if (!c) {
+      audit({
+        event: 'passkey',
+        backend: this.backend.id,
+        item: ref.id,
+        target: tname,
+        outcome: 'not_created',
+      });
+      return { status: 'not_used', ...base, outcome: 'unknown' };
+    }
+    const created = {
+      ...base,
+      rp_id: c.rpId,
+      credential_id: bwCredentialId(Buffer.from(c.credentialId, 'base64url')),
+    };
+    const orphan = 'the relying party may now hold a passkey the vault does not: delete it there';
+    const host = new URL(url).hostname;
+    // the browser already enforces this for WebAuthn; checked again before anything is stored
+    const why =
+      c.rpId !== host && !host.endsWith(`.${c.rpId}`)
+        ? 'the created passkey rpId does not cover this page'
+        : !c.es256
+          ? 'only ES256 (P-256) passkeys can be stored'
+          : undefined;
+    if (why) {
+      c.key.destroy();
+      audit({ event: 'refused', backend: this.backend.id, item: ref.id, target: tname, reason: why });
+      return { status: 'not_stored', ...created, reason: why, note: orphan };
+    }
+    try {
+      await this.backend.addPasskey(ref, {
+        credentialId: c.credentialId,
+        rpId: c.rpId,
+        userHandle: c.userHandle,
+        userName: meta.username,
+        counter: c.signCount,
+        backupEligible: c.backupEligible,
+        key: c.key,
+      });
+    } catch (e) {
+      c.key.destroy();
+      const code = e instanceof BlindfillError ? e.code : 'BACKEND';
+      audit({
+        event: 'passkey',
+        backend: this.backend.id,
+        item: ref.id,
+        target: tname,
+        outcome: 'vault_write_failed',
+        reason: code,
+      });
+      return { status: 'vault_write_failed', ...created, error: code, note: orphan };
+    }
+    audit({ event: 'passkey', backend: this.backend.id, item: ref.id, target: tname, outcome: 'registered' });
+    const ev = req.expect ? await act.evidence(req.expect) : undefined;
+    return { status: 'registered', ...created, counter: c.signCount, outcome: ev?.outcome ?? 'unknown' };
+  }
+
+  /**
    * Android (companion APK): arm the phone for one fill. The phone reports the app asking (system
-   * attested package + signer); the item must bind both (androidapp:// + blindfill.signers) before
-   * any secret is read. kind=password: username+password go to the companion's autofill dataset.
+   * attested package + signer); the item must bind the package (androidapp://; a blindfill.signers pin
+   * is checked when present) before any secret is read, or, for a WebView, the https domain it shows.
+   * kind=password: username+password go to the companion's autofill dataset or Credential Manager
+   * password entry. kind=password-new: same, into a sign-up form (password and confirmation).
    * kind=passkey: the host signs (key never leaves the host); the phone gets only the assertion.
    */
   async androidOffer(
-    req: ItemSelector & { serial: string; kind: 'password' | 'passkey'; timeoutMs?: number },
+    req: ItemSelector & { serial: string; kind: 'password' | 'password-new' | 'passkey'; timeoutMs?: number },
     android = new AndroidActuator(),
   ): Promise<Record<string, unknown>> {
     const ref = await this.resolveItem(req);
     const meta = await this.backend.meta(ref);
-    const pkgs = androidPackages(meta);
-    if (pkgs.length === 0 || meta.control.signers.length === 0)
+    if (androidPackages(meta).length === 0 && (req.kind === 'passkey' || webUris(meta).length === 0))
       throw new BlindfillError(
         'ORIGIN_MISMATCH',
-        'item binds no Android app: it needs an androidapp://<package> URI and a blindfill.signers pin',
+        req.kind === 'passkey'
+          ? 'item binds no Android app: it needs an androidapp://<package> URI'
+          : 'item binds no Android app (androidapp://<package>) and no web URI for a WebView',
       );
     const field = req.kind === 'passkey' ? 'passkey' : 'password';
     if (!meta.secretFields.includes(field)) throw new BlindfillError('NOT_FOUND', `item has no ${field}`);
@@ -1236,6 +1479,7 @@ export class Engine {
       });
       throw new BlindfillError('ORIGIN_MISMATCH', `refused: ${reason}`);
     };
+    let signed: { credentialId: string; count: number } | undefined;
     const r = await android.serve(
       {
         serial: req.serial,
@@ -1246,14 +1490,20 @@ export class Engine {
         timeoutMs: req.timeoutMs,
       },
       async (p) => {
-        target = formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined });
+        target =
+          formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined }) +
+          (p.web ? ` web:${p.webScheme ?? '?'}://${p.webDomain ?? '?'}` : '');
         if (p.kind !== req.kind) refuse('the phone answered a different request kind');
-        if (p.web) refuse('a web page or WebView asked; use the web actuator for web logins');
-        const bind = checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
+        if (p.web && req.kind === 'passkey') refuse('a web page or WebView asked for a passkey');
+        const bind = phoneBinding(p, meta);
         if (!bind.ok) refuse(bind.reason);
-        if (req.kind === 'password') {
-          if ((p.passwords ?? 0) !== 1 || p.newPassword)
+        if (req.kind !== 'passkey') {
+          const n = p.passwords ?? 0;
+          // Credential Manager password requests (cm) carry no form: nothing to check
+          if (!p.cm && req.kind === 'password' && (n !== 1 || p.newPassword))
             refuse('not a single-password login screen (sign-up or change-password)');
+          if (req.kind === 'password-new' && (p.cm || !(n === 2 || (n === 1 && p.newPassword))))
+            refuse('not a sign-up screen (needs a new-password field, or a password and a confirmation)');
           let password = '';
           await (
             await this.backend.openSecret(ref, 'password')
@@ -1278,10 +1528,16 @@ export class Engine {
           await this.backend.openSecret(ref, 'passkey')
         ).into((b) => {
           const c = JSON.parse(b.toString('utf8')) as BwFido2Credential;
-          // rpIdHash | flags UP+UV | signCount 0 (not tracked, see ARCHITECTURE 3.8)
+          // counter rule (Bitwarden): a stored 0 stays 0, otherwise stored + 1, written back after
+          const stored = Number(c.counter ?? 0) || 0;
+          signed = { credentialId: c.credentialId ?? '', count: stored === 0 ? 0 : stored + 1 };
+          const count = Buffer.alloc(4);
+          count.writeUInt32BE(signed.count);
+          // rpIdHash | flags UP+UV, plus BE+BS unless created without (as Bitwarden clients sign) | signCount
           const authData = Buffer.concat([
             createHash('sha256').update(rpId!).digest(),
-            Buffer.from([0x05, 0, 0, 0, 0]),
+            Buffer.from([meta.control.passkeyBe ? 0x1d : 0x05]),
+            count,
           ]);
           const key = createPrivateKey({
             key: Buffer.from(c.keyValue ?? '', 'base64url'),
@@ -1309,19 +1565,152 @@ export class Engine {
         target: target || 'android',
         reason: r.reason,
       });
+    const answered = r.status === 'answered';
     return {
-      status: r.status === 'answered' ? (req.kind === 'passkey' ? 'signed' : 'offered') : r.status,
+      status: answered ? (req.kind === 'passkey' ? 'signed' : 'offered') : r.status,
       ...(r.status === 'refused' ? { reason: r.reason } : {}),
       target: target || null,
       item: { id: ref.id, name: meta.name },
+      ...(answered && signed
+        ? {
+            sign_count: signed.count,
+            ...(await this.writeCounter(ref, signed.credentialId, signed.count, target)),
+          }
+        : {}),
+      ...(req.kind === 'password-new' ? { registration_outcome: 'unknown' } : {}),
       note:
-        r.status === 'answered' && req.kind === 'password'
-          ? 'the phone shows a "blindfill: <item>" autofill suggestion; selecting it fills the fields'
+        answered && req.kind !== 'passkey'
+          ? `the phone shows a "blindfill: <item>" suggestion; selecting it fills the fields${req.kind === 'password-new' ? ' (the same password into the password and confirmation); submitting is up to the caller, and only the app can tell whether the account was created' : ''}`
           : undefined,
+    };
+  }
+
+  /**
+   * Android passkey registration (companion, design 5.5), add only like passkeyRegister: the item must
+   * bind the app (androidapp://, plus its blindfill.signers pin if it has one) and the rpId (a web URI
+   * on it, standing in for the Digital Asset Links check a provider owes non-browser callers) and
+   * hold no passkey. The host makes the key and stores it before the phone gets the
+   * attestation; the key stays here.
+   */
+  async androidPasskeyRegister(
+    req: ItemSelector & { serial: string; rpId: string; timeoutMs?: number },
+    android = new AndroidActuator(),
+  ): Promise<Record<string, unknown>> {
+    const ref = await this.resolveItem(req);
+    const meta = await this.backend.meta(ref);
+    const rpId = req.rpId.trim().toLowerCase();
+    let target = '';
+    const refuse = (reason: string, code: 'ORIGIN_MISMATCH' | 'POLICY' = 'ORIGIN_MISMATCH'): never => {
+      audit({
+        event: 'refused',
+        backend: this.backend.id,
+        item: ref.id,
+        target: target || 'android',
+        reason,
+      });
+      throw new BlindfillError(code, `refused: ${reason}`);
+    };
+    if (androidPackages(meta).length === 0)
+      refuse('item binds no Android app: it needs an androidapp://<package> URI');
+    if (!/^[a-z0-9.-]+$/.test(rpId) || !checkWebBinding(`https://${rpId}/`, meta).ok)
+      refuse(`the item has no web URI for rpId ${rpId}`);
+    if (meta.secretFields.includes('passkey'))
+      refuse('the item already holds a passkey; replacing one needs a person at a terminal', 'POLICY');
+    if (!this.backend.addPasskey)
+      throw new BlindfillError('UNSUPPORTED', `${this.backend.id} cannot store passkeys`);
+    const addPasskey = this.backend.addPasskey.bind(this.backend);
+    let credentialId: Buffer | undefined;
+    const r = await android.serve(
+      {
+        serial: req.serial,
+        mode: 'passkey-create',
+        item: meta.name,
+        user: meta.username,
+        rpId,
+        timeoutMs: req.timeoutMs,
+      },
+      async (p) => {
+        target = formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined });
+        if (p.kind !== 'passkey-create') refuse('the phone answered a different request kind');
+        if (p.web) refuse('a web page or WebView asked for a passkey');
+        const bind = checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
+        if (!bind.ok) refuse(bind.reason);
+        if (p.rpId !== rpId) refuse('the requested rpId is not the armed rpId');
+        const cdh = Buffer.from(String(p.clientDataHash ?? ''), 'base64url');
+        if (cdh.length !== 32) refuse('malformed client data hash');
+        const userId = String(p.userId ?? '');
+        if (!/^[\w-]{1,86}$/.test(userId)) refuse('malformed user id');
+        if (!(p.algs ?? []).includes(-7)) refuse('the app does not accept ES256 (P-256) passkeys');
+        const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+        const der = privateKey.export({ type: 'pkcs8', format: 'der' });
+        globalScrubber.register(der.toString('base64url'));
+        globalScrubber.register(der.toString('base64'));
+        const key = new SecretHandle(der, 'passkey');
+        der.fill(0);
+        const id = randomBytes(16);
+        try {
+          // stored before the phone answers: a failed write leaves no passkey at the relying party
+          await addPasskey(ref, {
+            credentialId: id.toString('base64url'),
+            rpId,
+            userHandle: userId,
+            userName: meta.username,
+            counter: 0,
+            backupEligible: true,
+            key,
+          });
+        } catch (e) {
+          key.destroy();
+          audit({
+            event: 'passkey',
+            backend: this.backend.id,
+            item: ref.id,
+            target,
+            outcome: 'vault_write_failed',
+            reason: e instanceof BlindfillError ? e.code : 'BACKEND',
+          });
+          throw e;
+        }
+        credentialId = id;
+        audit({ event: 'passkey', backend: this.backend.id, item: ref.id, target, outcome: 'registered' });
+        const att = noneAttestation(rpId, id, publicKey, true);
+        return {
+          credentialId: id.toString('base64url'),
+          authenticatorData: att.authData.toString('base64url'),
+          attestationObject: att.attestationObject.toString('base64url'),
+          publicKey: publicKey.export({ type: 'spki', format: 'der' }).toString('base64url'),
+          publicKeyAlgorithm: -7,
+        };
+      },
+    );
+    if (r.status === 'refused')
+      audit({
+        event: 'refused',
+        backend: this.backend.id,
+        item: ref.id,
+        target: target || 'android',
+        reason: r.reason,
+      });
+    return {
+      status: r.status === 'answered' ? 'registered' : r.status,
+      ...(r.status === 'refused' ? { reason: r.reason } : {}),
+      target: target || null,
+      item: { id: ref.id, name: meta.name },
+      rp_id: rpId,
+      ...(credentialId ? { credential_id: bwCredentialId(credentialId) } : {}),
     };
   }
 
   async stop(): Promise<void> {
     await this.web?.close();
   }
+}
+
+/** Package (+ pin if any) for an app; for a WebView, one https domain the item binds (D3: domain alone). */
+function phoneBinding(p: PhoneRequest, meta: ItemMeta): MatchResult {
+  if (!p.web) return checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
+  if (p.webDomains !== 1 || !p.webDomain || !/^[a-z0-9.-]+$/i.test(p.webDomain))
+    return { ok: false, reason: 'the WebView does not show exactly one web domain' };
+  if (p.webScheme !== 'https') return { ok: false, reason: 'the WebView page is not https' };
+  return checkWebBinding(`https://${p.webDomain.toLowerCase()}/`, meta);
 }

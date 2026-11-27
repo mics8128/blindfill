@@ -32,12 +32,25 @@ export interface BwRawItem {
 
 export interface BwFido2Credential {
   credentialId?: string | null;
+  keyType?: string | null;
   rpId?: string | null;
+  rpName?: string | null;
   keyAlgorithm?: string | null;
   keyCurve?: string | null;
   keyValue?: string | null;
   userHandle?: string | null;
+  userName?: string | null;
+  userDisplayName?: string | null;
   counter?: string | number | null;
+  discoverable?: string | null;
+  creationDate?: string | null;
+}
+
+/** Bitwarden's form of a raw credential id: a GUID for 16 bytes, else `b64.<base64url>` (as imports do). */
+export function bwCredentialId(raw: Buffer): string {
+  if (raw.length !== 16) return `b64.${raw.toString('base64url')}`;
+  const h = raw.toString('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
 /** Bitwarden stores a credential id as a GUID, or as `b64.<base64url>` for imported passkeys. Returns standard base64. */

@@ -175,7 +175,7 @@ const meta = (uris: { uri: string; match: any }[], extra: Partial<ItemMeta> = {}
   readable: {},
   secretFields: ['password'],
   hasTotp: false,
-  control: { submit: 'once', signers: [], notesReadable: false, registration: false },
+  control: { submit: 'once', signers: [], notesReadable: false, passkeyBe: true },
   ...extra,
 });
 
@@ -254,15 +254,22 @@ describe('policy: match types', () => {
       ).ok,
     ).toBe(true);
   });
-  it('android binding needs package + pinned signer', () => {
+  it('android binding needs the package, and the pinned signer when the item has a pin', () => {
     const m = meta([{ uri: 'androidapp://com.x.y', match: 'host' }], {
-      control: { submit: 'once', signers: ['aa:bb:cc'], notesReadable: false, registration: false },
+      control: {
+        submit: 'once',
+        signers: ['aa:bb:cc'],
+        notesReadable: false,
+        passkeyBe: true,
+      },
     });
     expect(checkAndroidBinding('com.x.y', 'AABBCC', m).ok).toBe(true);
     expect(checkAndroidBinding('com.x.y', 'AABBCD', m).ok).toBe(false);
     expect(checkAndroidBinding('com.x.z', 'AABBCC', m).ok).toBe(false);
     expect(checkAndroidBinding('com.x.y', undefined, m).ok).toBe(false);
-    expect(checkAndroidBinding('com.x.y', 'AABBCC', meta(m.uris)).ok).toBe(false);
+    // no pin (as Bitwarden): the package alone binds
+    expect(checkAndroidBinding('com.x.y', undefined, meta(m.uris)).ok).toBe(true);
+    expect(checkAndroidBinding('com.x.z', undefined, meta(m.uris)).ok).toBe(false);
   });
 });
 

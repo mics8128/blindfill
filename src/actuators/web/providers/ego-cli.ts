@@ -64,6 +64,20 @@ const KEYS = {
   Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
   Backspace: { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 },
 };
+// One isolated world per frame document, so handles from separate calls can be compared and passed together.
+const worlds = new Map();
+const world = async (frameId) => {
+  if (!worlds.has(frameId))
+    worlds.set(frameId, (await cdp("Page.createIsolatedWorld", { frameId, worldName: "blindfill" })).executionContextId);
+  return worlds.get(frameId);
+};
+// Handles inside an argument arrive as {__h: i}; they are passed as extra CDP arguments and put back in place.
+const REVIVE = "const rv = (x) => x && typeof x === 'object' ? ('__h' in x ? hs[x.__h] : Array.isArray(x) ? x.map(rv) : Object.fromEntries(Object.entries(x).map(([k, v]) => [k, rv(v)]))) : x;";
+const result = (r, byValue) => {
+  if (r.exceptionDetails) throw new Error("EVAL");
+  const o = r.result;
+  return byValue || !o.objectId ? { v: o.value } : { h: o.objectId, node: o.subtype === "node" };
+};
 const OPS = {
   url: () => page.url(),
   title: () => page.title(),
@@ -77,29 +91,47 @@ const OPS = {
     walk((await cdp("Page.getFrameTree")).frameTree, null);
     return out;
   },
-  // shortcut: a fresh isolated world per query; upgrade to a per-loader cache if scans get slow
+  // expression in the frame's world; a stale world (the frame navigated) is replaced once
+  evalIn: async (frameId, expr, byValue) => {
+    for (let i = 0; ; i++) {
+      try {
+        return result(await cdp("Runtime.evaluate", { expression: expr, contextId: await world(frameId), returnByValue: byValue }), byValue);
+      } catch (e) {
+        if (i || e.message === "EVAL") throw e;
+        worlds.delete(frameId);
+      }
+    }
+  },
+  // fn(this, spec) on a handle, or fn(spec) in the frame's world. Only a call without handles may move to a
+  // fresh world: handles must stay in theirs, so a navigation makes such a call fail.
+  call: async (thisId, frameId, src, spec, hs, byValue) => {
+    const self = thisId != null;
+    for (let i = 0; ; i++) {
+      try {
+        const r = await cdp("Runtime.callFunctionOn", {
+          ...(self ? { objectId: thisId } : { executionContextId: await world(frameId) }),
+          functionDeclaration: "function (spec, ...hs) { " + REVIVE + " return (" + src + ")(" + (self ? "this, " : "") + "rv(spec)); }",
+          arguments: [{ value: spec }, ...hs.map((objectId) => ({ objectId }))],
+          returnByValue: byValue,
+          awaitPromise: true,
+        });
+        return result(r, byValue);
+      } catch (e) {
+        if (i || self || hs.length || e.message === "EVAL") throw e;
+        worlds.delete(frameId);
+      }
+    }
+  },
+  release: async (oid) => { await cdp("Runtime.releaseObject", { objectId: oid }); },
+  // the frame id an <iframe> element shows
+  contentFrame: async (oid) => (await cdp("DOM.describeNode", { objectId: oid })).node.frameId ?? null,
   queryAll: async (frameId, sel, limit) => {
-    const w = await cdp("Page.createIsolatedWorld", { frameId, worldName: "blindfill" });
-    const r = await cdp("Runtime.evaluate", {
-      expression: "Array.from(document.querySelectorAll(" + JSON.stringify(sel) + ")).slice(0, " + Number(limit) + ")",
-      contextId: w.executionContextId,
-    });
-    if (r.exceptionDetails) throw new Error("SELECTOR");
-    const p = await cdp("Runtime.getProperties", { objectId: r.result.objectId, ownProperties: true });
+    const expr = "Array.from(document.querySelectorAll(" + JSON.stringify(sel) + ")).slice(0, " + Number(limit) + ")";
+    const r = await OPS.evalIn(frameId, expr, false).catch(() => { throw new Error("SELECTOR"); });
+    const p = await cdp("Runtime.getProperties", { objectId: r.h, ownProperties: true });
     return p.result.filter((x) => /^\d+$/.test(x.name)).sort((a, b) => a.name - b.name).map((x) => x.value.objectId);
   },
-  call: async (oid, src, arg, byValue) => {
-    const r = await cdp("Runtime.callFunctionOn", {
-      objectId: oid,
-      functionDeclaration: "function (a) { return (" + src + ")(this, a); }",
-      arguments: arg === undefined ? [] : [{ value: arg }],
-      returnByValue: byValue,
-      awaitPromise: true,
-    });
-    if (r.exceptionDetails) throw new Error("EVAL");
-    return byValue ? r.result.value : r.result.subtype === "node" ? r.result.objectId : null;
-  },
-  focus: (oid) => cdp("DOM.focus", { objectId: oid }).then(() => undefined),
+  focus: async (oid) => { await cdp("DOM.focus", { objectId: oid }); },
   // Types only if the element's document still has the scanned origin and the element has focus.
   typeInto: async (oid, origin, text, keys) => {
     const ok = await cdp("Runtime.callFunctionOn", {
@@ -134,11 +166,6 @@ const OPS = {
     await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
     await cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
     await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
-  },
-  evalMain: async (expr) => {
-    const r = await cdp("Runtime.evaluate", { expression: expr, returnByValue: true });
-    if (r.exceptionDetails) throw new Error("EVAL");
-    return r.result.value;
   },
   screenshot: async () => (await cdp("Page.captureScreenshot", { format: "png" })).data,
 };
@@ -289,31 +316,90 @@ class EgoBridge {
 
 const SCROLL = '(el) => el.scrollIntoView({ block: "center" })';
 const SELECT = '(el) => { if (typeof el.select === "function") el.select(); }';
+const ENABLED = '(el) => !el.matches(":disabled")';
+const VISIBLE =
+  '(e) => { if (!e) return false; const r = e.getBoundingClientRect(), cs = getComputedStyle(e);' +
+  ' return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none"; }';
 const src = (fn: unknown) => (typeof fn === 'function' ? fn.toString() : String(fn));
 
 type FocusState = { focused?: EgoHandle };
+type Remote = { v?: unknown; h?: string; node?: boolean };
 
+/** Replace handles inside an argument with {__h: i}; their object ids travel as separate CDP arguments. */
+function pack(arg: unknown): { spec: unknown; hs: string[] } {
+  const hs: string[] = [];
+  const walk = (x: unknown): unknown => {
+    if (x instanceof EgoHandle) {
+      if (x.oid === null) return x.value;
+      hs.push(x.oid);
+      return { __h: hs.length - 1 };
+    }
+    if (Array.isArray(x)) return x.map(walk);
+    if (x && typeof x === 'object')
+      return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, walk(v)]));
+    return x;
+  };
+  return { spec: walk(arg), hs };
+}
+
+/** ElementHandle / JSHandle: an object in the frame's blindfill world, or a primitive value. */
 class EgoHandle {
+  readonly oid: string | null;
+  readonly value: unknown;
+  private readonly node: boolean;
   constructor(
-    private b: EgoBridge,
-    readonly oid: string,
+    private frame: EgoFrame,
+    r: Remote,
     /** origin of the frame this element was found in, at scan time */
     readonly origin: string,
-    private state: FocusState,
-  ) {}
-  evaluate(fn: unknown, arg?: unknown): Promise<unknown> {
-    return this.b.call('call', this.oid, src(fn), arg, true);
+  ) {
+    this.oid = r.h ?? null;
+    this.value = r.v;
+    this.node = !!r.node;
   }
-  async evaluateHandle(fn: unknown): Promise<{ asElement(): EgoHandle | null }> {
-    const oid = await this.b.call<string | null>('call', this.oid, src(fn), undefined, false);
-    return { asElement: () => (oid ? new EgoHandle(this.b, oid, this.origin, this.state) : null) };
+  private get b(): EgoBridge {
+    return this.frame.b;
+  }
+  private async run(fn: unknown, arg: unknown, byValue: boolean): Promise<Remote> {
+    if (this.oid === null) throw new BlindfillError('ACTUATOR', 'ego: not an object handle');
+    const { spec, hs } = pack(arg);
+    return this.b.call<Remote>('call', this.oid, this.frame.id, src(fn), spec, hs, byValue);
+  }
+  async evaluate(fn: unknown, arg?: unknown): Promise<unknown> {
+    return (await this.run(fn, arg, true)).v;
+  }
+  async evaluateHandle(fn: unknown, arg?: unknown): Promise<EgoHandle> {
+    return new EgoHandle(this.frame, await this.run(fn, arg, false), this.origin);
+  }
+  asElement(): EgoHandle | null {
+    return this.node ? this : null;
+  }
+  getProperty(name: string): Promise<EgoHandle> {
+    return this.evaluateHandle('(o, n) => o[n]', name);
+  }
+  async jsonValue(): Promise<unknown> {
+    return this.oid === null ? this.value : this.evaluate('(o) => o');
+  }
+  async dispose(): Promise<void> {
+    if (this.oid !== null) await this.b.call('release', this.oid);
+  }
+  async contentFrame(): Promise<EgoFrame | null> {
+    const id = this.oid && (await this.b.call<string | null>('contentFrame', this.oid));
+    return id ? this.frame.owner.frameById(id) : null;
+  }
+  async waitForElementState(_state: 'enabled', opts: { timeout: number }): Promise<void> {
+    const deadline = Date.now() + opts.timeout;
+    while (!(await this.evaluate(ENABLED))) {
+      if (Date.now() > deadline) throw new BlindfillError('ACTUATOR', 'element not enabled');
+      await sleep(100);
+    }
   }
   async scrollIntoViewIfNeeded(): Promise<void> {
     await this.evaluate(SCROLL);
   }
   async focus(): Promise<void> {
     await this.b.call('focus', this.oid);
-    this.state.focused = this;
+    this.frame.owner.state.focused = this;
   }
   /** Like Playwright's fill: focus, select the current content, replace it. */
   async fill(value: string): Promise<void> {
@@ -335,29 +421,54 @@ class EgoHandle {
 }
 
 class EgoFrame {
+  parentId: string | null = null;
   constructor(
-    private b: EgoBridge,
+    readonly b: EgoBridge,
+    readonly owner: EgoPage,
     readonly id: string,
     public currentUrl: string,
-    private state: FocusState,
   ) {}
   url(): string {
     return this.currentUrl;
   }
-  async $$(selector: string): Promise<EgoHandle[]> {
-    let origin = 'null';
+  page(): EgoPage {
+    return this.owner;
+  }
+  private origin(): string {
     try {
-      origin = new URL(this.currentUrl).origin;
+      return new URL(this.currentUrl).origin;
     } catch {
-      /* about:blank etc.: typing guard will refuse */
+      return 'null'; // about:blank etc.: the typing guard refuses
     }
+  }
+  parentFrame(): EgoFrame | null {
+    return this.parentId ? this.owner.frameById(this.parentId) : null;
+  }
+  isDetached(): boolean {
+    return this.owner.frameById(this.id) !== this;
+  }
+  async $$(selector: string): Promise<EgoHandle[]> {
+    const origin = this.origin();
     try {
       const ids = await this.b.call<string[]>('queryAll', this.id, selector, 200);
-      return ids.map((o) => new EgoHandle(this.b, o, origin, this.state));
+      return ids.map((h) => new EgoHandle(this, { h, node: true }, origin));
     } catch (e) {
       if (/SELECTOR/.test(String((e as Error).message))) throw new Error('invalid selector', { cause: e });
       throw e;
     }
+  }
+  /** Like Playwright: a function (or function source) gets `arg`; any other string is evaluated as an expression. */
+  private async run(fn: unknown, arg: unknown, byValue: boolean): Promise<Remote> {
+    if (typeof fn === 'string' && !/^\s*(async\s*)?(\(|function\b|[\w$]+\s*=>)/.test(fn))
+      return this.b.call<Remote>('evalIn', this.id, fn, byValue);
+    const { spec, hs } = pack(arg);
+    return this.b.call<Remote>('call', null, this.id, src(fn), spec, hs, byValue);
+  }
+  async evaluate(fn: unknown, arg?: unknown): Promise<unknown> {
+    return (await this.run(fn, arg, true)).v;
+  }
+  async evaluateHandle(fn: unknown, arg?: unknown): Promise<EgoHandle> {
+    return new EgoHandle(this, await this.run(fn, arg, false), this.origin());
   }
 }
 
@@ -365,7 +476,7 @@ class EgoPage {
   private frameMap = new Map<string, EgoFrame>();
   private order: EgoFrame[] = [];
   private timer: NodeJS.Timeout;
-  private state: FocusState = {};
+  readonly state: FocusState = {};
   readonly keyboard = {
     press: async (key: string) => {
       await this.b.call('key', key === 'ControlOrMeta+A' ? 'SelectAll' : key);
@@ -384,11 +495,12 @@ class EgoPage {
   }
 
   async refresh(): Promise<void> {
-    const list = await this.b.call<{ id: string; url: string }[]>('frames');
+    const list = await this.b.call<{ id: string; url: string; parentId: string | null }[]>('frames');
     const next = new Map<string, EgoFrame>();
     for (const f of list) {
-      const fr = this.frameMap.get(f.id) ?? new EgoFrame(this.b, f.id, f.url, this.state);
+      const fr = this.frameMap.get(f.id) ?? new EgoFrame(this.b, this, f.id, f.url);
       fr.currentUrl = f.url;
+      fr.parentId = f.parentId;
       next.set(f.id, fr);
     }
     this.frameMap = next;
@@ -397,6 +509,9 @@ class EgoPage {
   stop(): void {
     clearInterval(this.timer);
   }
+  frameById(id: string): EgoFrame | null {
+    return this.frameMap.get(id) ?? null;
+  }
 
   url(): string {
     return this.order[0]?.url() ?? 'about:blank';
@@ -404,7 +519,7 @@ class EgoPage {
   mainFrame(): EgoFrame {
     return this.order[0];
   }
-  /** Synchronous like Playwright; WebActuator refreshes before each scan via detect(). */
+  /** Synchronous like Playwright; refreshed every 150 ms and after goto. */
   frames(): EgoFrame[] {
     return [...this.order];
   }
@@ -412,28 +527,40 @@ class EgoPage {
     await this.b.call('goto', url);
     await this.refresh();
   }
+  async waitForTimeout(ms: number): Promise<void> {
+    await sleep(ms);
+  }
+  /** Request interception (rule submit kind "js") is not available through ego-browser: refuse. */
+  async route(): Promise<never> {
+    throw new BlindfillError('UNSUPPORTED', 'ego-cli cannot guard a submit of kind "js"; use kind "native"');
+  }
+  async unroute(): Promise<void> {}
   /** Playwright parity for tests; WebActuator never calls it. */
-  inputValue(selector: string): Promise<string> {
-    return this.b.call('evalMain', `document.querySelector(${JSON.stringify(selector)}).value`);
+  inputValue(selector: string): Promise<unknown> {
+    return this.mainFrame().evaluate('(s) => document.querySelector(s).value', selector);
   }
   title(): Promise<string> {
     return this.b.call('title');
   }
-  innerText(_sel: 'body'): Promise<string> {
-    return this.b.call('evalMain', 'document.body ? document.body.innerText : ""');
+  innerText(_sel: 'body'): Promise<unknown> {
+    return this.mainFrame().evaluate('document.body ? document.body.innerText : ""');
   }
-  content(): Promise<string> {
-    return this.b.call('evalMain', 'document.documentElement.outerHTML');
+  content(): Promise<unknown> {
+    return this.mainFrame().evaluate('document.documentElement.outerHTML');
   }
   async screenshot(): Promise<Buffer> {
     return Buffer.from(await this.b.call<string>('screenshot'), 'base64');
   }
+  /** Evidence and verify only (count, visibility of the first match), in the main frame's blindfill world. */
   locator(selector: string) {
-    const expr =
-      `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false;` +
-      ` const r = e.getBoundingClientRect(), cs = getComputedStyle(e);` +
-      ` return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; })()`;
-    return { first: () => ({ isVisible: () => this.b.call<boolean>('evalMain', expr) }) };
+    const top = () => this.mainFrame();
+    const isVisible = () =>
+      top().evaluate(`(s) => (${VISIBLE})(document.querySelector(s))`, selector) as Promise<boolean>;
+    return {
+      count: () => top().evaluate('(s) => document.querySelectorAll(s).length', selector) as Promise<number>,
+      isVisible,
+      first: () => ({ isVisible }),
+    };
   }
   /** `session attach` lists pages through the context: an Ego connection holds exactly one. */
   context(): { pages(): EgoPage[] } {

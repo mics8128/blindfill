@@ -23,6 +23,7 @@ const keep = <T>(v: T): T => {
 };
 const good = (p: string) => sites.url('good.localhost', p);
 const goodOrigin = () => `http://good.localhost:${sites.port}`;
+const cdnOrigin = () => `http://cdn.localhost:${sites.port}`;
 
 const field = (name: string, value: string, type = 0) => ({ name, value, type });
 const rules = (rs: unknown[]) => field('blindfill.rules', JSON.stringify({ version: 2, rules: rs }));
@@ -72,7 +73,13 @@ beforeAll(async () => {
     submit: { selector: '#create', kind: 'native' },
     ...extra,
   });
-  const reg = field('blindfill.registration', 'allow');
+  const outsideRule = {
+    id: 'eccang',
+    top_origin: O,
+    form: '#lf',
+    fields: { username: '#em', password: '#pw' },
+    submit: { selector: '#go', kind: 'js', outside_form: true },
+  };
   const policy = field(
     'blindfill.password_policy',
     JSON.stringify({ version: 1, min_length: 8, max_length: 12 }),
@@ -84,11 +91,9 @@ beforeAll(async () => {
       item('ruled', [rules([loginRule])]),
       item('ruled-two', [rules([loginRule, { ...loginRule, id: 'second' }])]),
       item('badrule', [rules([{ ...loginRule, top_origin: 'http://elsewhere.localhost:1' }])]),
-      item('reg', [reg, rules([regRule()])]),
-      item('reg-noopt', [rules([regRule()])]),
-      item('reg-policy', [reg, policy, rules([regRule()])]),
+      item('reg', [rules([regRule()])]),
+      item('reg-policy', [policy, rules([regRule()])]),
       item('reg-absent', [
-        reg,
         rules([regRule({ id: 'one', confirm_password: undefined, password_confirmation: 'absent' })]),
       ]),
       item('jsrule', [
@@ -102,6 +107,13 @@ beforeAll(async () => {
           },
         ]),
       ]),
+      item('outside', [rules([outsideRule])]),
+      item('outside-both', [rules([outsideRule])], [`${O}/`, `${cdnOrigin()}/`]),
+      item(
+        'outside-framed',
+        [rules([{ ...outsideRule, frame: { selector: 'iframe', origin: cdnOrigin() } }])],
+        [`${O}/`, `${cdnOrigin()}/`],
+      ),
       item('localonly'),
     ]),
   );
@@ -126,6 +138,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   sites.received.length = 0;
+  sites.requested.length = 0;
   globalScrubber.register(CANARY);
 });
 
@@ -155,6 +168,15 @@ describe('explicit field rules', () => {
         { ...base, container: 'div', form: undefined, submit: { selector: 'b', kind: 'native' } },
       ]),
     ).toThrow();
+    // outside_form: form rules with a js submit only
+    const out = { selector: '#go', kind: 'js', outside_form: true };
+    expect(validateRules([{ ...base, submit: out }])[0].submit).toEqual(out);
+    for (const bad of [
+      { ...base, submit: { ...out, kind: 'native' } },
+      { ...base, submit: { ...out, outside_form: 'yes' } },
+      { ...base, form: undefined, container: 'div', submit: { ...out, kind: 'click' } },
+    ])
+      expect(() => validateRules([bad])).toThrow(/outside_form/);
   });
 
   it('item rule picks the right form among ambiguous ones; native POST submit; lock', async () => {
@@ -213,6 +235,54 @@ describe('explicit field rules', () => {
     );
     expect(r).toMatchObject({ submitted: true, outcome: 'success' });
     expect(sites.received[0].fields.password).toBe(CANARY);
+  });
+
+  describe('form rule with a js submit outside the form (eccang shape)', () => {
+    const leaked = () => sites.requested.filter((u) => /CANARY|alice|^\/login\?/.test(u));
+
+    it('fills, clicks the outside <a> once, success; nothing in any URL', async () => {
+      const { eng } = await engine();
+      const r = keep(
+        await eng.fill({
+          item: 'outside',
+          url: good('/outside'),
+          submit: true,
+          expect: { urlIncludes: '/home' },
+        }),
+      );
+      expect(r).toMatchObject({ filled: ['username', 'password'], submitted: true, outcome: 'success' });
+      expect(sites.received).toHaveLength(1);
+      expect(sites.received[0]).toMatchObject({
+        path: '/login',
+        fields: { email: CANARY_USER, password: CANARY },
+      });
+      expect(leaked()).toEqual([]);
+    });
+
+    it.each(['enter', 'submit'])(
+      'the GET form submitted natively (trap=%s): values never reach a URL',
+      async (trap) => {
+        const { eng } = await engine();
+        keep(await eng.fill({ item: 'outside', url: good(`/outside?trap=${trap}`), submit: true }));
+        await page.waitForTimeout(300);
+        expect(leaked()).toEqual([]);
+      },
+    );
+
+    it.each([
+      ['outside-both', '/outside-split'],
+      ['outside-framed', '/outside-framed'],
+    ])(
+      '%s: a submit control in another frame / origin is refused before any secret is read',
+      async (id, path) => {
+        const { eng, act } = await engine();
+        const err = await eng.fill({ item: id, url: good(path), submit: true }).catch((e) => e);
+        expect(err).toMatchObject({ code: 'POLICY' });
+        expect(String(err.message)).toMatch(/submit control/);
+        expect(act.policy.locked).toBe(false);
+        expect(sites.received).toHaveLength(0);
+      },
+    );
   });
 
   it('default submit: a GET login form and a cross-origin form action are refused after fill (nothing sent)', async () => {
@@ -309,23 +379,20 @@ describe('registration', () => {
     expect(u.registration_outcome).toBe('unknown');
   });
 
-  it('requires opt-in (blindfill.registration=allow) and an explicit rule; never inferred', async () => {
+  it('requires an explicit registration rule; never inferred', async () => {
     const { eng } = await engine();
-    await expect(eng.register({ item: 'reg-noopt', url: good('/register'), rule: 'signup' })).rejects.toThrow(
-      /opted in/,
-    );
     await expect(
       eng.register({ item: 'reg', url: good('/register'), rule: undefined as never }),
     ).rejects.toThrow(/explicit rule/);
     await expect(eng.register({ item: 'plain', url: good('/register'), rule: 'signup' })).rejects.toThrow(
-      /opted in/,
+      /unknown rule/,
     );
     await expect(eng.register({ item: 'reg', url: good('/register'), rule: 'nope' })).rejects.toThrow(
       /unknown rule/,
     );
     // a login rule cannot be used for registration and vice versa
     await expect(eng.register({ item: 'ruled', url: good('/multi'), rule: 'main' })).rejects.toThrow(
-      /opted in/,
+      /login rule, not registration/,
     );
     await expect(eng.fill({ item: 'reg', url: good('/register'), rule: 'signup' })).rejects.toThrow(
       /registration rule, not login/,

@@ -1,9 +1,11 @@
 # blindfill Android companion
 
 `companion/` is the companion APK (`io.github.mics8128.blindfill`): an autofill service for
-passwords and a credential provider for passkeys (Android 14+). `testrp/` is a fake relying-party
-app used only by `tests/android-device.test.ts`. How it works: `docs/ARCHITECTURE.md` §3.2;
-trust and its limits: `SECURITY.md` item 16.
+passwords (login and sign-up forms, in apps and their WebViews) and a credential provider for
+passwords and passkeys (Android 14+). `testrp/` is a fake relying-party app used only by
+`tests/android-device.test.ts` (login, sign-up and WebView screens; its WebView page is served
+locally for `https://blindfill-test.invalid/`). How it works: `docs/ARCHITECTURE.md` §3.2; trust and
+its limits: `SECURITY.md` items 16 and 21–23.
 
 ## Install (users)
 
@@ -20,7 +22,7 @@ blindfill android install --serial <adb serial> --set-services  # also make it t
 `uninstall` is printed too. The install command is CLI-only on purpose (no MCP tool): installing
 an app and switching a phone's autofill provider is a device-level change a person should start.
 
-Before every `android fill|passkey` the host reads the installed APK back from the phone
+Before every `android fill|register|passkey|passkey-register` the host reads the installed APK back from the phone
 (`pm path` + `adb exec-out cat`), parses its APK Signing Block and refuses (`status: refused`,
 nothing armed, no secret read) unless its only signer is the release certificate:
 

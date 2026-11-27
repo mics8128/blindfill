@@ -259,7 +259,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'register_credentials',
     {
-      description: `Fill an account-registration form using the stored password of an item that opted in (custom field blindfill.registration=allow) and an explicit registration rule. The same stored value is typed into the password and confirmation fields; nothing is returned. Fill-only unless submit=true; at most one submit; never retried. ${CONTRACT}`,
+      description: `Fill an account-registration form using the stored password of an item that binds the page and an explicit registration rule. The same stored value is typed into the password and confirmation fields; nothing is returned. Fill-only unless submit=true; at most one submit; never retried. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         rule: z.string().describe('Registration rule id (required; never inferred).'),
@@ -300,19 +300,55 @@ export function buildServer(): McpServer {
     (a) => run(async () => (await getEngine()).passkey(a)),
   );
   server.registerTool(
+    'passkey_register',
+    {
+      description: `Create a passkey for this page and store it in the item (Chromium, bw only). Add only: the item must bind the page and hold no passkey yet. The page's own WebAuthn create request is answered once by a temporary browser authenticator; the private key goes straight into the vault and is never returned. Returns rp_id and credential_id. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        url: urlArg,
+        click: z
+          .string()
+          .optional()
+          .describe('Button that starts the page passkey creation (structural CSS).'),
+        expect: expectShape,
+      },
+    },
+    (a) => run(async () => (await getEngine()).passkeyRegister(a)),
+  );
+  server.registerTool(
     'android_offer',
     {
-      description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion; kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind both (androidapp:// URI + blindfill.signers) or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,
+      description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion (or Credential Manager password entry); kind=password-new: the same into a sign-up form (password and confirmation; the caller submits); kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind the package (androidapp:// URI; a blindfill.signers pin is checked when present), or for a WebView the https domain it shows, or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         serial: z.string().describe('adb device serial'),
-        kind: z.enum(['password', 'passkey']),
+        kind: z.enum(['password', 'password-new', 'passkey']),
         timeout_s: z.number().int().min(5).max(300).optional(),
       },
     },
     ({ timeout_s, ...a }) =>
       run(async () =>
         (await getEngine()).androidOffer({ ...a, timeoutMs: timeout_s ? timeout_s * 1000 : undefined }),
+      ),
+  );
+  server.registerTool(
+    'android_passkey_register',
+    {
+      description: `Arm the blindfill companion APK on an adb-attached phone for one passkey creation (bw only). Add only: the item must bind the app (androidapp://; a blindfill.signers pin is checked when present) and https://<rp_id> and hold no passkey. The host makes the key and stores it in the vault; the phone gets only the attestation. Returns rp_id and credential_id. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        serial: z.string().describe('adb device serial'),
+        rp_id: z.string().describe('relying party id (domain) the app registers for'),
+        timeout_s: z.number().int().min(5).max(300).optional(),
+      },
+    },
+    ({ timeout_s, rp_id, ...a }) =>
+      run(async () =>
+        (await getEngine()).androidPasskeyRegister({
+          ...a,
+          rpId: rp_id,
+          timeoutMs: timeout_s ? timeout_s * 1000 : undefined,
+        }),
       ),
   );
   server.registerTool(

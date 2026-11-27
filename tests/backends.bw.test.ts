@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -82,5 +83,60 @@ describe('bw item mapping', () => {
     });
     await expect(b.meta({ backend: 'bw', id: '--help' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(FAKE.id).toBeTruthy();
+  });
+
+  it('raisePasskeyCounter changes only the counter, never lowers it, and scrubs the key from a bw echo', async () => {
+    const key = randomBytes(32).toString('base64url');
+    const cred = { credentialId: 'b64.AAAA', rpId: 'rp.test', keyValue: key, counter: '4' };
+    const item = { id: 'pk1', name: 'n', login: { username: 'u', fido2Credentials: [cred] } };
+    const edits: unknown[] = [];
+    const b = new BwBackend({
+      env: { BW_SESSION: 's' },
+      runner: async (_bin, args, o) => {
+        if (args[0] === 'get') return { code: 0, stdout: JSON.stringify(item), stderr: '' };
+        edits.push(JSON.parse(Buffer.from(String(o?.input), 'base64').toString('utf8')));
+        return { code: 1, stdout: '', stderr: `invalid body ${key}` };
+      },
+    });
+    const ref = { backend: 'bw', id: 'pk1' };
+    await b.raisePasskeyCounter(ref, 'b64.AAAA', 4);
+    expect(edits).toHaveLength(0);
+    const err = await b.raisePasskeyCounter(ref, 'b64.AAAA', 5).catch((e: Error) => e);
+    expect(edits).toEqual([
+      { ...item, login: { ...item.login, fido2Credentials: [{ ...cred, counter: '5' }] } },
+    ]);
+    expect(err).toMatchObject({ code: 'BACKEND' });
+    expect(String(err)).not.toContain(key);
+    await expect(b.raisePasskeyCounter(ref, 'b64.BBBB', 9)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('syncs before reading a passkey (another client may have raised the counter)', async () => {
+    const cred = {
+      credentialId: 'b64.AAAA',
+      rpId: 'rp.test',
+      keyValue: randomBytes(32).toString('base64url'),
+      counter: '4',
+    };
+    const item = {
+      id: 'pk1',
+      name: 'n',
+      login: { username: 'u', password: 'pw-x', fido2Credentials: [cred] },
+    };
+    const calls: string[] = [];
+    const b = new BwBackend({
+      env: { BW_SESSION: 's' },
+      runner: async (_bin, args) => {
+        calls.push(args[0]);
+        return {
+          code: 0,
+          stdout: args[0] === 'get' ? JSON.stringify(item) : 'Syncing complete.',
+          stderr: '',
+        };
+      },
+    });
+    await b.openSecret({ backend: 'bw', id: 'pk1' }, 'password');
+    expect(calls).toEqual(['get']);
+    await b.openSecret({ backend: 'bw', id: 'pk1' }, 'passkey');
+    expect(calls).toEqual(['get', 'sync', 'get']);
   });
 });

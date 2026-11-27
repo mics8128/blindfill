@@ -38,7 +38,7 @@ export function companionApk(): string {
 
 /** What the companion reports. pkg and signer come from the system (AssistStructure / CallingAppInfo / PackageManager). */
 export interface PhoneRequest {
-  kind: 'password' | 'passkey';
+  kind: 'password' | 'password-new' | 'passkey' | 'passkey-create';
   pkg: string;
   /** SHA-256 of the app's single signing certificate, hex; null when it has several */
   signer: string | null;
@@ -48,11 +48,20 @@ export interface PhoneRequest {
   newPassword?: boolean;
   rpId?: string;
   clientDataHash?: string;
+  /** password: asked through Credential Manager (GetPasswordOption), so there is no form to describe */
+  cm?: boolean;
+  /** web: scheme and domain of the WebView document, and how many distinct domains the screen shows */
+  webScheme?: string;
+  webDomain?: string;
+  webDomains?: number;
+  /** passkey-create: user.id (base64url) and pubKeyCredParams algorithms from the app's request */
+  userId?: string;
+  algs?: number[];
 }
 
 export interface ArmOptions {
   serial: string;
-  mode: 'password' | 'passkey';
+  mode: 'password' | 'password-new' | 'passkey' | 'passkey-create';
   /** display labels for the phone's suggestion; not secret */
   item: string;
   user?: string;

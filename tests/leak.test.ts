@@ -41,7 +41,7 @@ const vault = () =>
   JSON.parse(readFileSync(join(dir, 'items.json'), 'utf8')) as {
     id: string;
     name: string;
-    login: { password: string };
+    login: { password: string; fido2Credentials?: { keyValue: string }[] };
     fields?: { name: string; value: string; type: number }[];
   }[];
 
@@ -80,7 +80,7 @@ const regRule = () => ({
   confirm_password: '#pw2',
   submit: { selector: '#create', kind: 'native' },
 });
-function leakRuleItem(id: string, mk: (() => object)[] | (() => object), extra: object[] = []) {
+function leakRuleItem(id: string, mk: (() => object)[] | (() => object)) {
   const rs = (Array.isArray(mk) ? mk : [mk]).map((f) => f());
   return {
     id,
@@ -92,10 +92,7 @@ function leakRuleItem(id: string, mk: (() => object)[] | (() => object), extra: 
       totp: 'JBSWY3DPEHPK3PXP',
       uris: [{ uri: `${O()}/`, match: 1 }],
     },
-    fields: [
-      ...extra,
-      { name: 'blindfill.rules', value: JSON.stringify({ version: 2, rules: rs }), type: 0 },
-    ],
+    fields: [{ name: 'blindfill.rules', value: JSON.stringify({ version: 2, rules: rs }), type: 0 }],
   };
 }
 
@@ -120,7 +117,14 @@ beforeAll(async () => {
         fields: [{ name: 'pin', value: 'CANARY-pin-123456', type: 1 }],
       },
       leakRuleItem('leak-rule', [loginRule]),
-      leakRuleItem('leak-reg', [regRule], [{ name: 'blindfill.registration', value: 'allow', type: 0 }]),
+      leakRuleItem('leak-reg', [regRule]),
+      {
+        id: 'leak-pk',
+        type: 1,
+        name: 'leak-pk',
+        login: { username: 'pk-user', password: null, uris: [{ uri: good, match: 1 }] },
+        fields: [],
+      },
     ]),
   );
   writeFileSync(
@@ -264,6 +268,7 @@ describe('leak test: canary password never appears anywhere', () => {
     const names = tools.tools.map((t) => t.name).sort();
     expect(names).toEqual([
       'android_offer',
+      'android_passkey_register',
       'candidates',
       'diagnose_fields',
       'discover_fields',
@@ -273,6 +278,7 @@ describe('leak test: canary password never appears anywhere', () => {
       'item_show',
       'list_credentials',
       'list_pages',
+      'passkey_register',
       'passkey_sign',
       'probe',
       'profile_login',
@@ -407,7 +413,7 @@ describe('leak test: canary password never appears anywhere', () => {
     expect(sites.received).toHaveLength(0);
     expect((await cli('register', '--item', 'leak-reg', '--rule', 'signup', '--submit')).code).toBe(1);
     expect((await cli('session', 'stop')).code).toBe(0);
-    // refused: no opt-in
+    // refused: a login rule used for registration
     expect((await cli('session', 'start', '--headless')).code).toBe(0);
     const noopt = await cli('register', '--item', 'leak-rule', '--rule', 'main', '--url', good('/multi'));
     expect(noopt.code).toBe(1);
@@ -475,6 +481,36 @@ describe('leak test: canary password never appears anywhere', () => {
     expect((await cli('probe')).code).toBe(1);
     await cli('session', 'stop');
   }, 180_000);
+
+  it('CLI + MCP: passkey register, then sign-in, stay free of the new private key', async () => {
+    const good = (p: string) => `http://good.localhost:${sites.port}${p}`;
+    expect((await cli('session', 'start', '--headless')).code).toBe(0);
+    const reg = await cli(
+      'passkey',
+      'register',
+      '--item',
+      'leak-pk',
+      '--url',
+      good('/passkey-register'),
+      '--click',
+      '#reg',
+    );
+    expect(JSON.parse(reg.stdout)).toMatchObject({ status: 'registered', rp_id: 'good.localhost' });
+    const key = vault().find((i) => i.id === 'leak-pk')!.login.fido2Credentials![0].keyValue;
+    generated.push(key, Buffer.from(key, 'base64url').toString('base64'));
+    const m = await mcp();
+    // add only: a second registration is refused before any ceremony
+    expect(
+      (await m.call('passkey_register', { item: 'leak-pk', url: good('/passkey-register'), click: '#reg' }))
+        .isError,
+    ).toBe(true);
+    await m.close();
+    await cli('session', 'stop');
+    expect((await cli('session', 'start', '--headless')).code).toBe(0);
+    const s = await cli('passkey', '--item', 'leak-pk', '--url', good('/passkey'), '--click', '#pk');
+    expect(JSON.parse(s.stdout)).toMatchObject({ status: 'asserted', counter_written_back: true });
+    await cli('session', 'stop');
+  }, 120_000);
 
   it('grep: zero occurrences in all captured output and all state files', () => {
     const hits: string[] = [];

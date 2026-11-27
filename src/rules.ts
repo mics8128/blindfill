@@ -17,6 +17,8 @@ const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 export interface RuleSubmit {
   selector: string;
   kind: 'native' | 'click' | 'js';
+  /** form rules with kind "js" only: the control sits outside every form, anywhere in the rule's frame */
+  outside_form?: true;
 }
 export interface Rule {
   id: string;
@@ -148,13 +150,18 @@ export function validateRules(raw: unknown): Rule[] {
       rule.frame = { selector: selector(fr.selector), origin: origin(fr.origin) };
     }
     if (o.submit !== undefined) {
-      const s = keys(o.submit, ['selector', 'kind'], ['selector', 'kind']);
+      const s = keys(o.submit, ['selector', 'kind', 'outside_form'], ['selector', 'kind']);
       if (
         !['native', 'click', 'js'].includes(s.kind as string) ||
         (rule.form === undefined && s.kind !== 'click')
       )
         bad('submit.kind must be native|click|js (container rules: click only)');
       rule.submit = { selector: selector(s.selector), kind: s.kind as RuleSubmit['kind'] };
+      if (s.outside_form !== undefined) {
+        if (s.outside_form !== true || rule.form === undefined || s.kind !== 'js')
+          bad('submit.outside_form must be true and needs a form rule with submit.kind "js"');
+        rule.submit.outside_form = true;
+      }
     }
     if (o.password_purpose !== undefined) {
       if (

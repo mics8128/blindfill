@@ -47,8 +47,11 @@ export interface ControlFields {
   signers: string[];
   rules?: unknown;
   notesReadable: boolean;
-  /** opt-in (blindfill.registration=allow): the item may be used with register_credentials */
-  registration: boolean;
+  /**
+   * blindfill.passkey_be: the backup-eligible flag the passkey was created with (default true, as
+   * Bitwarden clients sign; "0" for passkeys registered through Firefox, which cannot set it).
+   */
+  passkeyBe: boolean;
   /** blindfill.password_policy JSON (data only) */
   passwordPolicy?: unknown;
 }

@@ -15,9 +15,15 @@ export async function startSites(): Promise<{
   port: number;
   url: (host: string, path: string) => string;
   received: Received[];
+  /** every request path+query, to prove no value ever reached a URL */
+  requested: string[];
   close: () => Promise<void>;
 }> {
   const received: Received[] = [];
+  const requested: string[] = [];
+  const passkeyCounters = new Map<string, number>();
+  /** BE flag seen at registration; credentials put in the vault by a test count as Bitwarden-made (BE=1) */
+  const passkeyBe = new Map<string, boolean>();
   const page = (title: string, body: string, script = '') =>
     `<!doctype html><html><head><meta charset=utf-8><title>${title}</title></head><body>${body}<script>${script}</script></body></html>`;
 
@@ -35,9 +41,21 @@ export async function startSites(): Promise<{
       `<form method="post" action="/login"><input type="hidden" name="email" value="${email}"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button></form>`,
     );
 
+  const outsideForm = `<form id="lf" method="get" action="/login"><input id="em" name="email" type="email"><input id="pw" name="password" type="password"></form>`;
+  const outsideScript = `const trap = new URLSearchParams(location.search).get('trap');
+    document.getElementById('go').addEventListener('click', async () => {
+      const f = document.getElementById('lf');
+      if (trap === 'enter') f.requestSubmit(); // the path an Enter key's implicit submission takes
+      if (trap === 'submit') f.submit(); // no submit event: only the navigation guard stops it
+      const body = new URLSearchParams({ email: document.getElementById('em').value, password: document.getElementById('pw').value });
+      await fetch('/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+      location.href = '/home';
+    });`;
+
   const server: Server = createServer((req, res) => {
     const host = (req.headers.host ?? '').split(':')[0];
     const u = new URL(req.url ?? '/', 'http://x');
+    requested.push(req.url ?? '');
     const html = (s: string, code = 200) => {
       res.writeHead(code, { 'content-type': 'text/html; charset=utf-8' });
       res.end(s);
@@ -53,7 +71,30 @@ export async function startSites(): Promise<{
           return;
         }
         if (u.pathname === '/passkey') {
-          res.writeHead(200).end(); // the test verifies the assertion itself
+          // strict relying party (SimpleWebAuthn rules): the signature counter must grow unless both it and
+          // the stored one are 0, and the backup-eligible flag must match registration (Bitwarden: BE=1).
+          // The test verifies the signature itself.
+          const ad = Buffer.from(fields.authenticatorData ?? '', 'base64url');
+          const count = ad.length >= 37 ? ad.readUInt32BE(33) : -1;
+          const stored = passkeyCounters.get(fields.id) ?? 0;
+          const be = (ad[32] & 0x08) !== 0;
+          const ok =
+            count >= 0 &&
+            !((count > 0 || stored > 0) && count <= stored) &&
+            be === (passkeyBe.get(fields.id) ?? true);
+          if (ok) passkeyCounters.set(fields.id, count);
+          fields.verdict = ok ? 'accepted' : 'rejected';
+          res.writeHead(ok ? 200 : 400).end();
+          return;
+        }
+        if (u.pathname === '/passkey-register') {
+          // the RP keeps the registration counter; the test keeps the public key (fields.publicKey)
+          const ad = Buffer.from(fields.authenticatorData ?? '', 'base64url');
+          if (ad.length >= 37) {
+            passkeyCounters.set(fields.id, ad.readUInt32BE(33));
+            passkeyBe.set(fields.id, (ad[32] & 0x08) !== 0);
+          }
+          res.writeHead(200).end();
           return;
         }
         if (fields.password === CANARY || fields.a2 === CANARY) {
@@ -84,6 +125,31 @@ export async function startSites(): Promise<{
                 clientDataJSON: b(r.clientDataJSON), signature: b(r.signature), userHandle: r.userHandle ? b(r.userHandle) : '' });
               const res = await fetch('/passkey', { method: 'POST', body });
               location.href = res.ok ? '/home' : '/passkey?fail=1';
+            };`,
+          ),
+        );
+      case '/passkey-register':
+        // relying party sign-up: creates a discoverable ES256 passkey for ?rp= (default: this host)
+        return html(
+          page(
+            'Create a passkey',
+            '<h1>Create a passkey</h1><button id="reg" type="button">Create a passkey</button>',
+            `const b = (x) => btoa(String.fromCharCode(...new Uint8Array(x))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+            document.getElementById('reg').onclick = async () => {
+              const rp = new URLSearchParams(location.search).get('rp') || location.hostname;
+              try {
+                const c = await navigator.credentials.create({ publicKey: {
+                  challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { id: rp, name: 'Fake RP' },
+                  user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'pk-user', displayName: 'PK User' },
+                  // Ed25519 first, like webauthn.io: the stored key must still be ES256
+                  pubKeyCredParams: [{ type: 'public-key', alg: -8 }, { type: 'public-key', alg: -7 }], attestation: 'none',
+                  authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' } } });
+                const r = c.response;
+                const body = new URLSearchParams({ id: c.id, publicKey: b(r.getPublicKey()),
+                  authenticatorData: b(r.getAuthenticatorData()), clientDataJSON: b(r.clientDataJSON) });
+                const res = await fetch('/passkey-register', { method: 'POST', body });
+                location.href = res.ok ? '/home' : '/passkey-register?fail=1';
+              } catch (e) { document.body.dataset.error = e.name; }
             };`,
           ),
         );
@@ -277,6 +343,56 @@ export async function startSites(): Promise<{
             `<label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="button">Sign in</button>`,
           ),
         );
+      case '/late-enable':
+        // submit starts disabled; the page enables it once both fields hold a value
+        return html(
+          page(
+            'Late enable',
+            `<h1>Sign in</h1>${loginForm().replace('<button type="submit">', '<button type="submit" disabled>')}`,
+            `document.addEventListener('input', () => {
+              document.querySelector('button').disabled = !(document.querySelector('#em').value && document.querySelector('#pw').value);
+            });`,
+          ),
+        );
+      case '/always-disabled':
+        return html(
+          page(
+            'Always disabled',
+            `<h1>Sign in</h1>${loginForm().replace('<button type="submit">', '<button type="submit" disabled>')}`,
+          ),
+        );
+      case '/inert-submit':
+        return html(
+          page(
+            'Inert submit',
+            `<h1>Sign in</h1>${loginForm().replace('<button type="submit">Sign in</button>', '<div inert><button type="submit">Sign in</button></div>')}`,
+          ),
+        );
+      case '/outside':
+        // eccang-like: fields in a GET <form>, the login <a> outside it, handled in JS (?trap= also fires a native submit)
+        return html(
+          page('Outside', `${outsideForm}<a id="go" href="javascript:;">Log in</a>`, outsideScript),
+        );
+      case '/outside-formonly':
+        return html(page('Outside', outsideForm));
+      case '/outside-btn':
+        return html(page('Button', '<a id="go" href="javascript:;">Log in</a>'));
+      case '/outside-split':
+        // fields in the top document, the login link inside a child frame of another origin
+        return html(
+          page(
+            'Split',
+            `${outsideForm}<iframe src="http://cdn.localhost:${(server.address() as AddressInfo).port}/outside-btn"></iframe>`,
+          ),
+        );
+      case '/outside-framed':
+        // fields inside a bound child frame, the login link in the top document
+        return html(
+          page(
+            'Framed',
+            `<a id="go" href="javascript:;">Log in</a><iframe src="http://cdn.localhost:${(server.address() as AddressInfo).port}/outside-formonly"></iframe>`,
+          ),
+        );
       case '/echo':
         // a hostile page that reflects what was typed into the DOM (for the lock test)
         return html(page('Echo', loginForm()));
@@ -290,6 +406,7 @@ export async function startSites(): Promise<{
     port,
     url: (host, path) => `http://${host}:${port}${path}`,
     received,
+    requested,
     close: () => new Promise((r) => server.close(() => r())),
   };
 }

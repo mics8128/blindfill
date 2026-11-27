@@ -29,6 +29,19 @@ export interface ItemPatch {
   uris?: string[];
   fields?: Record<string, string | null>;
 }
+/** A passkey just created by a browser authenticator. The private key (PKCS#8 DER) stays in `key`. */
+export interface NewPasskey {
+  /** raw credential id, base64url */
+  credentialId: string;
+  rpId: string;
+  /** user.id from the RP, base64url */
+  userHandle: string;
+  userName?: string;
+  counter: number;
+  /** false when created through Firefox (BE=0); stored as blindfill.passkey_be=0 */
+  backupEligible: boolean;
+  key: SecretHandle;
+}
 
 /** ARCHITECTURE 3.1. Every backend must pass src/backends/_contract. */
 export interface Backend {
@@ -51,17 +64,30 @@ export interface Backend {
   totpCode(ref: ItemRef): Promise<string>;
   /** Optional (capability WRITE). Backends without it report UNSUPPORTED to callers. */
   createItem?(spec: NewItemSpec): Promise<ItemRef>;
-  /** Optional (WRITE). Replace one Secret-class value; the value is never returned or logged. */
+  /**
+   * Optional (WRITE). Replace one Secret-class value; the value is never returned or logged. Field "totp"
+   * adds a TOTP seed (base32 or otpauth:// URI) and must refuse (POLICY) when the item already has one.
+   */
   updateSecret?(ref: ItemRef, field: string, value: string): Promise<void>;
   /** Optional (WRITE). Change only non-secret properties. */
   updateItem?(ref: ItemRef, patch: ItemPatch): Promise<void>;
+  /**
+   * Optional (WRITE). Raise the sign counter of the item's passkey with this credential id to `counter`.
+   * Never lowers it and changes nothing else, so it needs no person at a terminal (owner decision 2026-11-27).
+   */
+  raisePasskeyCounter?(ref: ItemRef, credentialId: string, counter: number): Promise<void>;
+  /**
+   * Optional (WRITE). Store a newly created passkey on an item that has none. Add only: an item that
+   * already holds a passkey is refused (replacing or deleting one needs a person at a terminal).
+   */
+  addPasskey?(ref: ItemRef, passkey: NewPasskey): Promise<void>;
 }
 
 export const DEFAULT_CONTROL: ControlFields = {
   submit: 'once',
   signers: [],
   notesReadable: false,
-  registration: false,
+  passkeyBe: true,
 };
 
 /** Parse blindfill.* control fields given as name -> value. Shared by backends. */
@@ -77,7 +103,7 @@ export function parseControl(fields: Record<string, string>): ControlFields {
         .map((s) => s.trim())
         .filter(Boolean);
     else if (key === 'blindfill.notes') c.notesReadable = v.trim().toLowerCase() === 'readable';
-    else if (key === 'blindfill.registration') c.registration = v.trim().toLowerCase() === 'allow';
+    else if (key === 'blindfill.passkey_be') c.passkeyBe = v.trim() !== '0';
     else if (key === 'blindfill.password_policy') {
       try {
         c.passwordPolicy = JSON.parse(v);

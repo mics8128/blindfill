@@ -2,7 +2,8 @@ import type { ElementHandle, Frame, JSHandle, Page } from 'playwright-core';
 import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
-import type { SecretHandle } from '../../core/secret.js';
+import { SecretHandle } from '../../core/secret.js';
+import { createPrivateKey } from 'node:crypto';
 import { credentialIdBase64, type BwFido2Credential } from '../../backends/bwmap.js';
 import {
   DESCRIBE_FIELD,
@@ -28,8 +29,50 @@ import { pick, pickNamed, scoreRole, type FieldDescriptor, type Role } from './h
 import { getProvider } from './providers/registry.js';
 import type { ProviderCapabilities, ProviderConnection, ProviderOptions } from './providers/types.js';
 import { assertLoopbackEndpoint } from './providers/util.js';
+import { Marionette } from './marionette.js';
 
 export { assertLoopbackEndpoint };
+
+/** Per-page Chromium authenticator; BE=BS=1 because Bitwarden signs that way and RPs may reject a change of BE. */
+const VIRTUAL_AUTHENTICATOR = {
+  protocol: 'ctap2',
+  ctap2Version: 'ctap2_1',
+  transport: 'internal',
+  hasResidentKey: true,
+  hasUserVerification: true,
+  isUserVerified: true,
+  automaticPresenceSimulation: true,
+  defaultBackupEligibility: true,
+  defaultBackupState: true,
+} as const;
+
+/** A passkey a page just created. Everything but `key` is public data the RP already has. */
+export interface CreatedPasskey {
+  credentialId: string; // base64url
+  rpId: string;
+  userHandle: string; // base64url
+  signCount: number;
+  /** P-256 key: the only kind Bitwarden stores */
+  es256: boolean;
+  /** BE flag of the new passkey: true in Chromium (as Bitwarden), false in Firefox */
+  backupEligible: boolean;
+  /** PKCS#8 DER */
+  key: SecretHandle;
+}
+
+/** Wrap a just-created private key (PKCS#8 DER) into a handle; `der` is zero-filled. */
+function created(der: Buffer, pub: Omit<CreatedPasskey, 'es256' | 'key'>): CreatedPasskey {
+  globalScrubber.register(der.toString('base64url'));
+  globalScrubber.register(der.toString('base64'));
+  const k = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
+  const out = {
+    ...pub,
+    es256: k.asymmetricKeyType === 'ec' && k.asymmetricKeyDetails?.namedCurve === 'prime256v1',
+    key: new SecretHandle(der, 'passkey'),
+  };
+  der.fill(0);
+  return out;
+}
 
 export interface Detected {
   desc: FieldDescriptor;
@@ -111,7 +154,7 @@ export class WebActuator {
   private bound: Map<Frame, JSHandle> | null = null;
 
   private constructor(
-    readonly page: Page,
+    public page: Page, // replaced only by navigate() on a shared context (conn.openPage)
     private conn: ProviderConnection | null,
     providerId: string,
     policy?: SessionPolicy,
@@ -171,7 +214,8 @@ export class WebActuator {
   async navigate(url: string): Promise<void> {
     if (!/^https?:\/\//i.test(url)) throw new BlindfillError('POLICY', 'only http(s) URLs can be opened');
     try {
-      await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      if (this.conn?.openPage) this.page = await this.conn.openPage(url);
+      else await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
     } catch (e) {
       throw wrap(e, 'navigation failed');
     }
@@ -333,6 +377,34 @@ export class WebActuator {
     return found[0];
   }
 
+  /**
+   * Raw text of the one main-frame element `selector` matches, for TOTP enrollment: an otpauth:// URI in
+   * its href, value or text, else its value (inputs) or text. Returned to the engine only, never to a caller.
+   * Main frame only, like v1 selectors: a key inside an iframe is not reachable.
+   */
+  async readSetupKey(selector: string): Promise<string> {
+    let hs: ElementHandle<Element>[];
+    try {
+      hs = await this.page.mainFrame().$$(selector);
+    } catch {
+      throw new BlindfillError('POLICY', 'invalid selector');
+    }
+    if (hs.length !== 1)
+      throw new BlindfillError(
+        'AMBIGUOUS',
+        `selector matched ${hs.length} elements in the top document (need exactly 1)`,
+      );
+    try {
+      return await hs[0].evaluate((el) => {
+        const v = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : null;
+        const all = [el.getAttribute('href'), v, el.textContent];
+        return all.find((s) => s && /otpauth:\/\//i.test(s)) ?? v ?? el.textContent ?? '';
+      });
+    } catch (e) {
+      throw wrap(e, 'could not read the element');
+    }
+  }
+
   // ---- filling --------------------------------------------------------------------------
 
   private async fillOnce(d: Detected, value: string): Promise<'fill' | 'keys'> {
@@ -459,6 +531,7 @@ export class WebActuator {
   private async resolveGenericSubmit(
     near: Detected,
     isBound: (url: string) => boolean,
+    precheck = false,
   ): Promise<ElementHandle> {
     const form = (await near.handle.evaluateHandle(FORM_OF)).asElement();
     if (!form)
@@ -475,13 +548,13 @@ export class WebActuator {
       );
     const submitter = (await list.getProperty('0')).asElement();
     if (!submitter) throw new BlindfillError('NOT_FOUND', 'submit control vanished');
-    await assertSubmitControl(submitter, form, true, 'native', near.frameUrl, isBound);
+    await assertSubmitControl(submitter, form, true, 'native', near.frameUrl, isBound, precheck);
     return submitter;
   }
 
-  /** Validate (no click): lets the engine refuse before any secret is read. */
+  /** Validate (no click): lets the engine refuse before any secret is read. A disabled submit passes here. */
   async checkSubmit(near: Detected, isBound: (url: string) => boolean): Promise<void> {
-    await this.resolveGenericSubmit(near, isBound);
+    await this.resolveGenericSubmit(near, isBound, true);
   }
 
   /** Click the single validated native submit of `near`'s form. */
@@ -504,7 +577,7 @@ export class WebActuator {
     return locateInScope(scope, name);
   }
   async checkRuleSubmit(scope: RuleScope, isBound: (url: string) => boolean): Promise<void> {
-    await resolveRuleSubmit(scope, isBound);
+    await resolveRuleSubmit(scope, isBound, true);
   }
   async passwordCount(scope: RuleScope): Promise<number> {
     return scope.group.evaluate(PWD_COUNT, { native: scope.native });
@@ -650,60 +723,210 @@ export class WebActuator {
     }
   }
 
+  /** How this browser can hold a passkey: Chromium over CDP, Firefox/Camoufox over Marionette, or not. */
+  get passkeyRoute(): 'cdp' | 'marionette' | null {
+    return this.capabilities.cdp ? 'cdp' : this.conn?.marionette ? 'marionette' : null;
+  }
+
+  private passkeyRouteOrThrow(): 'cdp' | 'marionette' {
+    const r = this.passkeyRoute;
+    if (!r)
+      throw new BlindfillError(
+        'UNSUPPORTED',
+        'passkeys need a Chromium provider with CDP, or firefox-connect with a Marionette endpoint (BLINDFILL_MARIONETTE)',
+      );
+    return r;
+  }
+
   /**
-   * Passkey sign-in (ARCHITECTURE 3.8): the credential is loaded into a per-page Chromium virtual
-   * authenticator over CDP, the page's own navigator.credentials.get() uses it, and it is removed
-   * after the first assertion or the timeout. The private key goes handle -> CDP -> Chromium; the
-   * page and the caller never receive it.
+   * Passkey sign-in (ARCHITECTURE 3.8): the credential is loaded into a virtual authenticator (Chromium:
+   * per page over CDP; Firefox: browser-wide over Marionette), the page's own
+   * navigator.credentials.get() uses it, and it is removed after the first assertion or the timeout.
+   * The private key goes handle -> browser; the page and the caller never receive it.
+   * `backupEligible` (Chromium only) is the BE flag the passkey was created with; Firefox signs BE=0.
    */
   async passkeyAssert(
     handle: SecretHandle,
-    opts: { click?: string; timeoutMs?: number } = {},
-  ): Promise<{ asserted: boolean; signCount: number | null }> {
-    if (!this.capabilities.cdp)
-      throw new BlindfillError('UNSUPPORTED', 'passkeys need a Chromium provider with CDP');
+    opts: { click?: string; timeoutMs?: number; backupEligible?: boolean } = {},
+  ): Promise<{ asserted: boolean; signCount: number | null; credentialId: string }> {
+    const route = this.passkeyRouteOrThrow();
     if (opts.click) assertSafeEvidenceSelector(opts.click);
+    if (route === 'marionette') return this.marionetteAssert(handle, opts);
     const cdp = await this.page.context().newCDPSession(this.page);
     let authenticatorId: string | undefined;
+    let credentialId = '';
     try {
       await cdp.send('WebAuthn.enable', { enableUI: false });
       ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-        options: {
-          protocol: 'ctap2',
-          ctap2Version: 'ctap2_1',
-          transport: 'internal',
-          hasResidentKey: true,
-          hasUserVerification: true,
-          isUserVerified: true,
-          automaticPresenceSimulation: true,
-        },
+        options: VIRTUAL_AUTHENTICATOR,
       }));
       const asserted = new Promise<number>((res) =>
         cdp.on('WebAuthn.credentialAsserted', (e) => res(e.credential.signCount)),
       );
       await handle.into(async (buf) => {
         const c = JSON.parse(buf.toString('utf8')) as BwFido2Credential;
+        credentialId = c.credentialId ?? '';
         await cdp.send('WebAuthn.addCredential', {
           authenticatorId: authenticatorId!,
           credential: {
-            credentialId: credentialIdBase64(c.credentialId ?? ''),
+            credentialId: credentialIdBase64(credentialId),
             isResidentCredential: true,
             rpId: c.rpId ?? '',
             privateKey: Buffer.from(c.keyValue ?? '', 'base64url').toString('base64'),
             userHandle: c.userHandle ? Buffer.from(c.userHandle, 'base64url').toString('base64') : undefined,
+            // Chromium reports signCount + 1 (never 0); the engine writes that back
             signCount: Number(c.counter ?? 0) || 0,
+            backupEligibility: opts.backupEligible ?? true,
+            backupState: opts.backupEligible ?? true,
           },
         });
       });
       if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
       const n = await Promise.race([asserted, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
-      return { asserted: n !== null, signCount: n };
+      return { asserted: n !== null, signCount: n, credentialId };
     } catch (e) {
       throw wrap(e, 'passkey');
     } finally {
       if (authenticatorId)
         await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId }).catch(() => undefined);
       await cdp.detach().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Firefox: Marionette has no assertion event, so the authenticator is polled until the credential's
+   * counter moves. Firefox signs with the stored count, then counts up: adding stored + 1 (0 stays 0,
+   * Bitwarden's rule) makes it report what Chromium and the Android host report.
+   */
+  private async marionetteAssert(
+    handle: SecretHandle,
+    opts: { click?: string; timeoutMs?: number },
+  ): Promise<{ asserted: boolean; signCount: number | null; credentialId: string }> {
+    const m = await Marionette.open(this.conn!.marionette!);
+    let credentialId = '';
+    try {
+      const authenticatorId = await m.addAuthenticator();
+      let added = 0;
+      await handle.into(async (buf) => {
+        const c = JSON.parse(buf.toString('utf8')) as BwFido2Credential;
+        credentialId = c.credentialId ?? '';
+        const stored = Number(c.counter ?? 0) || 0;
+        added = stored === 0 ? 0 : stored + 1;
+        await m.cmd('WebAuthn:AddCredential', {
+          authenticatorId,
+          credentials: {
+            credentialId: Buffer.from(credentialIdBase64(credentialId), 'base64').toString('base64url'),
+            isResidentCredential: true,
+            rpId: c.rpId ?? '',
+            privateKey: c.keyValue ?? '',
+            userHandle: c.userHandle || undefined,
+            signCount: added,
+          },
+        });
+      });
+      // Firefox serves WebAuthn only to the focused document
+      await this.page.bringToFront();
+      if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
+      const deadline = Date.now() + (opts.timeoutMs ?? 15_000);
+      while (Date.now() < deadline) {
+        const [c] = await m.credentials();
+        if (c && c.signCount > added) return { asserted: true, signCount: added, credentialId };
+        await sleep(200);
+      }
+      return { asserted: false, signCount: null, credentialId };
+    } catch (e) {
+      throw wrap(e, 'passkey');
+    } finally {
+      await m.close();
+    }
+  }
+
+  /**
+   * Passkey registration (ARCHITECTURE 3.8): an empty virtual authenticator answers the page's own
+   * navigator.credentials.create() once and is removed. The new private key comes back from the
+   * browser only inside the returned handle (registered with the scrubber first); the caller and
+   * the page never receive it.
+   */
+  async passkeyCreate(opts: { click?: string; timeoutMs?: number } = {}): Promise<CreatedPasskey | null> {
+    const route = this.passkeyRouteOrThrow();
+    if (opts.click) assertSafeEvidenceSelector(opts.click);
+    if (route === 'marionette') return this.marionetteCreate(opts);
+    const cdp = await this.page.context().newCDPSession(this.page);
+    let authenticatorId: string | undefined;
+    try {
+      await cdp.send('WebAuthn.enable', { enableUI: false });
+      ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: VIRTUAL_AUTHENTICATOR,
+      }));
+      const added = new Promise<CreatedPasskey>((res) =>
+        cdp.on('WebAuthn.credentialAdded', ({ credential: c }) => {
+          globalScrubber.register(c.privateKey);
+          res(
+            created(Buffer.from(c.privateKey, 'base64'), {
+              credentialId: Buffer.from(c.credentialId, 'base64').toString('base64url'),
+              rpId: c.rpId ?? '',
+              userHandle: Buffer.from(c.userHandle ?? '', 'base64').toString('base64url'),
+              signCount: c.signCount,
+              backupEligible: true,
+            }),
+          );
+        }),
+      );
+      // Bitwarden stores only ES256 keys: for the next create() act like an ES256-only authenticator,
+      // which picks -7 from the page's list (webauthn.io lists Ed25519 first, which Chromium would take)
+      await this.page.evaluate(() => {
+        const c = navigator.credentials;
+        const create = c.create.bind(c);
+        c.create = (o) => {
+          c.create = create;
+          const p = o?.publicKey;
+          if (p?.pubKeyCredParams.some((x) => x.alg === -7))
+            p.pubKeyCredParams = p.pubKeyCredParams.filter((x) => x.alg === -7);
+          return create(o);
+        };
+      });
+      if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
+      return await Promise.race([added, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
+    } catch (e) {
+      throw wrap(e, 'passkey');
+    } finally {
+      if (authenticatorId)
+        await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId }).catch(() => undefined);
+      await cdp.detach().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Firefox: polls the empty authenticator until the page's create() put a credential in it. Firefox
+   * cannot set the backup-eligible flag, so the passkey is BE=0 (stored as blindfill.passkey_be=0).
+   */
+  private async marionetteCreate(opts: {
+    click?: string;
+    timeoutMs?: number;
+  }): Promise<CreatedPasskey | null> {
+    const m = await Marionette.open(this.conn!.marionette!);
+    try {
+      await m.addAuthenticator();
+      await this.page.bringToFront();
+      if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
+      const deadline = Date.now() + (opts.timeoutMs ?? 15_000);
+      while (Date.now() < deadline) {
+        const [c] = await m.credentials();
+        if (c)
+          return created(Buffer.from(c.privateKey, 'base64url'), {
+            credentialId: c.credentialId,
+            rpId: c.rpId,
+            userHandle: c.userHandle ?? '',
+            signCount: c.signCount,
+            backupEligible: false,
+          });
+        await sleep(200);
+      }
+      return null;
+    } catch (e) {
+      throw wrap(e, 'passkey');
+    } finally {
+      await m.close();
     }
   }
 

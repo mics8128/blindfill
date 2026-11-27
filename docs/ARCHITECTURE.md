@@ -3,7 +3,7 @@
 > Let AI agents sign in to anything without ever seeing the password.
 
 Status: alpha. M0 and M1 are implemented (see section 9 for what is built, stubbed and
-unverified); passkeys, Android and several olliepm features are not built yet. Parts marked
+unverified); passkeys (web) and the Android companion are built (M2); several olliepm features are not built yet. Parts marked
 **[from olliepm]** were ported or are being ported from the Python prototype
 `ollie-password-management`. Code samples below are language-neutral sketches; the real
 interfaces are TypeScript (`src/backends/spi.ts`, `src/actuators/web/providers/types.ts`).
@@ -132,16 +132,27 @@ interface Actuator {
   until a traffic and operation-log review is done (`docs/browsers.md`).
 - **Android actuator** (companion APK, `android/`; host side `src/actuators/android/`): chosen
   over scrcpy text injection because the system, not blindfill, attests which app is asking.
-  Flow: `android fill|passkey --item --serial` arms the companion with a one-time token over
+  Flow: `android fill|register|passkey --item --serial` arms the companion with a one-time token over
   `adb shell am broadcast` (the receiver requires `DUMP`, which only the shell holds) and listens
   on a loopback port the phone reaches through `adb reverse`. When an app asks, the companion
   reports its package (AssistStructure / CallingAppInfo) and the SHA-256 of its single signing
-  certificate (PackageManager); the host checks both against `androidapp://` + `blindfill.signers`
-  before reading any secret, answers once, closes the port and disarms. Passwords go into an
-  autofill Dataset the user or agent selects; WebViews, sign-up screens (two passwords,
-  `new` hints) and multi-signer apps are refused. Passkeys: the companion builds clientDataJSON
+  certificate (PackageManager); the host checks the package against `androidapp://` (and the
+  signer against `blindfill.signers` when the item has a pin; without one the package alone binds,
+  as in Bitwarden, SECURITY 21) before reading any secret, answers once, closes the port and
+  disarms. Passwords go into an autofill Dataset the user or agent selects, or, for apps that ask
+  Credential Manager (`GetPasswordOption`), a password entry (`PasswordActivity`). A WebView
+  reports the scheme and domain of its document per view node; it is accepted when the screen
+  shows exactly one `https` domain the item binds, whatever the app (SECURITY 22). Kind `password`
+  needs a single-password screen; kind `password-new` (`android register`) needs a
+  sign-up screen (two password fields, or one with a new-password hint) and fills the same
+  password into both. `item generate --android <pkg>` makes such an item. Passkeys: the companion builds clientDataJSON
   for the calling app (`android:apk-key-hash:` origin) and sends only its hash; the host signs
   `authData || hash` (flags UP+UV, counter 0), so the private key never reaches the phone.
+  Registration: `android passkey-register --rp-id` arms kind `passkey-create`; the provider offers a
+  create entry only for that rpId, `PasskeyCreateActivity` sends rp, user id, algorithms and the
+  `webauthn.create` client data hash; the host (item bound to the app and `https://<rpId>`,
+  no passkey; ES256 offered) makes a P-256 key, stores it, and returns a `none` attestation
+  (`src/core/webauthn.ts`, flags `0x5D`, zero AAGUID).
   The host only arms a companion whose installed APK (read back with `pm path` +
   `adb exec-out cat`, APK Signing Block v2/v3/v3.1 parsed in `apk.ts`) has exactly one signer
   with the pinned release certificate (`COMPANION_SIGNER`; cached per install path +
@@ -152,7 +163,9 @@ interface Actuator {
   change a person should start, so there is no MCP tool). Build and signing: `android/README.md`.
   Tested with a fake relying-party app (`tests/android-device.test.ts`, which switches the
   autofill and credential provider for the run and restores them exactly) using the release APK
-  on a Xperia 5 II (Android 17) and an arm64 emulator (Android 16, API 36, Google APIs).
+  on a Xperia 5 II (Android 17) and an arm64 emulator (Android 16, API 36, Google APIs). Real
+  apps on that Xperia with a live `bw` item (2026-11-27): Threads sign-in succeeded, Instagram
+  partial (login result not checked); see `docs/TESTED.md`.
 - Later: desktop (accessibility APIs), iOS (probably impossible without an Autofill extension).
 
 ### 3.3 Target model
@@ -216,7 +229,7 @@ flow.
 - Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
   creates a digest (as olliepm does) the engine checks at fill time.
 
-### 3.8 Passkeys (web sign-in built; Chromium only)
+### 3.8 Passkeys (web sign-in and registration built; Chromium, and Firefox/Camoufox over Marionette)
 
 Checked against a live Vaultwarden on 2026-11-27: `bw` returns `login.fido2Credentials`
 (`credentialId`, `rpId`, `keyAlgorithm` ECDSA, `keyCurve` P-256, `keyValue` PKCS8 base64url,
@@ -231,25 +244,52 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
   authenticator. The page runs its own `navigator.credentials.get`; Chromium signs. Tested
   against a fake relying party that verifies the signature (`tests/passkey.test.ts`).
 - Why CDP and not page-script interception: the key stays in the browser process, never in page
-  JS. Cost: Chromium providers only (`capabilities.cdp`); Firefox/Camoufox and borrowed pages get
-  `UNSUPPORTED`.
+  JS. Firefox/Camoufox (Juggler has no WebAuthn) use Marionette instead (`firefox-connect` with a
+  loopback `marionette` endpoint, env `BLINDFILL_MARIONETTE`; `src/actuators/web/marionette.ts`): one
+  session and one browser-wide authenticator per ceremony, polled with `WebAuthn:GetCredentials` (no
+  events) until the counter moves or a credential appears, then removed. Firefox signs with the stored
+  count and then counts up, so blindfill adds stored + 1 (0 stays 0). The page is brought to the front
+  first: Firefox serves WebAuthn only to the focused document. Borrowed pages and Firefox without
+  Marionette get `UNSUPPORTED`.
+- BE flag: `blindfill.passkey_be` (readable, default 1). Firefox cannot set BE, so Firefox
+  registrations store `0`, and BE=1 (Bitwarden-made) passkeys are still signed in Firefox, with BE=0
+  (owner decision 2026-11-27; a BE-checking relying party rejects them, and the result carries a
+  `note` to use Chromium). Waiting on Marionette `WebAuthn:SetCredentialProperties` to set BE.
+  Chromium (`backupEligibility`) and the Android host (flags 0x1D or 0x05) sign with the item's flag.
 - While armed (up to 15 s), any frame of that page whose origin WebAuthn accepts for the rpId could
   request the assertion; blindfill does not see which frame asked.
-- Open: `counter` write-back (the result reports `sign_count`, `counter_written_back: false`),
-  registration (`create`), and credentials created by real Bitwarden clients.
-- Android: Credential Manager prompts need biometric/device unlock; not promised.
+- Counter (owner decision 2026-11-27, no terminal): after a signature the engine raises the vault
+  counter through `Backend.raisePasskeyCounter` (bw: only `fido2Credentials[0].counter` of the same
+  credential id, never lowered). Chromium reports stored + 1; the Android host keeps a stored 0 at 0
+  (Bitwarden's rule) and otherwise signs stored + 1. Both sign with BE=BS=1 like Bitwarden clients.
+  The result reports `sign_count` and `counter_written_back` (plus `counter_error` on a failed write).
+- Registration (owner decision 2026-11-27, no terminal, add only): `Engine.passkeyRegister` needs an
+  item that binds the page and holds no passkey (no opt-in since 2026-11-28); then
+  one-shot per session+origin. `WebActuator.passkeyCreate` adds an empty virtual authenticator,
+  narrows the page's next `create()` to ES256 (what an ES256-only authenticator such as Bitwarden's
+  picks; webauthn.io lists Ed25519 first), clicks `click`, and takes the key from
+  `WebAuthn.credentialAdded` into a `SecretHandle`. The engine checks rpId covers the page and the key
+  is P-256, then `Backend.addPasskey` (bw: Bitwarden's shape, `b64.`/GUID id, counter after creation;
+  refuses an item that already has one). Statuses: `registered`, `not_used`, `not_stored`,
+  `vault_write_failed` (the last two tell a person to delete the orphan at the relying party).
+- Interop: the Bitwarden browser extension signed in on webauthn.io with a blindfill-made passkey, and
+  blindfill then signed in after it (counter accepted). Open: credentials created by Bitwarden clients
+  used by blindfill.
+- Android: Credential Manager prompts need biometric/device unlock; not promised. Registration
+  through the companion (add only, section 3.2) is tested with the fake app on the emulator and the
+  Xperia: create, then sign in.
 
 ## 4. Threat model (short)
 
-| Threat                              | Handled by                                                 |
-| ----------------------------------- | ---------------------------------------------------------- |
-| Model asks for password             | no read API                                                |
-| Prompt injection from the page      | origin binding from vault; caller cannot choose the target |
-| Secret echoed in logs / tool output | scrubber (raw, URL-encoded, Base64), post-fill lock        |
-| Wrong site (phishing, redirect)     | observed origin vs item URIs, Host match by default        |
-| Rogue app on phone                  | package + signer pin, fail closed                          |
-| Malicious page reads DOM            | **not handled**, documented                                |
-| Compromised host                    | out of scope                                               |
+| Threat                              | Handled by                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Model asks for password             | no read API                                                                                          |
+| Prompt injection from the page      | origin binding from vault; caller cannot choose the target                                           |
+| Secret echoed in logs / tool output | scrubber (raw, URL-encoded, Base64), post-fill lock                                                  |
+| Wrong site (phishing, redirect)     | observed origin vs item URIs, Host match by default                                                  |
+| Rogue app on phone                  | package (+ signer pin when the item has one), fail closed; WebViews by https domain (SECURITY 21–22) |
+| Malicious page reads DOM            | **not handled**, documented                                                                          |
+| Compromised host                    | out of scope                                                                                         |
 
 ## 5. Repo layout
 
@@ -307,17 +347,18 @@ Goal: install in one command, no toolchain explanation.
 
 - **M0 done** repo, invariants, SECURITY.md, backend/actuator SPI, contract tests, CI,
   tag-triggered release workflow (npm Trusted Publishing).
-- **M1 done (alpha)**: `bw` backend (mock CLI and fixtures; JSON shape checked by hand on a live
-  Vaultwarden; no end-to-end run on a live vault yet), web actuator, CLI + MCP, leak test.
+- **M1 done (alpha)**: `bw` backend (mock CLI and fixtures in CI; one live-vault run passed on
+  2026-11-27 with throw-away items on local fake pages, see `docs/TESTED.md`), web actuator, CLI + MCP, leak test.
   Blind-written and unverified: `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`.
 - **M1.5 in progress** olliepm parity for web: browser providers (done, Firefox/Camoufox passed
   against a real Camoufox build, owner's running instance untested), field rules and profiles,
   discover/diagnose/verify, registration with generated passwords, human handoff.
   Tracked in `docs/MIGRATING-FROM-OLLIEPM.md` once written.
 - **M2** passkeys (`sign`, section 3.8) for web; Android companion APK (autofill + passkey
-  provider) with signer pinning, tested on one device with a fake app.
+  provider) with signer pinning, tested on one device with a fake app and, on 2026-11-27, with
+  Threads (sign-in succeeded) and Instagram (partial).
 - **M3** community verification of the blind-written backends, public release and backend matrix.
-- **M4** community rule packs; desktop actuator exploration; Android saving new logins and WebView logins.
+- **M4** community rule packs; desktop actuator exploration; Android saving logins typed by hand.
 - Optional: an attach provider for the already-running Ego Lite, only after an outbound-traffic
   capture and an operation-log check show filled values do not leak; never labelled "supported".
 
@@ -330,5 +371,5 @@ Decided: name `blindfill`; license MIT; TypeScript/Node; TOTP code is readable l
 2. Does Vaultwarden return `androidapp://` URIs intact for items created by the real clients?
    (Created by script: returned intact; real-client check pending.)
 3. How strict the default web match should be (Host vs Base domain). Current default: Host.
-4. Passkey encoding written by real Bitwarden clients, counter write-back, and registration.
+4. Passkey encoding written by real Bitwarden clients, and blindfill-made passkeys used by them.
 5. Ego Lite attach provider: needs the traffic and operation-log review first.

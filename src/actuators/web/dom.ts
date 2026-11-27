@@ -81,23 +81,26 @@ const FIRST_IN_GROUP_SRC = String.raw`(group, a) => {
 const GROUP_KIND_SRC = String.raw`(g, native) => (native ? g instanceof HTMLFormElement : !(g instanceof HTMLFormElement))`;
 const IS_FRAME_SRC = String.raw`(e) => e.tagName === 'IFRAME' || e.tagName === 'FRAME'`;
 
-/** Submit control checks (port of olliepm _check_submit). */
+/** Submit control checks (port of olliepm _check_submit). a.outside: a js control outside every form (an <a> is allowed). */
 const SUBMIT_CHECK_SRC = String.raw`(e, a) => {
   const g = a.group;
   const roleBtn = e instanceof HTMLElement && ['DIV', 'SPAN'].includes(e.tagName) && (e.getAttribute('role') || '').toLowerCase() === 'button';
-  const owner = roleBtn ? e.closest('form') : e.form;
+  const anchor = a.outside && e instanceof HTMLAnchorElement;
+  const owner = roleBtn || anchor ? e.closest('form') : e.form;
   const cs = getComputedStyle(e);
   const visible = e.isConnected && e.getClientRects().length > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) !== 0;
-  const isBtn = (e instanceof HTMLButtonElement && ['button', 'submit'].includes(e.type)) || (e instanceof HTMLInputElement && ['button', 'submit'].includes(e.type)) || roleBtn;
+  const isBtn = (e instanceof HTMLButtonElement && ['button', 'submit'].includes(e.type)) || (e instanceof HTMLInputElement && ['button', 'submit'].includes(e.type)) || roleBtn || anchor;
   const isSubmit = (e instanceof HTMLButtonElement && e.type === 'submit') || (e instanceof HTMLInputElement && e.type === 'submit');
   if (!visible || !isBtn) return { code: 'unsafe' };
-  if (e.hasAttribute('disabled') || e.matches(':disabled') || e.closest('[aria-disabled="true"], [inert]')) return { code: 'disabled' };
+  if (e.closest('[inert]')) return { code: 'disabled' };
+  // a.pending: checked before filling; many sites enable submit only once the fields hold values
+  if (!a.pending && (e.hasAttribute('disabled') || e.matches(':disabled') || e.closest('[aria-disabled="true"]'))) return { code: 'disabled' };
   if (roleBtn && ['form', 'formaction', 'formmethod', 'formtarget', 'formenctype', 'formnovalidate'].some((x) => e.hasAttribute(x))) return { code: 'unsafe' };
   if (!a.native) {
     if (owner !== null || ['formaction', 'formmethod', 'formtarget', 'form'].some((x) => e.hasAttribute(x))) return { code: 'unsafe' };
     return { code: 'ok' };
   }
-  if (owner !== g) return { code: 'unsafe' };
+  if (a.outside ? owner !== null || e.closest('form') || ['formaction', 'formmethod', 'formtarget', 'form'].some((x) => e.hasAttribute(x)) : owner !== g) return { code: 'unsafe' };
   const action = e.hasAttribute('formaction') ? e.formAction : g.action;
   const method = (e.hasAttribute('formmethod') ? e.formMethod : g.method).toLowerCase();
   let target = e.hasAttribute('formtarget') ? e.getAttribute('formtarget') : g.getAttribute('target');
@@ -202,8 +205,14 @@ export const FIRST_IN_GROUP = mk<(g: any, a: { sel: string; native: boolean }) =
 export const GROUP_KIND = mk<(g: any, native: boolean) => boolean>(GROUP_KIND_SRC);
 export const IS_FRAME_EL = mk<(e: any) => boolean>(IS_FRAME_SRC);
 export const SUBMIT_CHECK =
-  mk<(e: any, a: { group: any; native: boolean; kind: string }) => any>(SUBMIT_CHECK_SRC);
+  mk<(e: any, a: { group: any; native: boolean; kind: string; pending: boolean; outside: boolean }) => any>(
+    SUBMIT_CHECK_SRC,
+  );
 export const FORM_OF = mk<(el: any) => any>(FORM_OF_SRC);
+/** resolved action URL; the prototype getter, since a control named "action" would shadow g.action */
+export const FORM_ACTION = mk<(g: any) => string>(
+  String.raw`(g) => Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'action').get.call(g)`,
+);
 export const FORM_SUBMITS = mk<(form: any) => any[]>(FORM_SUBMITS_SRC);
 export const GENERIC_SCOPE =
   mk<(pwd: any, a: { pwds: any[]; otherFrames: number; user: any }) => string>(GENERIC_SCOPE_SRC);

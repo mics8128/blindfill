@@ -1,3 +1,4 @@
+import { createHash, createPublicKey, generateKeyPairSync, randomUUID, verify } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -51,7 +52,37 @@ describe.skipIf(!enabled)('Firefox / Camoufox (opt-in: BLINDFILL_TEST_FIREFOX=1)
     sites = await startSites();
     dir = mkdtempSync(join(tmpdir(), 'bf-fftest-'));
     const good = `http://good.localhost:${sites.port}/`;
-    writeFileSync(join(dir, 'items.json'), JSON.stringify([item('good', [good])]));
+    const bwKey = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+      .privateKey.export({ type: 'pkcs8', format: 'der' })
+      .toString('base64url');
+    writeFileSync(
+      join(dir, 'items.json'),
+      JSON.stringify([
+        item('good', [good]),
+        {
+          ...item('ffpk-reg', [good]),
+          login: { username: 'pk-user', uris: [{ uri: good, match: 1 }] },
+          fields: [],
+        },
+        {
+          ...item('ffpk-bw', [good]),
+          login: {
+            username: 'pk-user',
+            uris: [{ uri: good, match: 1 }],
+            // made by a Bitwarden client: backup-eligible
+            fido2Credentials: [
+              {
+                credentialId: randomUUID(),
+                rpId: 'good.localhost',
+                keyValue: bwKey,
+                counter: '0',
+                discoverable: 'true',
+              },
+            ],
+          },
+        },
+      ]),
+    );
     writeFileSync(join(dir, 'endpoint.json'), JSON.stringify({ endpoint: ff.endpoint }));
     writeFileSync(
       join(dir, 'config.json'),
@@ -203,5 +234,180 @@ describe.skipIf(!enabled)('Firefox / Camoufox (opt-in: BLINDFILL_TEST_FIREFOX=1)
     expect(p.code).toBe(1);
     expect(p.stdout).toContain('SESSION_LOCKED');
     await cli('session', 'stop');
+  });
+
+  describe('passkeys over Marionette', () => {
+    const ffAct = () =>
+      WebActuator.fromProvider('firefox-connect', { endpoint: ff.endpoint, marionette: ff.marionette });
+    const creds = () =>
+      (
+        JSON.parse(readFileSync(join(dir, 'items.json'), 'utf8')) as {
+          id: string;
+          login: { fido2Credentials?: Record<string, string>[] };
+          fields?: { name: string; value: string }[];
+        }[]
+      ).find((x) => x.id === 'ffpk-reg')!;
+
+    it('registers through Firefox (BE=0, recorded), then Firefox and Chromium sign in; strict RP accepts', async () => {
+      const reg = await ffAct();
+      try {
+        const r = await new Engine(backend(), reg).passkeyRegister({
+          item: 'ffpk-reg',
+          url: good('/passkey-register'),
+          click: '#reg',
+          expect: { urlIncludes: '/home' },
+        });
+        expect(r).toMatchObject({ status: 'registered', rp_id: 'good.localhost', outcome: 'success' });
+      } finally {
+        await reg.close();
+      }
+      const rf = sites.received.find((x) => x.path === '/passkey-register')!.fields;
+      const regFlags = Buffer.from(rf.authenticatorData, 'base64url')[32];
+      expect(regFlags & 0x08).toBe(0);
+      const item = creds();
+      expect(item.login.fido2Credentials![0]).toMatchObject({ rpId: 'good.localhost', keyCurve: 'P-256' });
+      expect(item.fields).toContainEqual(
+        expect.objectContaining({ name: 'blindfill.passkey_be', value: '0' }),
+      );
+      const key = item.login.fido2Credentials![0].keyValue;
+      const pub = createPublicKey({
+        key: Buffer.from(rf.publicKey, 'base64url'),
+        format: 'der',
+        type: 'spki',
+      });
+
+      for (const open of [ffAct, () => WebActuator.fromProvider('chromium-launch', { headless: true })]) {
+        sites.received.length = 0;
+        const act = await open();
+        try {
+          const s = await new Engine(backend(), act).passkey({
+            item: 'ffpk-reg',
+            url: good('/passkey'),
+            click: '#pk',
+            expect: { urlIncludes: '/home' },
+          });
+          expect(s).toMatchObject({ status: 'asserted', outcome: 'success' });
+          expect(JSON.stringify(s)).not.toContain(key.slice(10, 50));
+        } finally {
+          await act.close();
+        }
+        const a = sites.received.find((x) => x.path === '/passkey')!.fields;
+        expect(a.verdict).toBe('accepted');
+        const ad = Buffer.from(a.authenticatorData, 'base64url');
+        expect(ad[32] & 0x18).toBe(0);
+        const signed = Buffer.concat([
+          ad,
+          createHash('sha256').update(Buffer.from(a.clientDataJSON, 'base64url')).digest(),
+        ]);
+        expect(verify('sha256', signed, pub, Buffer.from(a.signature, 'base64url'))).toBe(true);
+      }
+      expect(readFileSync(join(dir, 'audit.jsonl'), 'utf8')).not.toContain(key.slice(10, 50));
+    }, 120_000);
+
+    it('signs with a Bitwarden-made (BE=1) passkey in Firefox (sent as BE=0); refuses without a Marionette endpoint', async () => {
+      sites.received.length = 0;
+      const act = await ffAct();
+      try {
+        const s = await new Engine(backend(), act).passkey({
+          item: 'ffpk-bw',
+          url: good('/passkey'),
+          click: '#pk',
+          expect: { urlIncludes: '/home' },
+        });
+        expect(s).toMatchObject({ status: 'asserted' });
+        expect(s.outcome).not.toBe('success');
+        expect(String(s.note)).toMatch(/use Chromium/);
+      } finally {
+        await act.close();
+      }
+      // the strict RP saw BE=1 for this credential, so it rejects the BE=0 assertion: an ordinary failure
+      const a = sites.received.find((x) => x.path === '/passkey')!.fields;
+      expect(Buffer.from(a.authenticatorData, 'base64url')[32] & 0x18).toBe(0);
+      expect(a.verdict).not.toBe('accepted');
+      sites.received.length = 0;
+      const plain = await WebActuator.fromProvider('firefox-connect', { endpoint: ff.endpoint });
+      try {
+        await expect(
+          new Engine(backend(), plain).passkey({ item: 'ffpk-reg', url: good('/passkey'), click: '#pk' }),
+        ).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+      } finally {
+        await plain.close();
+      }
+      expect(sites.received.filter((x) => x.path.startsWith('/passkey'))).toHaveLength(0);
+    }, 60_000);
+  });
+
+  describe('shared persistent context (like Ollie’s camoufox-desktop)', () => {
+    let shared: FirefoxServer;
+    beforeAll(async () => {
+      shared = await startCamoufoxServer(good('/home'));
+    }, 90_000);
+    afterAll(async () => {
+      await shared?.stop();
+    });
+    const paths = (act: WebActuator) => act.listPages().map((p) => p.path);
+
+    it('reuses the context, fills in its own tab next to the user tab, never navigates or closes it', async () => {
+      const act = await WebActuator.fromProvider('firefox-connect', { endpoint: shared.endpoint });
+      try {
+        expect(paths(act)).toEqual(['/home']);
+        const userTab = act.page;
+        const r = await new Engine(backend(), act).fill({
+          item: 'good',
+          url: good('/simple'),
+          submit: true,
+          expect: { urlIncludes: '/home', failSelector: '#error' },
+        });
+        expect(r).toMatchObject({ submitted: true, outcome: 'success', locked: true });
+        expect(sites.received).toHaveLength(1);
+        expect(act.page).not.toBe(userTab);
+        expect(new URL(userTab.url()).pathname).toBe('/home');
+        expect(paths(act)).toHaveLength(2);
+      } finally {
+        await act.close();
+      }
+      const again = await WebActuator.fromProvider('firefox-connect', { endpoint: shared.endpoint });
+      try {
+        expect(paths(again)).toEqual(['/home', '/home']); // both tabs survive our disconnect
+        await again.navigate(good('/honeypot'));
+        const tab = again.page;
+        await again.navigate(good('/honeypot')); // a tab already at the URL is reused
+        expect(again.page).toBe(tab);
+        expect(paths(again)).toEqual(['/home', '/home', '/honeypot']);
+      } finally {
+        await again.close();
+      }
+    }, 60_000);
+
+    it('CLI read-only attach with the launcher’s connection.json: page list and probe see the existing tabs', async () => {
+      const conn = join(dir, 'connection.json');
+      writeFileSync(
+        conn,
+        JSON.stringify({
+          title: 'bf-test',
+          profile: '/x',
+          pid: 1,
+          endpoint: shared.endpoint,
+          registry: '/x',
+        }),
+      );
+      const att = await cli('session', 'attach', '--endpoint-file', conn, '--browser', 'firefox-connect');
+      expect(att.code).toBe(0);
+      expect(JSON.parse(att.stdout).pages.length).toBeGreaterThan(0);
+      const list = await cli('page', 'list');
+      expect(list.code).toBe(0);
+      const before = (JSON.parse(list.stdout) as { pages: { path: string }[] }).pages;
+      expect(before.map((p) => p.path)).toContain('/home');
+      const p = await cli('probe');
+      expect(p.code).toBe(0);
+      expect(JSON.parse(p.stdout).origin).toBe(`http://good.localhost:${sites.port}`);
+      await cli('session', 'stop');
+      const after = await WebActuator.fromProvider('firefox-connect', { endpoint: shared.endpoint });
+      try {
+        expect(after.listPages()).toHaveLength(before.length);
+      } finally {
+        await after.close();
+      }
+    }, 60_000);
   });
 });

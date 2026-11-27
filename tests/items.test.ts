@@ -62,7 +62,7 @@ describe('password policy + generation', () => {
 });
 
 describe('item generate / create / password-policy (bw, mock)', () => {
-  it('generate: saved with opt-in + policy, value never returned; stored value satisfies the policy', async () => {
+  it('generate: saved with policy, value never returned; stored value satisfies the policy', async () => {
     const eng = new Engine(backend());
     const policy = { version: 1, min_length: 12, max_length: 16 };
     const r = await eng.itemGenerate({
@@ -87,7 +87,6 @@ describe('item generate / create / password-policy (bw, mock)', () => {
     expect(show.secretFields).toContain('password');
     expect(show.readable.display_name).toBe('Bob');
     const meta = await backend().meta({ backend: 'bw', id: raw.id });
-    expect(meta.control.registration).toBe(true);
     expect(meta.control.passwordPolicy).toEqual(policy);
     // the password is write-only: reading it is refused
     await expect(backend().read({ backend: 'bw', id: raw.id }, 'password')).rejects.toMatchObject({
@@ -111,6 +110,9 @@ describe('item generate / create / password-policy (bw, mock)', () => {
       await expect(eng.itemGenerate({ ...base, origins: [o] })).rejects.toMatchObject({ code: 'POLICY' });
     await expect(eng.itemGenerate({ ...base, origins: [] })).rejects.toMatchObject({ code: 'POLICY' });
     await expect(eng.itemGenerate({ ...base, username: '' })).rejects.toMatchObject({ code: 'POLICY' });
+    await expect(
+      eng.itemGenerate({ ...base, origins: [], androidApp: 'com.example/../x' }),
+    ).rejects.toMatchObject({ code: 'POLICY' });
     await expect(eng.itemGenerate({ ...base, policy: { version: 1, min_length: 2 } })).rejects.toThrow(
       /invalid password policy/,
     );
@@ -121,6 +123,35 @@ describe('item generate / create / password-policy (bw, mock)', () => {
       createItem: undefined,
     } as unknown as Backend;
     await expect(new Engine(ro).itemGenerate(base)).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+  });
+
+  it('generate --android: binds androidapp://<package> with no signer pin, origins optional', async () => {
+    const eng = new Engine(backend());
+    const r = await eng.itemGenerate({
+      name: 'gen-app',
+      origins: [],
+      username: 'bob',
+      androidApp: 'com.example.app',
+    });
+    expect(r).toMatchObject({ android_app: 'com.example.app' });
+    const raw = stored().find((i) => i.name === 'gen-app')!;
+    expect(JSON.stringify(r)).not.toContain(raw.login.password);
+    const meta = await backend().meta({ backend: 'bw', id: raw.id });
+    expect(meta.uris.map((u) => u.uri)).toEqual(['androidapp://com.example.app']);
+    expect(meta.control.signers).toEqual([]);
+  });
+
+  it('generate --no-password: bound item with a username and no password; policy/length refused', async () => {
+    const eng = new Engine(backend());
+    await expect(
+      eng.itemGenerate({ name: 'gen-nopw', origins: [O()], username: 'bob', noPassword: true, length: 20 }),
+    ).rejects.toMatchObject({ code: 'POLICY' });
+    const r = await eng.itemGenerate({ name: 'gen-nopw', origins: [O()], username: 'bob', noPassword: true });
+    expect(r).toMatchObject({ password_generated: false });
+    const raw = stored().find((i) => i.name === 'gen-nopw')!;
+    expect(raw.login.password).toBeNull();
+    const meta = await backend().meta({ backend: 'bw', id: raw.id });
+    expect(meta).toMatchObject({ username: 'bob', secretFields: [] });
   });
 
   it('create: origin-bound item from supplied values; password never echoed', async () => {
@@ -247,7 +278,6 @@ describe('item admin', () => {
     outputs.push(l, st);
     expect(l).toContain('gen-e2e');
     expect(st).toContain('"class":"secret"');
-    expect(st).toContain('"registration_allowed":true');
     for (const o of [l, st]) expect(o).not.toContain(raw.login.password);
   });
 
@@ -278,8 +308,8 @@ describe('item admin', () => {
     ).toBe(false);
     const sensitive: Partial<Parameters<Engine['itemEdit']>[1]>[] = [
       { origins: ['https://evil.example'] },
-      { set: { 'blindfill.registration': 'allow' } },
-      { set: { 'Blindfill.Rules': '{"version":2,"rules":[]}' } },
+      { set: { 'blindfill.submit': 'none' } },
+      { unset: ['blindfill.password_policy'] },
       { secrets: { password: 'new-secret-value-1!' } },
     ];
     for (const s of sensitive)
@@ -287,6 +317,17 @@ describe('item admin', () => {
         /human at a terminal/,
       );
     expect(stored().find((i) => i.id === raw.id)!.login.password).not.toBe('new-secret-value-1!');
+    // blindfill.rules is agent-editable without a terminal (owner decision 2026-11-27), still validated
+    const rules = '{"version":2,"rules":[]}';
+    await eng.itemEdit({ item: raw.id }, { set: { 'Blindfill.Rules': rules }, human: false });
+    expect(
+      stored()
+        .find((i) => i.id === raw.id)!
+        .fields.find((f) => f.name === 'Blindfill.Rules')?.value,
+    ).toBe(rules);
+    await expect(
+      eng.itemEdit({ item: raw.id }, { set: { 'blindfill.rules': '{"version":9}' }, human: false }),
+    ).rejects.toThrow();
     await expect(
       eng.itemEdit({ item: raw.id }, { set: { password: 'x' }, human: true }),
     ).rejects.toMatchObject({ code: 'SECRET_ACCESS' });

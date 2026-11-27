@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- WebView refuses https URLs without it; the test page is answered locally (WebActivity) -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application android:label="blindfill test RP" android:allowBackup="false">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
@@ -7,5 +9,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SignupActivity" android:exported="false" />
+        <activity android:name=".WebActivity" android:exported="false" />
     </application>
 </manifest>

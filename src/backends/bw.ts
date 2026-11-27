@@ -1,10 +1,11 @@
 import { BlindfillError, type ItemRef } from '../core/types.js';
-import type { Cap, FindQuery, ItemPatch, NewItemSpec } from './spi.js';
+import type { Cap, FindQuery, ItemPatch, NewItemSpec, NewPasskey } from './spi.js';
 import { classifyBwFieldType } from '../core/fields.js';
 import { globalScrubber } from '../core/scrubber.js';
+import type { SecretHandle } from '../core/secret.js';
 import { execRunner, parseJson, safeErr, type Runner } from './runner.js';
 import { RawItemBackend } from './rawitem.js';
-import { type BwRawItem } from './bwmap.js';
+import { bwCredentialId, type BwRawItem } from './bwmap.js';
 
 export { mapBwItem, type BwRawItem } from './bwmap.js';
 
@@ -122,15 +123,83 @@ export class BwBackend extends RawItemBackend {
     return { backend: this.id, id: made.id, name: spec.name };
   }
 
-  async #edit(ref: ItemRef, mutate: (raw: BwRawItem) => void): Promise<void> {
+  /** `mutate` returns false when nothing needs writing. */
+  async #edit(ref: ItemRef, mutate: (raw: BwRawItem) => void | false): Promise<void> {
     const raw = await this.getRaw(ref);
     // the whole item goes back to bw by stdin: know every secret in it in case bw echoes the body
-    for (const v of [raw.login?.password, raw.login?.totp, raw.card?.number, raw.card?.code])
+    for (const v of [
+      raw.login?.password,
+      raw.login?.totp,
+      raw.card?.number,
+      raw.card?.code,
+      raw.sshKey?.privateKey,
+      ...(raw.login?.fido2Credentials ?? []).map((c) => c.keyValue),
+    ])
       if (v) globalScrubber.register(v);
     for (const f of raw.fields ?? [])
       if (f.value && classifyBwFieldType(f.type) === 'secret') globalScrubber.register(f.value);
-    mutate(raw);
+    if (mutate(raw) === false) return;
     await this.#bw(['edit', 'item', ref.id], this.#encode(raw));
+  }
+
+  /** A passkey is read after `bw sync`: another client (the Bitwarden extension) may have raised its
+   *  counter, and signing with the cached one gets the sign-in rejected and the write-back refused. */
+  override async openSecret(ref: ItemRef, field: string): Promise<SecretHandle> {
+    if (field === 'passkey') await this.#bw(['sync']);
+    return super.openSecret(ref, field);
+  }
+
+  async raisePasskeyCounter(ref: ItemRef, credentialId: string, counter: number): Promise<void> {
+    await this.#edit(ref, (raw) => {
+      const c = raw.login?.fido2Credentials?.[0];
+      if (!c || c.credentialId !== credentialId)
+        throw new BlindfillError('NOT_FOUND', 'the item no longer holds that passkey');
+      if ((Number(c.counter ?? 0) || 0) >= counter) return false;
+      c.counter = String(counter); // Bitwarden keeps the counter as a string
+    });
+  }
+
+  async addPasskey(ref: ItemRef, p: NewPasskey): Promise<void> {
+    let keyValue = '';
+    await p.key.into((der) => {
+      keyValue = der.toString('base64url');
+      globalScrubber.register(keyValue);
+      globalScrubber.register(der.toString('base64'));
+    });
+    await this.#edit(ref, (raw) => {
+      if (raw.login?.fido2Credentials?.length)
+        throw new BlindfillError(
+          'POLICY',
+          'the item already holds a passkey; replacing one needs a person at a terminal',
+        );
+      // the shape Bitwarden's own authenticator writes (fido2-authenticator.service.ts createKeyView)
+      const name = p.userName ?? raw.login?.username ?? null;
+      raw.login = {
+        ...(raw.login ?? {}),
+        fido2Credentials: [
+          {
+            credentialId: bwCredentialId(Buffer.from(p.credentialId, 'base64url')),
+            keyType: 'public-key',
+            keyAlgorithm: 'ECDSA',
+            keyCurve: 'P-256',
+            keyValue,
+            rpId: p.rpId,
+            rpName: p.rpId,
+            userHandle: p.userHandle,
+            userName: name,
+            userDisplayName: name,
+            counter: String(p.counter),
+            discoverable: 'true',
+            creationDate: new Date().toISOString(),
+          },
+        ],
+      };
+      // a stale flag on a passkey-less item must not describe the new passkey
+      raw.fields = [
+        ...(raw.fields ?? []).filter((f) => f.name?.toLowerCase() !== 'blindfill.passkey_be'),
+        ...(p.backupEligible ? [] : [{ name: 'blindfill.passkey_be', value: '0', type: 0 }]),
+      ];
+    });
   }
 
   async updateSecret(ref: ItemRef, field: string, value: string): Promise<void> {
@@ -138,6 +207,12 @@ export class BwBackend extends RawItemBackend {
     await this.#edit(ref, (raw) => {
       if (field === 'password') {
         raw.login = { ...(raw.login ?? {}), password: value };
+        return;
+      }
+      if (field === 'totp') {
+        // add-only (owner decision 2026-11-27): an existing seed is never replaced
+        if (raw.login?.totp) throw new BlindfillError('POLICY', 'this item already has a TOTP seed');
+        raw.login = { ...(raw.login ?? {}), totp: value };
         return;
       }
       const f = raw.fields?.find((x) => x.name === field && classifyBwFieldType(x.type) === 'secret');

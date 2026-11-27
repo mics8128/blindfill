@@ -8,8 +8,40 @@ blindfill drives a Playwright `Page`. How that page is obtained is a **BrowserPr
 | `chromium-launch` | `chromium-launch.ts` | Playwright launches Chromium (bundled, or `--executable` / `BLINDFILL_CHROMIUM` / `web.executablePath`)        | no (owns its browser)       |
 | `chromium-cdp`    | `chromium-cdp.ts`    | `connectOverCDP`, loopback only                                                                                | yes                         |
 | `firefox-connect` | `firefox-connect.ts` | Playwright browser-server websocket (Firefox / Camoufox), loopback only                                        | yes                         |
-| `borrowed-page`   | `borrowed-page.ts`   | library use: caller passes its own `Page` (`withPage(page, …)`); never closed by blindfill                     | n/a                         |
 | `ego-cli`         | `ego-cli.ts`         | **opt-in, not supported**: the running Ego Lite via `ego-browser nodejs` (`ego://new`, `ego://<space>/<page>`) | yes (Ego task spaces)       |
+| `borrowed-page`   | `borrowed-page.ts`   | library use: caller passes its own `Page` (`withPage(page, …)`); never closed by blindfill                     | n/a                         |
+
+## Connecting a browser
+
+**Nothing configured.** `blindfill session start` launches its own Chromium (Playwright's bundled build, or any
+Chromium-based browser via `--executable`, `BLINDFILL_CHROMIUM` or `web.executablePath`; headless unless `--headed` or
+`web.headless: false`). It starts with an empty profile and `session stop` closes it.
+
+**Your own running browser, set once.** Put the endpoint in `~/.config/blindfill/config.json` (or the file named by
+`BLINDFILL_CONFIG`), for example one of:
+
+```
+{ "backend": "bw", "web": { "endpoint": "http://127.0.0.1:9222" } }
+{ "backend": "bw", "web": { "endpointFile": "/path/to/endpoint.json", "browser": "firefox-connect" } }
+```
+
+Then `blindfill session attach` needs no arguments, and the other commands (`fill`, `page list`, …) connect to it
+directly. Order: flags (`--endpoint`/`--cdp`, `--endpoint-file`, `--browser`) > environment (`BLINDFILL_ENDPOINT`,
+`BLINDFILL_ENDPOINT_FILE`, `BLINDFILL_BROWSER`) > config (`web.endpoint` or its alias `web.cdp`, `web.endpointFile`,
+`web.browser`). Any endpoint flag replaces all configured endpoints; an endpoint wins over an endpoint file.
+Without `browser`, the provider is inferred: `http(s)://` or a `/devtools/` path is `chromium-cdp`, any other `ws://`
+is `firefox-connect`. Endpoints must be loopback.
+
+**Endpoint file.** JSON `{"endpoint": "ws://127.0.0.1:PORT/TOKEN"}`; other keys are ignored. Any launcher can write it
+(keep it mode 0600: the token gives full control of the browser). blindfill re-reads it on every connect, so a
+launcher may rewrite it with a new port or token on each start.
+
+| Browser                  | How to make it attachable                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome / Chromium / Edge | start it with `--remote-debugging-port=9222`; endpoint `http://127.0.0.1:9222`. Chrome 136+ ignores that flag on the default profile directory, so also pass `--user-data-dir=<separate directory>`: a separate profile (log in there once). Never expose the port beyond loopback.                                                                                                                             |
+| Firefox                  | stock Firefox cannot be driven by Playwright. Run a Playwright-compatible Firefox (Playwright's own build, or Camoufox) as a **Playwright browser server** from a small launcher (`firefox.launchServer()`, or a persistent context published with `browser.bind`) and write its `wsEndpoint` to an endpoint file. Client and server Playwright versions must match ([Firefox / Camoufox](#firefox--camoufox)). |
+| Camoufox                 | the same, via `camoufox.server.launch_server` (no contexts: blindfill creates an empty one) or a launcher that publishes a persistent context. Example: Ollie's launcher on ollie-ubuntu writes `/run/user/$UID/camoufox-desktop/connection.json` (see below).                                                                                                                                                  |
+| Ego Lite                 | no CDP and no Playwright server. Either a separate instance that blindfill launches itself, `session start --executable '/Applications/ego lite.app/Contents/MacOS/ego lite'`, with an empty profile; or, opt-in and not supported, the running app through `ego-cli` with endpoint `ego://new` (values pass through Ego's Node runtime) ([Ego Lite](#ego-lite)).                                               |
 
 ## Using them
 
@@ -34,19 +66,55 @@ Camoufox 0.5.9 ships Playwright 1.62.0, and connecting with the bundled client f
 `428 Precondition Required`. `firefox-connect` therefore tries, in order: `opts.playwrightModule`, env
 `BLINDFILL_PLAYWRIGHT_CORE`, the bundled client, then the optional dependency `playwright-core-compat`
 (= playwright-core@1.62.0). Also: the `[::1]` spelling does not work with 1.62.0, so it is retried as `localhost`.
-A Camoufox server starts a browser with **no** contexts, so blindfill creates a new context (the existing profile and tabs are
-not reachable this way). Page JS runs in an isolated world: heuristics rely on DOM evidence, never on window globals.
+Page JS runs in an isolated world: heuristics rely on DOM evidence, never on window globals.
 
-Tested (opt-in, `BLINDFILL_TEST_FIREFOX=1 npx vitest run tests/firefox.test.ts`): Camoufox 158.0.1-beta.41 started by
-`camoufox.server.launch_server` from the local install (`~/.local/share/camoufox-runtime`), throw-away HOME and profile,
-client playwright-core 1.62.0 via `playwright-core-compat`. 6 tests pass: connect, probe, fill+submit once with
-post-fill lock, lookalike origin refused, honeypot and SPA forms, `withPage`, CLI `session attach --endpoint-file`.
-The test skips cleanly when the flag or the Camoufox runtime is missing. Not tested: the owner's own long-running Camoufox.
-Also passed 6/6 on the owner's Mac (macOS arm64, 2026-11-27) with 158.0.1-beta.41 and, after
-`python -m camoufox set official/stable && python -m camoufox fetch`, with **159.0-beta.43** (latest stable; package
-camoufox 0.5.9 / Playwright 1.62.0 unchanged, so `playwright-core-compat` stays 1.62.0). Layout:
-`uv venv --python 3.12 ~/.local/share/camoufox-runtime`, `uv pip install 'camoufox[geoip]==0.5.9'`,
-`XDG_CACHE_HOME=~/.local/share/camoufox-data python -m camoufox fetch`, then `npm ci` (for `playwright-core-compat`).
+**Contexts.** `camoufox.server.launch_server` starts a browser with **no** contexts: blindfill creates a new one
+(empty profile; it ends when blindfill disconnects). A server that publishes a persistent context (Playwright
+`browser.bind`, like Ollie's `~/.local/bin/camoufox-desktop`) already has one: blindfill reuses it (the profile's
+cookies and logins) and treats it as shared:
+
+- `--url` never navigates an existing tab. A tab already at the same origin + path is reused; otherwise blindfill
+  opens a tab with `window.open(url, '_blank', 'noopener')` from an open tab (with `browser.link.open_newwindow=3`
+  that is a tab, not a window; Playwright `newPage` would open a window).
+- Without `--url`, the page is chosen as usual: `--page`, `--url-includes`, else the last http(s) tab.
+- Disconnecting (end of a command, `session stop`) never closes the context or any tab, including the tab
+  blindfill opened. Origin binding, the one-shot submit and the post-fill lock are unchanged.
+- Tabs that Firefox has not loaded (restored lazily, or unloaded) are not visible to Playwright until they load.
+
+Ollie's shared Camoufox on ollie-ubuntu publishes its endpoint in `/run/user/$UID/camoufox-desktop/connection.json`
+(`{"endpoint": "ws://127.0.0.1:PORT/TOKEN", ...}`, mode 0600, rewritten on every start):
+
+```
+blindfill session attach --browser firefox-connect --endpoint-file /run/user/$(id -u)/camoufox-desktop/connection.json
+blindfill page list
+blindfill fill --item ID --url https://… --submit      # opens its own tab next to Ollie's
+BLINDFILL_MARIONETTE=127.0.0.1:2828 blindfill passkey --item ID --url https://… --click '#signin'   # passkeys
+```
+
+Tested (opt-in, `BLINDFILL_TEST_FIREFOX=1 npx vitest run tests/firefox.test.ts`): Camoufox 158.0.1-beta.41 from the
+local install (`~/.local/share/camoufox-runtime`), throw-away HOME and profile, client playwright-core 1.62.0 via
+`playwright-core-compat`, started two ways: `camoufox.server.launch_server`, and a persistent context published with
+`browser.bind` with a user tab already open. Connect, probe, fill+submit once with post-fill lock, lookalike origin
+refused, honeypot and SPA forms, `withPage`, CLI `session attach --endpoint-file`; on the persistent context: the user
+tab is never navigated, blindfill's tab is reused for the same URL, both survive disconnect, and `page list` / `probe`
+through the launcher's `connection.json`. The test skips cleanly when the flag or the Camoufox runtime is missing.
+Read-only check on Ollie's running shared Camoufox (2026-11-27): `session attach` with its `connection.json`,
+`page list` and `session stop` saw its tabs and left them; nothing was filled or logged in.
+
+**Passkeys** (Phase 3): Juggler has no WebAuthn, so blindfill uses the browser's Marionette port next to it.
+Start the browser with `-marionette` and the prefs `security.webauth.webauthn_enable_softtoken=true`,
+`security.webauth.webauthn_enable_usbtoken=false` (real USB security keys stop working in that browser), then
+give blindfill the port: `BLINDFILL_MARIONETTE=127.0.0.1:2828` (loopback only; library: `ProviderOptions.marionette`).
+Each ceremony opens the single Marionette session, adds one authenticator, and ends both; it fails if another client
+holds the session. The Firefox authenticator is browser-wide, not per tab. Firefox serves WebAuthn only to the
+focused document, so blindfill brings the page to the front; in spike 2 a page in another context did not get a
+signature while armed (it was not focused), which is a side effect of focus, not a boundary. Firefox cannot set the
+backup-eligible flag: passkeys it registers are BE=0 and the item gets `blindfill.passkey_be=0`; Bitwarden-made
+(BE=1) passkeys are signed with BE=0 as well (owner decision 2026-11-27), so a relying party that checks BE rejects
+them: an ordinary failure, and the result's `note` says to use Chromium (which, like the Android host, signs with the
+item's flag). Marionette lacks the W3C `WebAuthn:SetCredentialProperties` command; once Firefox adds it, BE can be set. Tested by the
+same opt-in suite with Camoufox started with `-marionette`, the two prefs and `marionette.port=0`, on the owner's
+Mac and on ollie-ubuntu (Linux); the shared Camoufox was not used.
 
 ## Ego Lite
 
@@ -54,28 +122,53 @@ Chromium-based (0.6.3.17, Chrome/156), checked on the owner's Mac on 2026-11-27.
 
 - Works via `chromium-launch` with a custom executable: `BLINDFILL_CHROMIUM='/Applications/ego lite.app/Contents/MacOS/ego lite'`
   (or `--executable`). e2e 17/17 and session start/status/stop passed. It is a separate instance with an **empty profile**.
-- **Cannot attach to the already-running instance over CDP**: it exposes no CDP and no Playwright server.
+- **Cannot attach over CDP**: the running instance exposes no CDP and no Playwright server.
 - `ego-cli` (opt-in, **not supported**) reaches the running instance through Ego's own `ego-browser nodejs`: a script inside
   Ego's Node runtime serves page operations over a private unix socket (0700 state dir, nonce, one client). It adapts the
-  slice of Playwright's Page API that `WebActuator` uses, so origin binding, lock, one-shot and scrubbing are unchanged.
-  Element scans run in an isolated world; every text input re-checks, inside Ego and in the same call, that the element's
-  document still has the scanned origin and that the element has focus.
-  - Use: `blindfill session attach --endpoint ego://72/p1` (a task space this agent controls) or `--endpoint ego://new`.
-    A space blindfill creates keeps its page afterwards (`BLINDFILL_EGO_KEEP=0` closes it).
-  - Limits: cross-origin out-of-process iframes are invisible, so fields inside them are refused even when the item binds
-    that origin. Each connect starts an `ego-browser` process (~1 s).
-  - **Exception to the provider contract**: filled values pass through Ego's Node runtime.
-  - Tested (`BLINDFILL_E2E_BROWSER=ego npx vitest run tests/e2e.test.ts`, owner's Mac): 18/18, with the iframe case
-    asserting the refusal above.
-- Leak checks for `ego-cli` (owner's Mac, 2026-11-27), the gate before it may be merged or recommended:
-  - Disk: the e2e canary and a separate random value were not found in `~/Library/Application Support/Citro Labs`,
-    `~/Library/Caches` or `~/Library/Logs` (also not after 20–45 s).
-  - Network: during a 17-test e2e run the `ego Helper (Node)` process (where the bridge runs) opened **no** internet
-    sockets. All traffic goes through Chromium's network service (`ego Helper (Aperitif)`): loopback test sites plus
-    Fastly, Google, GitHub and Cloudflare addresses that also serve the user's other tabs. Payloads are TLS and were
-    **not inspected**, so "the value is never sent out" is not proven.
-  - Ego UI / operation log: **not checked** (the screen was locked during the run).
-  - Until the last two are closed, keep `ego-cli` opt-in and out of the support matrix.
+  slice of Playwright's Page / Frame / handle API that `WebActuator` uses, so origin binding, document binding, lock,
+  one-shot and scrubbing are unchanged. All page code runs in one blindfill isolated world per frame document; every text
+  input re-checks, inside Ego and in the same call, that the element's document still has the scanned origin and that the
+  element has focus.
+  - Use: `blindfill session attach --endpoint ego://new` (a new task space; `ego://` selects `ego-cli`) or
+    `--endpoint ego://72/p1` (a space this agent controls). A space blindfill creates keeps its page afterwards
+    (`BLINDFILL_EGO_KEEP=0` closes it).
+  - Limits: cross-origin (out-of-process) iframes are invisible, so their fields are refused even when the item binds that
+    origin, and a rule-less refusal cannot mention them; a rule submit of kind `js` is refused (no request interception);
+    no passkeys (no WebAuthn); each connect starts an `ego-browser` process (~1 s).
+  - **Exception to the provider contract**: filled values pass through Ego's Node runtime (as CDP `Input.insertText`
+    parameters). Everything below was checked for that reason.
+  - Tested (`BLINDFILL_E2E_BROWSER=ego npx vitest run tests/e2e.test.ts`, owner's Mac, Ego Lite 0.6.3.17, 2026-11-28):
+    30 passed, 1 skipped (the replaced cross-origin rule frame); the frames test asserts the refusal above.
+- Disk leak test (2026-11-27, `ego-browser nodejs`, random fake password via `page.fill` and CDP `Input.insertText`): not
+  found in `~/Library/Application Support/Citro Labs` (~1 GB), `~/Library/Caches` or `~/Library/Logs`, immediately and after 45 s.
+- **Outbound traffic check** (2026-11-28, owner's Mac, Ego Lite 0.6.3.17, `ego-cli` at `dbfe53f`; the provider has since
+  been adapted to the current `WebActuator`, typing path unchanged). Fake data only: a local
+  login page on `localhost` and a new random password per run, in the user's running Ego (its normal profile, no proxy,
+  no certificate, no restart).
+  - Capture: Ego's own `chrome://net-export` in "Include raw bytes" mode (TLS plaintext of everything Chromium's network
+    service sends, which is also where Ego's built-in Sentry envelope and PostHog batch endpoints live, both in the
+    browser binary) for about 3 minutes around the runs; plus every 0.3 s `lsof` of every other Ego process, and `nettop`.
+  - Runs: fill without submit; fill with submit; a script that typed a password, made failing CDP calls carrying it, crashed
+    the page's renderer (`Page.crash`), and ended with an uncaught exception and an unhandled rejection (to provoke Sentry);
+    the same error script again under `nettop` for 60 s.
+  - Result: the passwords appear in the capture **only** in the form POST to the local page (searched raw, URL-encoded,
+    hex, UTF-16 and base64 at all three alignments, in the whole log and in every decoded socket payload). No Sentry or
+    PostHog request was made during the window, including after the errors. The `ego Helper (Node)` process (where the
+    values pass) and the browser process opened no network sockets; all traffic was the network service's.
+  - Crash reports: the renderer minidump written by the crash does not contain the password (it does contain the page's
+    host); Crashpad uploads are disabled on this install (`settings.dat`: uploads off, never attempted).
+  - Not blindfill-specific but worth knowing: after a submit, Ego's password manager runs Chromium's **leak check**
+    (`passwordsleakcheck-pa.googleapis.com`, a hashed and encrypted lookup, over QUIC), as it does for a password a person
+    types in that profile; no login was saved (no new entries in any profile's `Login Data`). The same applies to any
+    user profile reached through `chromium-cdp`.
+  - Disk after all runs: none of the passwords (ASCII or UTF-16) in `~/Library/Application Support/Citro Labs`, `~/.ego`,
+    `~/.ego-browser`, `~/.local/share/ego` or `~/Library/Logs` (7,194 files, 1.46 GB).
+  - **Not covered**: QUIC payloads (net-export does not log them; in the window they went only to Google endpoints:
+    the leak check, the new-tab page and the optimization guide), telemetry that is batched and sent later than ~3
+    minutes, process memory, a version with Crashpad uploads on, Ego's agent features (Ego's own AI sidebar), the Ego
+    UI operation log, and future Ego versions.
+- **Ego UI operation log: not checked** (omp has no macOS Accessibility permission to open the task-space panel). Mics
+  accepted this risk on 2026-11-28 and decided to merge `ego-cli` as opt-in. Re-run this check after Ego updates.
 
 ## Adding a provider
 
