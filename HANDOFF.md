@@ -122,3 +122,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    at CAPTCHA, consent or any MFA the item has no TOTP for. Shared Camoufox on ollie-ubuntu: one window, new pages as tabs
    (`open_newwindow=3`), at most 12 tabs (`camoufox-idle-tabs`), windows fitted once by
    `camoufox-window-fit`; backups `*.bak-*` next to each file.
+9. Owner decision on host isolation (Mics, 2026-11-27; docs/design/line-gateway-login.md §5): on
+   ollie-ubuntu, Ollie and the `bw` agent API key stay the same Unix user (`ollie`, NOPASSWD sudo);
+   no separate user for the key, blindfill or the LINE gateway. Ollie can therefore read any vault
+   password with `bwu`; blindfill's no-read guarantee there is a convention, accepted.
