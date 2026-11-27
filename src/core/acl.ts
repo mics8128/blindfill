@@ -47,7 +47,14 @@ export function windowsPathsPrivate(paths: string[]): boolean {
   );
   try {
     const out = execFileSync(ps, ['-NoProfile', '-NonInteractive', '-Command', SCRIPT], {
-      env: { ...process.env, BLINDFILL_ACL_PATHS: paths.join('\n') },
+      // PowerShell 7 (pwsh, GitHub's Windows shell) exports a PSModulePath listing its own modules;
+      // Windows PowerShell 5.1 then fails to load Get-Acl. Unset, it rebuilds its default path.
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([k]) => k.toUpperCase() !== 'PSMODULEPATH'),
+        ),
+        BLINDFILL_ACL_PATHS: paths.join('\n'),
+      },
       encoding: 'utf8',
       windowsHide: true,
       timeout: 30_000,

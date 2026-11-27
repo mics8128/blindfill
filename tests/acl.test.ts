@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { aclIsPrivate, mkdirPrivate, windowsPathsPrivate } from '../src/core/acl.js';
 
 const ME = 'S-1-5-21-1-2-3-1001';
@@ -39,6 +39,21 @@ describe.runIf(process.platform === 'win32')('windowsPathsPrivate on a real NTFS
       expect(windowsPathsPrivate([dir])).toBe(true);
       expect(windowsPathsPrivate([dir, join(dir, 'missing')])).toBe(false);
     } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+  it('works when started from PowerShell 7 (its PSModulePath breaks Get-Acl in Windows PowerShell)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'bf-acl-'));
+    vi.stubEnv(
+      'PSModulePath',
+      `${process.env.ProgramFiles ?? 'C:\\Program Files'}\\PowerShell\\7\\Modules;${process.env.PSModulePath ?? ''}`,
+    );
+    try {
+      const dir = join(tmp, 'p');
+      mkdirPrivate(dir);
+      expect(windowsPathsPrivate([dir])).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
       rmSync(tmp, { recursive: true, force: true });
     }
   });
