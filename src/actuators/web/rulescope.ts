@@ -128,7 +128,10 @@ export async function locateInScope(scope: RuleScope, name: string, selector?: s
   };
 }
 
-/** Shared by rule and rule-less submit: SUBMIT_CHECK plus the action-origin test. */
+/**
+ * Shared by rule and rule-less submit: SUBMIT_CHECK plus the action-origin test.
+ * `precheck` (before filling) tolerates a disabled control; otherwise wait up to 3 s for it to enable, then check strictly.
+ */
 export async function assertSubmitControl(
   submitter: ElementHandle,
   group: ElementHandle,
@@ -136,8 +139,10 @@ export async function assertSubmitControl(
   kind: string,
   frameUrl: string,
   isBound: (url: string) => boolean,
+  precheck = false,
 ): Promise<void> {
-  const r = (await submitter.evaluate(SUBMIT_CHECK, { group, native, kind })) as {
+  if (!precheck) await submitter.waitForElementState('enabled', { timeout: 3000 }).catch(() => undefined);
+  const r = (await submitter.evaluate(SUBMIT_CHECK, { group, native, kind, pending: precheck })) as {
     code: string;
     reason?: string;
     action?: string;
@@ -162,6 +167,7 @@ export async function assertSubmitControl(
 export async function resolveRuleSubmit(
   scope: RuleScope,
   isBound: (url: string) => boolean,
+  precheck = false,
 ): Promise<ElementHandle> {
   const s = scope.rule.submit;
   if (!s)
@@ -172,7 +178,15 @@ export async function resolveRuleSubmit(
   const submitter = await unique(scope.group, s.selector, 'rule submit').catch((e: BlindfillError) => {
     throw new BlindfillError('POLICY', `unsafe form: submit control: ${e.message}`);
   });
-  await assertSubmitControl(submitter, scope.group, scope.native, s.kind, scope.frame.url(), isBound);
+  await assertSubmitControl(
+    submitter,
+    scope.group,
+    scope.native,
+    s.kind,
+    scope.frame.url(),
+    isBound,
+    precheck,
+  );
   return submitter;
 }
 

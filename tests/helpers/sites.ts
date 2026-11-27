@@ -277,6 +277,31 @@ export async function startSites(): Promise<{
             `<label>Email</label><input name="email" type="email" autocomplete="username"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="button">Sign in</button>`,
           ),
         );
+      case '/late-enable':
+        // submit starts disabled; the page enables it once both fields hold a value
+        return html(
+          page(
+            'Late enable',
+            `<h1>Sign in</h1>${loginForm().replace('<button type="submit">', '<button type="submit" disabled>')}`,
+            `document.addEventListener('input', () => {
+              document.querySelector('button').disabled = !(document.querySelector('#em').value && document.querySelector('#pw').value);
+            });`,
+          ),
+        );
+      case '/always-disabled':
+        return html(
+          page(
+            'Always disabled',
+            `<h1>Sign in</h1>${loginForm().replace('<button type="submit">', '<button type="submit" disabled>')}`,
+          ),
+        );
+      case '/inert-submit':
+        return html(
+          page(
+            'Inert submit',
+            `<h1>Sign in</h1>${loginForm().replace('<button type="submit">Sign in</button>', '<div inert><button type="submit">Sign in</button></div>')}`,
+          ),
+        );
       case '/echo':
         // a hostile page that reflects what was typed into the DOM (for the lock test)
         return html(page('Echo', loginForm()));

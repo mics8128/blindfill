@@ -31,6 +31,11 @@ blindfill defends against **the model and its logs**:
   person at a terminal. There is no command that reveals a stored secret.
 - Fill is one-shot: a Secret field is filled at most once per session and origin, and the
   form is submitted at most once per call. Unknown outcomes are reported, never retried.
+  The submit control is checked before any secret is read; a control that is merely disabled
+  (`disabled` or under `aria-disabled="true"`) passes that check, because many sites enable it
+  only after the fields hold values. After filling, blindfill waits up to 3 s for it to enable,
+  checks it again in full and clicks once; if it stays disabled the submit is refused with the
+  fields already filled. A control under `[inert]` is refused before filling.
 - Secrets are typed over https only; plain http is accepted for loopback dev hosts alone. Malformed
   `blindfill.*` control data fails the operation instead of being skipped.
 - A passkey's private key goes from the vault to a temporary Chromium virtual authenticator over

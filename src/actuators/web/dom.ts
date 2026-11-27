@@ -91,7 +91,9 @@ const SUBMIT_CHECK_SRC = String.raw`(e, a) => {
   const isBtn = (e instanceof HTMLButtonElement && ['button', 'submit'].includes(e.type)) || (e instanceof HTMLInputElement && ['button', 'submit'].includes(e.type)) || roleBtn;
   const isSubmit = (e instanceof HTMLButtonElement && e.type === 'submit') || (e instanceof HTMLInputElement && e.type === 'submit');
   if (!visible || !isBtn) return { code: 'unsafe' };
-  if (e.hasAttribute('disabled') || e.matches(':disabled') || e.closest('[aria-disabled="true"], [inert]')) return { code: 'disabled' };
+  if (e.closest('[inert]')) return { code: 'disabled' };
+  // a.pending: checked before filling; many sites enable submit only once the fields hold values
+  if (!a.pending && (e.hasAttribute('disabled') || e.matches(':disabled') || e.closest('[aria-disabled="true"]'))) return { code: 'disabled' };
   if (roleBtn && ['form', 'formaction', 'formmethod', 'formtarget', 'formenctype', 'formnovalidate'].some((x) => e.hasAttribute(x))) return { code: 'unsafe' };
   if (!a.native) {
     if (owner !== null || ['formaction', 'formmethod', 'formtarget', 'form'].some((x) => e.hasAttribute(x))) return { code: 'unsafe' };
@@ -202,7 +204,7 @@ export const FIRST_IN_GROUP = mk<(g: any, a: { sel: string; native: boolean }) =
 export const GROUP_KIND = mk<(g: any, native: boolean) => boolean>(GROUP_KIND_SRC);
 export const IS_FRAME_EL = mk<(e: any) => boolean>(IS_FRAME_SRC);
 export const SUBMIT_CHECK =
-  mk<(e: any, a: { group: any; native: boolean; kind: string }) => any>(SUBMIT_CHECK_SRC);
+  mk<(e: any, a: { group: any; native: boolean; kind: string; pending: boolean }) => any>(SUBMIT_CHECK_SRC);
 export const FORM_OF = mk<(el: any) => any>(FORM_OF_SRC);
 export const FORM_SUBMITS = mk<(form: any) => any[]>(FORM_SUBMITS_SRC);
 export const GENERIC_SCOPE =

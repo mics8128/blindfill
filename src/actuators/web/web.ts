@@ -459,6 +459,7 @@ export class WebActuator {
   private async resolveGenericSubmit(
     near: Detected,
     isBound: (url: string) => boolean,
+    precheck = false,
   ): Promise<ElementHandle> {
     const form = (await near.handle.evaluateHandle(FORM_OF)).asElement();
     if (!form)
@@ -475,13 +476,13 @@ export class WebActuator {
       );
     const submitter = (await list.getProperty('0')).asElement();
     if (!submitter) throw new BlindfillError('NOT_FOUND', 'submit control vanished');
-    await assertSubmitControl(submitter, form, true, 'native', near.frameUrl, isBound);
+    await assertSubmitControl(submitter, form, true, 'native', near.frameUrl, isBound, precheck);
     return submitter;
   }
 
-  /** Validate (no click): lets the engine refuse before any secret is read. */
+  /** Validate (no click): lets the engine refuse before any secret is read. A disabled submit passes here. */
   async checkSubmit(near: Detected, isBound: (url: string) => boolean): Promise<void> {
-    await this.resolveGenericSubmit(near, isBound);
+    await this.resolveGenericSubmit(near, isBound, true);
   }
 
   /** Click the single validated native submit of `near`'s form. */
@@ -504,7 +505,7 @@ export class WebActuator {
     return locateInScope(scope, name);
   }
   async checkRuleSubmit(scope: RuleScope, isBound: (url: string) => boolean): Promise<void> {
-    await resolveRuleSubmit(scope, isBound);
+    await resolveRuleSubmit(scope, isBound, true);
   }
   async passwordCount(scope: RuleScope): Promise<number> {
     return scope.group.evaluate(PWD_COUNT, { native: scope.native });

@@ -84,6 +84,28 @@ beforeAll(async () => {
         ],
       ),
       item(
+        'good-rule',
+        [good],
+        [
+          {
+            name: 'blindfill.rules',
+            type: 0,
+            value: JSON.stringify({
+              version: 2,
+              rules: [
+                {
+                  id: 'late',
+                  top_origin: good.slice(0, -1),
+                  form: 'form',
+                  fields: { username: '#em', password: '#pw' },
+                  submit: { selector: 'button[type=submit]', kind: 'native' },
+                },
+              ],
+            }),
+          },
+        ],
+      ),
+      item(
         'good-extra',
         [good],
         [
@@ -157,6 +179,7 @@ describe('web actuator e2e (local fake sites)', () => {
       ['/login-get', /GET/],
       ['/two-submits', /exactly one/],
       ['/formless', /not inside a <form>/],
+      ['/inert-submit', /disabled/],
     ])('%s: submit refused before filling, plain fill still works', async (path, re) => {
       const { eng, act } = await engine();
       const err = await eng.fill({ item: 'good', url: good(path), submit: true }).catch((e) => e);
@@ -169,6 +192,35 @@ describe('web actuator e2e (local fake sites)', () => {
       expect(r).toMatchObject({ filled: ['username', 'password'], submitted: false });
       expect(sites.received).toHaveLength(0);
     });
+
+    it.each(['good', 'good-rule'])(
+      '%s: a submit enabled only after filling is waited for and clicked once',
+      async (id) => {
+        const { eng } = await engine();
+        const r = await eng.fill({
+          item: id,
+          url: good('/late-enable'),
+          submit: true,
+          expect: { urlIncludes: '/home' },
+        });
+        expect(r).toMatchObject({ filled: ['username', 'password'], submitted: true, outcome: 'success' });
+        expect(sites.received).toHaveLength(1);
+        expect(sites.received[0].fields).toEqual({ email: CANARY_USER, password: CANARY });
+      },
+    );
+
+    it.each(['good', 'good-rule'])(
+      '%s: a submit that stays disabled is refused after filling, never clicked',
+      async (id) => {
+        const { eng } = await engine();
+        const err = await eng.fill({ item: id, url: good('/always-disabled'), submit: true }).catch((e) => e);
+        expect(err).toMatchObject({ code: 'POLICY' });
+        expect(String(err.message)).toMatch(/disabled/);
+        expect(String(err.message)).not.toContain(CANARY);
+        expect(await page.inputValue('#em')).toBe(CANARY_USER);
+        expect(sites.received).toHaveLength(0);
+      },
+    );
   });
 
   it('wrong evidence => failure reported, never retried', async () => {
