@@ -1,5 +1,12 @@
 plugins { id 'com.android.application' }
 
+// The companion carries the host's version (package.json), so a published package and its APK match.
+def hostVersion = new groovy.json.JsonSlurper().parse(file('../../package.json')).version as String
+def (major, minor, patch) = hostVersion.replaceAll(/-.*/, '').tokenize('.').collect { it as int }
+// Release signing only when the keystore is supplied (CI secrets, or ~/.config/blindfill on the
+// owner's Mac; see android/README.md). Without it assembleRelease is unsigned; debug is unaffected.
+def keystore = System.getenv('BLINDFILL_KEYSTORE')
+
 android {
     namespace = 'io.github.mics8128.blindfill'
     compileSdk = 36
@@ -7,8 +14,25 @@ android {
         applicationId = 'io.github.mics8128.blindfill'
         minSdk = 34 // CredentialProviderService
         targetSdk = 36
-        versionCode = 1
-        versionName = '0.1.0'
+        // shortcut: pre-releases of one x.y.z share a versionCode (adb install -r still accepts equal codes)
+        versionCode = major * 10000 + minor * 100 + patch
+        versionName = hostVersion
+    }
+    signingConfigs {
+        if (keystore) {
+            release {
+                storeFile = file(keystore)
+                storeType = 'pkcs12'
+                storePassword = System.getenv('BLINDFILL_KEYSTORE_PASSWORD')
+                keyAlias = 'blindfill'
+                keyPassword = System.getenv('BLINDFILL_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (keystore) signingConfig = signingConfigs.release
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

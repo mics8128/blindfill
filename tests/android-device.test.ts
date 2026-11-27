@@ -7,26 +7,30 @@ import {
   randomUUID,
   verify,
 } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AndroidActuator, COMPANION } from '../src/actuators/android/index.js';
+import { AndroidActuator, COMPANION, COMPANION_SIGNER } from '../src/actuators/android/index.js';
+import { apkSigners } from '../src/actuators/android/apk.js';
 import { BwBackend } from '../src/backends/bw.js';
 import { Engine } from '../src/engine.js';
 
 /**
- * OPT-IN, real phone: BLINDFILL_TEST_ANDROID_SERIAL=<adb serial>, unlocked screen, APKs built
- * (`cd android && ./gradlew assembleDebug`). Installs the companion and the fake relying party,
- * switches the autofill and credential provider to blindfill for the run, then restores both
- * settings and uninstalls the two apps. Fake data only.
+ * OPT-IN, real phone or emulator: BLINDFILL_TEST_ANDROID_SERIAL=<adb serial> (e.g. emulator-5554),
+ * unlocked screen, APKs built (`cd android && ./gradlew assembleDebug`). Installs the companion
+ * (BLINDFILL_COMPANION_APK, e.g. the signed release APK; default the debug build) and the fake
+ * relying party, switches the autofill and credential provider to blindfill for the run, then
+ * restores both settings and uninstalls the two apps. Fake data only. A debug companion is
+ * accepted by pinning its own signer (BLINDFILL_COMPANION_SIGNER); a release one must match
+ * COMPANION_SIGNER.
  */
 const SERIAL = process.env.BLINDFILL_TEST_ANDROID_SERIAL;
 const ADB = process.env.BLINDFILL_ADB ?? 'adb';
-const APKSIGNER = process.env.BLINDFILL_APKSIGNER ?? 'apksigner';
 const RP_PKG = `${COMPANION}.testrp`;
 const RP_ID = 'blindfill-test.invalid';
 const APK = (m: string) => resolve(`android/${m}/build/outputs/apk/debug/${m}-debug.apk`);
+const COMPANION_APK = process.env.BLINDFILL_COMPANION_APK ?? APK('companion');
 const PW = `DEV-pw-${randomBytes(9).toString('base64url')}`;
 const USER = 'device-user@example.test';
 const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
@@ -76,12 +80,13 @@ function startRp() {
 }
 
 describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), 'bf-dev-'));
     process.env.BLINDFILL_AUDIT_FILE = join(dir, 'audit.jsonl');
-    const signer = execFileSync(APKSIGNER, ['verify', '--print-certs', APK('testrp')], { encoding: 'utf8' })
-      .match(/SHA-256 digest: ([0-9a-f]{64})/)![1]
-      .toUpperCase();
+    const [signer] = apkSigners(readFileSync(APK('testrp')));
+    const [companionSigner] = apkSigners(readFileSync(COMPANION_APK));
+    process.env.BLINDFILL_COMPANION_APK = COMPANION_APK;
+    if (companionSigner !== COMPANION_SIGNER) process.env.BLINDFILL_COMPANION_SIGNER = companionSigner;
     const items = join(dir, 'items.json');
     writeFileSync(
       items,
@@ -109,9 +114,10 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
       ]),
     );
     process.env.BLINDFILL_MOCK_BW_ITEMS = items;
-    for (const k of ['autofill_service', 'credential_service', 'credential_service_primary'])
-      saved[k] = adb('shell', 'settings', 'get', 'secure', k).trim();
-    adb('install', '-r', APK('companion'));
+    // install() records the three settings before touching them, as `blindfill android install` does
+    Object.assign(saved, (await new AndroidActuator(ADB).install(SERIAL!, false)).previous);
+    // the installed companion passes the host's signer check (and the check is cached for the tests)
+    expect(await new AndroidActuator(ADB).checkCompanion(SERIAL!)).toBeNull();
     adb('install', '-r', APK('testrp'));
     adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP');
     adb('shell', 'wm', 'dismiss-keyguard');
@@ -128,6 +134,8 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
     }
     adb('shell', 'rm', '-f', '/sdcard/bf-ui.xml');
     rmSync(dir, { recursive: true, force: true });
+    delete process.env.BLINDFILL_COMPANION_SIGNER;
+    delete process.env.BLINDFILL_COMPANION_APK;
   });
 
   const engine = () =>
@@ -182,4 +190,20 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
     const pub = createPublicKey(publicKey.export({ type: 'spki', format: 'pem' }));
     expect(verify('sha256', signed, pub, Buffer.from(resp.response.signature, 'base64url'))).toBe(true);
   }, 120_000);
+
+  it('refuses before arming when the installed companion has another signer than the pin', async () => {
+    const pinned = process.env.BLINDFILL_COMPANION_SIGNER;
+    process.env.BLINDFILL_COMPANION_SIGNER = 'AB'.repeat(32);
+    try {
+      const r = await engine().androidOffer(
+        { item: 'dev-app', serial: SERIAL!, kind: 'password', timeoutMs: 5_000 },
+        new AndroidActuator(ADB),
+      );
+      expect(r).toMatchObject({ status: 'refused' });
+      expect(String(r.reason)).toMatch(/not signed by blindfill/);
+    } finally {
+      if (pinned) process.env.BLINDFILL_COMPANION_SIGNER = pinned;
+      else delete process.env.BLINDFILL_COMPANION_SIGNER;
+    }
+  }, 60_000);
 });

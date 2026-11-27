@@ -36,6 +36,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // no action bar: with enforced edge-to-edge (targetSdk 35+) it would cover the first field
+        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
         l.setPadding(48, 160, 48, 48);

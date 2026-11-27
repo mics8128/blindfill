@@ -4,3 +4,6 @@ dist
 *.log
 .env*
 .blindfill-state
+*.p12
+*.jks
+*.keystore

@@ -1300,6 +1300,14 @@ export class Engine {
         return out;
       },
     );
+    if (r.status === 'refused')
+      audit({
+        event: 'refused',
+        backend: this.backend.id,
+        item: ref.id,
+        target: target || 'android',
+        reason: r.reason,
+      });
     return {
       status: r.status === 'answered' ? (req.kind === 'passkey' ? 'signed' : 'offered') : r.status,
       ...(r.status === 'refused' ? { reason: r.reason } : {}),
