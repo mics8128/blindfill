@@ -476,7 +476,9 @@ export class WebActuator {
     isBound: (url: string) => boolean,
   ): Promise<{ method: 'fill' | 'keys'; last: Detected }> {
     const str = typeof value === 'string' ? value : value.toString('utf8');
-    globalScrubber.register(str);
+    // a string is readable (username, plain field) or a TOTP code the caller registered; scrubbing a
+    // username withheld every output that named the item (ig-<username>)
+    if (typeof value !== 'string') globalScrubber.register(str);
     let lastErr: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
       const d = await relocate();

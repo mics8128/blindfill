@@ -1024,6 +1024,7 @@ export class Engine {
               : s.name === 'username'
                 ? (meta.username as string)
                 : meta.readable[s.name];
+          if (s.kind === 'totp') globalScrubber.register(value);
           const r = await act.fillInto(relocate, value, isBound);
           if (s.kind !== 'totp' || !last) last = r.last;
         }
@@ -1145,6 +1146,7 @@ export class Engine {
               : s.name === 'username'
                 ? (meta.username as string)
                 : meta.readable[s.name];
+          if (s.kind === 'totp') globalScrubber.register(value);
           last = (await act.fillInto(relocate, value, isBound)).last;
         }
         filled.push(s.name);

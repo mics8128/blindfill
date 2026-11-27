@@ -165,6 +165,7 @@ describe('web actuator e2e (local fake sites)', () => {
     expect(sites.received).toHaveLength(1);
     expect(sites.received[0].fields).toEqual({ email: CANARY_USER, password: CANARY });
     expect(JSON.stringify(r)).not.toContain(CANARY);
+    expect(globalScrubber.contains(CANARY_USER)).toBe(false); // a username is not a secret
     // post-fill lock
     await expect(act.pageText()).rejects.toMatchObject({ code: 'SESSION_LOCKED' });
     await expect(act.html()).rejects.toMatchObject({ code: 'SESSION_LOCKED' });
