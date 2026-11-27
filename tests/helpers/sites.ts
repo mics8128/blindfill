@@ -132,7 +132,8 @@ export async function startSites(): Promise<{
                 const c = await navigator.credentials.create({ publicKey: {
                   challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { id: rp, name: 'Fake RP' },
                   user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'pk-user', displayName: 'PK User' },
-                  pubKeyCredParams: [{ type: 'public-key', alg: -7 }], attestation: 'none',
+                  // Ed25519 first, like webauthn.io: the stored key must still be ES256
+                  pubKeyCredParams: [{ type: 'public-key', alg: -8 }, { type: 'public-key', alg: -7 }], attestation: 'none',
                   authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' } } });
                 const r = c.response;
                 const body = new URLSearchParams({ id: c.id, publicKey: b(r.getPublicKey()),

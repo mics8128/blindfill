@@ -793,6 +793,19 @@ export class WebActuator {
           der.fill(0);
         }),
       );
+      // Bitwarden stores only ES256 keys: for the next create() act like an ES256-only authenticator,
+      // which picks -7 from the page's list (webauthn.io lists Ed25519 first, which Chromium would take)
+      await this.page.evaluate(() => {
+        const c = navigator.credentials;
+        const create = c.create.bind(c);
+        c.create = (o) => {
+          c.create = create;
+          const p = o?.publicKey;
+          if (p?.pubKeyCredParams.some((x) => x.alg === -7))
+            p.pubKeyCredParams = p.pubKeyCredParams.filter((x) => x.alg === -7);
+          return create(o);
+        };
+      });
       if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
       return await Promise.race([added, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
     } catch (e) {
