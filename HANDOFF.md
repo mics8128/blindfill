@@ -52,7 +52,11 @@ Item 7 is not done:
 - Passkeys: web sign-in through a Chromium virtual authenticator, tested against a fake relying
   party that verifies the signature. No counter write-back, no registration, no Firefox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
-- Not supported: Android, passkey registration, WebKit, Firefox on an already-running browser,
+- Android: companion APK (`android/`), passwords via autofill and passkeys via the credential
+  provider, signed on the host. Tested on the Xperia 5 II (Android 17) on ollie-ubuntu with a fake
+  app (`BLINDFILL_TEST_ANDROID_SERIAL=QV720B4852 BLINDFILL_APKSIGNER=/usr/bin/apksigner npx vitest run
+tests/android-device.test.ts` after `cd android && ./gradlew assembleDebug`); not with real apps.
+- Not supported: passkey registration, WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
 

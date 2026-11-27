@@ -34,14 +34,14 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 | Bitwarden / Vaultwarden(`bw`)                                                                 | 검증됨(모의 CLI + 픽스처) | 항목 JSON 형식은 실제 Vaultwarden에서도 수동으로 확인했습니다. 실제 Vault에서의 blindfill 엔드투엔드 검증은 아직 하지 않았습니다. |
 | 1Password(`op`), rbw, pass, gopass, KeePassXC(`keepassxc-cli`), Secret Service(`secret-tool`) | 블라인드 작성, 미검증     | 픽스처에서 공통 계약 테스트만 통과했습니다. `blindfill backend selftest <id>`를 실행하고 백엔드 리포트를 남겨 주세요.             |
 
-| 브라우저                                                                         | 상태                                                                                                     |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Chromium: Playwright 번들, 임의의 Chromium 빌드(`--executable`), 또는 루프백 CDP | 지원, 테스트됨                                                                                           |
-| Firefox / Camoufox (루프백 Playwright 서버 경유, `--browser firefox-connect`)    | 테스트됨(옵트인 스위트): Camoufox 158.0.1-beta.41 및 159.0-beta.43. 장시간 실행 중인 인스턴스는 미테스트 |
-| Ego Lite                                                                         | 별도의 빈 프로필 인스턴스로만 지원(`--executable`). 실행 중인 앱에 연결하는 것은 미지원                  |
-| WebKit / Safari                                                                  | 미지원                                                                                                   |
-| Android                                                                          | 미구현(스텁)                                                                                             |
-| Passkey                                                                          | 웹 로그인만, Chromium 전용(가짜 relying party로 테스트). 카운터 기록과 등록은 미지원                     |
+| 브라우저                                                                         | 상태                                                                                                                                                 |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chromium: Playwright 번들, 임의의 Chromium 빌드(`--executable`), 또는 루프백 CDP | 지원, 테스트됨                                                                                                                                       |
+| Firefox / Camoufox (루프백 Playwright 서버 경유, `--browser firefox-connect`)    | 테스트됨(옵트인 스위트): Camoufox 158.0.1-beta.41 및 159.0-beta.43. 장시간 실행 중인 인스턴스는 미테스트                                             |
+| Ego Lite                                                                         | 별도의 빈 프로필 인스턴스로만 지원(`--executable`). 실행 중인 앱에 연결하는 것은 미지원                                                              |
+| WebKit / Safari                                                                  | 미지원                                                                                                                                               |
+| Android(14 이상)                                                                 | 컴패니언 APK: 비밀번호는 자동 완성 서비스, passkey는 자격 증명 제공자(서명은 호스트에서). 기기 1대(Android 17)에서 가짜 앱으로 테스트. 소스에서 빌드 |
+| Passkey                                                                          | 웹 로그인만, Chromium 전용(가짜 relying party로 테스트). 카운터 기록과 등록은 미지원                                                                 |
 
 브라우저 제공자와 그 계약: [docs/browsers.md](docs/browsers.md).
 
@@ -58,7 +58,7 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 
 ## 미완료
 
-- Android 액추에이터(스텁). Passkey 카운터 기록과 등록. WebKit.
+- Android: 새 로그인 저장, WebView 로그인, 정식 서명 APK. Passkey 카운터 기록과 등록. WebKit.
 - `bw`의 실제 보관함 대상 엔드투엔드. 나머지 여섯 백엔드는 맹목적으로 작성되어 미검증.
 - npm에 미게시(`latest`는 빈 플레이스홀더).
 - olliepm에서 이전: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).

@@ -129,12 +129,20 @@ interface Actuator {
   file plus its tests. A provider that cannot be attached to an already-running browser (no CDP,
   no Playwright server) is not faked; Ego Lite's running instance is explicitly unsupported
   until a traffic and operation-log review is done (`docs/browsers.md`).
-- **Android actuator** **[from olliepm, unverified on real secrets]**: currently a stub that
-  throws. Plan: host-side scrcpy control channel (INJECT_TEXT), no `adb shell input text`, no
-  clipboard, no UIAutomator setText. Identity = device serial + Android user + package + APK
-  signer SHA-256 (checked with `apksigner`). Two-stage roadmap:
-  1. host injection as above (focus-based, not atomic);
-  2. optional companion **AutofillService** APK for atomic, system-attested fills.
+- **Android actuator** (companion APK, `android/`; host side `src/actuators/android/`): chosen
+  over scrcpy text injection because the system, not blindfill, attests which app is asking.
+  Flow: `android fill|passkey --item --serial` arms the companion with a one-time token over
+  `adb shell am broadcast` (the receiver requires `DUMP`, which only the shell holds) and listens
+  on a loopback port the phone reaches through `adb reverse`. When an app asks, the companion
+  reports its package (AssistStructure / CallingAppInfo) and the SHA-256 of its single signing
+  certificate (PackageManager); the host checks both against `androidapp://` + `blindfill.signers`
+  before reading any secret, answers once, closes the port and disarms. Passwords go into an
+  autofill Dataset the user or agent selects; WebViews, sign-up screens (two passwords,
+  `new` hints) and multi-signer apps are refused. Passkeys: the companion builds clientDataJSON
+  for the calling app (`android:apk-key-hash:` origin) and sends only its hash; the host signs
+  `authData || hash` (flags UP+UV, counter 0), so the private key never reaches the phone.
+  Tested on a real phone with a fake relying-party app (`tests/android-device.test.ts`), which
+  switches the autofill and credential provider for the run and restores them exactly.
 - Later: desktop (accessibility APIs), iOS (probably impossible without an Autofill extension).
 
 ### 3.3 Target model
@@ -295,10 +303,10 @@ Goal: install in one command, no toolchain explanation.
   against a real Camoufox build, owner's running instance untested), field rules and profiles,
   discover/diagnose/verify, registration with generated passwords, human handoff.
   Tracked in `docs/MIGRATING-FROM-OLLIEPM.md` once written.
-- **M2** passkeys (`sign`, section 3.8) for web; Android actuator ported (host injection) with
-  signer pinning; real-device tests on our own accounts only after explicit approval.
+- **M2** passkeys (`sign`, section 3.8) for web; Android companion APK (autofill + passkey
+  provider) with signer pinning, tested on one device with a fake app.
 - **M3** community verification of the blind-written backends, public release and backend matrix.
-- **M4** companion AutofillService; community rule packs; desktop actuator exploration.
+- **M4** community rule packs; desktop actuator exploration; Android saving new logins and WebView logins.
 - Optional: an attach provider for the already-running Ego Lite, only after an outbound-traffic
   capture and an operation-log check show filled values do not leak; never labelled "supported".
 
