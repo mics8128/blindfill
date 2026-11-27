@@ -140,7 +140,7 @@
     sup_ego: '<b>Ego Lite</b>：只能以另外啟動、空白設定檔的獨立實例使用，無法連上你正在執行的那一個。',
     p_pk: '有限支援',
     sup_pk:
-      '<b>Passkey</b>：僅限網頁登入，僅限 Chromium（CDP 虛擬驗證器），只針對模擬的依賴方測試過。不回寫計數器，也不支援註冊。',
+      '<b>Passkey</b>：Chromium 網頁登入（CDP 虛擬驗證器）與 Android app 登入（簽章在主機端），只針對假的依賴方測試過。不回寫計數器，也不支援註冊。',
     p_plan: '尚未支援',
     sup_plan:
       '<b>WebKit／Safari</b>：尚未支援。<b>Android</b>：輔助 APK（Android 14 以上），已在一支手機用假 app 測試；需自行編譯。',
@@ -148,7 +148,7 @@
     lim_ah: '還沒做',
     lim_a1:
       'Android 只能透過自行編譯的輔助 APK 使用，只在一支手機用假 app 測試過；不支援 WebView 登入，也不會儲存新登入。',
-    lim_a2: 'Passkey：僅限 Chromium 上的網頁登入。不回寫計數器，也不支援註冊。',
+    lim_a2: 'Passkey：網頁僅限 Chromium。不回寫計數器，也不支援註冊。',
     lim_a3: '不支援 WebKit／Safari。Firefox／Camoufox 需手動啟用。',
     lim_a4: '沒有任何後端在真實密碼庫上做過完整端到端驗證。',
     lim_a5: '偵測不到 Shadow DOM、封閉的 iframe 與 canvas 輸入框，遇到時會直接停止。',
