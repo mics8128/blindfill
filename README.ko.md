@@ -4,6 +4,8 @@
 
 **AI 에이전트가 비밀번호를 보지 않고도 웹사이트에 로그인하게 합니다.**
 
+**[웹사이트: mics8128.github.io/blindfill](https://mics8128.github.io/blindfill/)**
+
 [![CI](https://github.com/mics8128/blindfill/actions/workflows/ci.yml/badge.svg)](https://github.com/mics8128/blindfill/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](package.json)
