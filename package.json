@@ -1,6 +1,6 @@
 {
   "name": "blindfill",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0",
   "description": "Let AI agents sign in to websites without ever seeing the password. Write-only credential actuator with an MCP server, a CLI and pluggable password-manager backends.",
   "license": "MIT",
   "type": "module",

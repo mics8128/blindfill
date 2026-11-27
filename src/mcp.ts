@@ -96,7 +96,7 @@ const expectShape = z
   .describe('Evidence used to report the outcome. Without it the outcome is "unknown".');
 
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: 'blindfill', version: '0.1.0-alpha.0' });
+  const server = new McpServer({ name: 'blindfill', version: '0.1.0' });
   // Every error the SDK's tool dispatch catches (schema validation, unknown tool, a throwing handler) ends
   // in createToolError(message); its messages can echo arguments, so they become one fixed code.
   const sdk = server as unknown as { createToolError: (message: string) => ToolResult }; // private in the SDK typings

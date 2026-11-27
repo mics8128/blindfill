@@ -102,7 +102,7 @@ export async function runSelftest(
     backend: id,
     tier: backend.tier,
     mode: opts.fixture ? 'fixture' : 'live',
-    blindfillVersion: opts.version ?? '0.1.0-alpha.0',
+    blindfillVersion: opts.version ?? '0.1.0',
     date: new Date().toISOString().slice(0, 10),
     result: 'fail',
     steps,
