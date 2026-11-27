@@ -7,147 +7,42 @@
   var zh = {
     skip: '跳到主要內容',
     nav_how: '運作方式',
-    nav_sec: '安全設計',
-    nav_status: '密碼管理器',
-    nav_faq: '常見問題',
+    nav_sec: '為什麼安全',
+    nav_sup: '支援',
+    nav_start: '開始使用',
     h1: '你的 AI 代理人能登入，卻永遠看不到密碼。',
-    lead: 'blindfill 把你的密碼管理器（例如 Bitwarden）接上瀏覽器，直接把帳密填進登入欄位。代理人只負責挑選帳號，密碼永遠不會進入模型的上下文。',
+    lead: 'blindfill 把密碼管理器裡的帳密直接填進網頁。代理人只知道登入成不成功。',
     cta_start: '開始使用',
     cta_gh: '在 GitHub 查看',
-    hero_fine: '以 MIT 授權開源，已發佈到 npm。目前為 alpha：尚未經過獨立資安審查。',
+    hero_fine: '以 MIT 授權開源。目前為 alpha：尚未經過獨立資安審查。',
     term_cap: '依 README 範例改寫的示意輸出。',
     how_h: '密碼從密碼庫直接到表單，不經過模型',
     how_p: '代理人只指定帳號與頁面，其餘由 blindfill 完成，回報的只有結果。',
     diag_cap: 'blindfill 流程圖',
-    st1h: '代理人指定項目與網址',
-    st1: '它無法決定密碼要填去哪裡，目標來自項目本身的 URI。',
-    st2h: 'blindfill 驗證網站',
-    st2: '瀏覽器回報的網站來源必須與項目相符。相似網域與跨來源 iframe 會在讀取任何密碼之前就被拒絕。',
-    st3h: '填好表單，接著上鎖',
-    st3: '表單最多送出一次。之後頁面文字、DOM 與截圖一律拒絕提供，所有輸出都經過遮蔽。',
     feat_h: '密碼不會進入模型的上下文',
-    feat_p:
-      'blindfill 在你的電腦上執行，透過密碼管理器自己的 CLI 讀取資料。可以用 CLI、走 stdio 的 MCP 伺服器，或在自己的 Playwright 頁面上用 TypeScript 函式庫呼叫。',
+    feat_p: '在你的電腦上執行。可以當 CLI、MCP 伺服器或 TypeScript 函式庫使用。',
     f1h: '機密只能填，不能讀',
-    f1: '密碼、隱藏欄位、卡號只能填進欄位；TOTP 種子和私鑰連填都不會填。沒有任何 CLI 指令、MCP 工具或函式庫呼叫會回傳它們。',
+    f1: '沒有任何指令或工具會回傳密碼、TOTP 種子或私鑰。',
     f2h: '綁定正確的網站',
-    f2: '密碼填在哪裡，由密碼庫項目與實際觀察到的網站來源決定，不是代理人。網頁無法把它導去別處。',
+    f2: '機密能填到哪裡由密碼庫項目決定。仿冒網域在讀取任何東西之前就會被拒絕。',
     f3h: '填完即上鎖',
-    f3: '機密一旦填入，頁面文字、DOM 與截圖都會被拒絕，所有輸出都經過遮蔽。',
+    f3: '之後頁面文字、DOM 與截圖一律拒絕提供，輸出都經過遮蔽。',
     f4h: '不確定就停下',
-    f4: '欄位不明確、網站來源不符或結果不明時，只回報、不重試。誘餌欄位會被略過。',
-    cls_h: '代理人能讀什麼',
-    cls_c1: '等級',
-    cls_c2: '範例',
-    cls_c3: '可讀取',
-    cls_c4: '可填入',
-    cls_r1: 'Secret（機密）',
-    cls_e1: '密碼、隱藏的自訂欄位、卡號與安全碼',
-    cls_r5: 'Key（金鑰）',
-    cls_e5: 'TOTP 種子、SSH 私鑰、passkey 私鑰',
-    cls_sign: '永不（passkey 只用來簽章）',
-    cls_never: '永不',
-    yes: '可以',
-    no: '不行',
-    cls_r2: 'Ephemeral（短暫）',
-    cls_e2: '目前的 TOTP 驗證碼',
-    cls_r3: 'Readable（可讀）',
-    cls_e3: '使用者名稱、項目名稱、URI、文字欄位',
-    cls_r4: 'Notes（備註）',
-    cls_e4: '自由格式備註，可能藏有機密',
-    cls_def: '預設關閉，可逐項開啟',
-    cls_fine:
-      '等級取決於密碼庫中的欄位類型，無法判斷的資料一律視為 Secret。洩漏測試會在所有輸出與狀態檔中搜尋誘餌密碼。<a href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md" rel="noopener">閱讀 SECURITY.md</a>',
-    cmp_h: '與常見做法比較',
-    cmp_p: '各種做法通常如何處理密碼。實際產品各有差異，請以你使用的為準。',
-    cmp_cap: '讓代理人登入的各種做法比較',
-    cmp_c1: '做法',
-    cmp_c2: '密碼會進入模型的上下文',
-    cmp_c3: '由誰決定填在哪裡',
-    cmp_c4: '在哪裡執行',
-    cmp_a1: '設計上不會：機密只能填入',
-    cmp_a2: '密碼庫項目，並與瀏覽器回報的網站來源比對',
-    cmp_a3: '你的電腦，使用你的密碼庫 CLI',
-    cmp_b0: '把密碼貼進提示詞',
-    cmp_b1: '會',
-    cmp_model: '模型',
-    cmp_b3: '模型執行的地方',
-    cmp_c0: '把密碼管理器 CLI 交給代理人',
-    cmp_c1x: '通常會：CLI 會把明文回傳給呼叫者',
-    cmp_c3x: '你的電腦',
-    cmp_d0: '瀏覽器擴充功能自動填入',
-    cmp_d1: '填入當下通常不會，要看代理人之後讀到什麼',
-    cmp_d2: '擴充功能自己的網站比對',
-    cmp_d3: '你的瀏覽器',
-    cmp_e0: '雲端瀏覽器服務',
-    cmp_e1: '視服務商而定',
-    cmp_e2: '不一定',
-    cmp_e3: '服務商的基礎設施',
-    cmp_fine: '填寫後的上鎖只涵蓋 blindfill 自己的介面。連到同一個瀏覽器的其他工具仍可讀取頁面。',
-    sup_h: '密碼管理器與瀏覽器',
+    f4: '欄位不明確或結果不明時，只回報、不重試。',
+    sup_h: '支援',
+    sup_pk: 'Passkey',
+    sup_totp: 'TOTP 驗證碼',
+    sup_and: 'Android（實驗性）',
     sup_p:
-      '0.1.0 版的狀態，取自 <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>、<a href="https://github.com/mics8128/blindfill/blob/main/docs/browsers.md" rel="noopener">browsers.md</a> 與測試紀錄 <a href="https://github.com/mics8128/blindfill/blob/main/docs/TESTED.md" rel="noopener">TESTED.md</a>（每次測試，含失敗）。',
-    sup_cap: '支援狀態',
-    sup_c1: '項目',
-    sup_c2: '狀態',
-    sup_c3: '說明',
-    sup_g1: '瀏覽器與平台',
-    sup_g2: '密碼管理器',
-    sup_g3: '發佈',
-    st_ok: '支援，已測試',
-    st_exp: '實驗性',
-    st_no: '不支援',
-    st_mock: '已在真實網站測試',
-    st_unv: '未驗證',
-    st_npm: '已發佈',
-    st_sup: '支援',
-    st_win: '測試套件通過',
-    sup_win:
-      '單元、洩漏與 e2e 測試（本機假網頁、Chromium）在一台 Windows 11 上通過，且每次發布前會在 <code>windows-latest</code> 上執行。尚未在 Windows 上測試真實網站。<code>bw</code> 需安裝原生的 <code>bw.exe</code>；不支援 <code>ego-cli</code>。主要平台是 macOS 與 Linux。',
-    sup_chr: 'Playwright 內建版本、以 <code>--executable</code> 指定的任何 Chromium，或本機 CDP 連線。',
-    sup_ff:
-      '透過本機 Playwright 伺服器連線（<code>--browser firefox-connect</code>）。已對 Camoufox 158.0.1-beta.41 與 159.0-beta.43 測試；正在執行、使用固定設定檔的 Camoufox 會原樣沿用（保留它的 cookie 與登入，不動既有分頁）。2026-11-28 透過共用的 Camoufox 實際登入 Instagram 五次。',
-    sup_ego:
-      '透過 <code>ego-cli</code> 連上正在執行的 app，或另外啟動空白設定檔的獨立實例。使用 <code>ego-cli</code> 時，填入的值會經過 Ego 的 Node 執行環境；跨來源 iframe 會被拒絕；不支援 passkey。已用 e2e 測試在假網站上驗證，真實網站登入尚待測試。',
-    sup_pkh: 'Passkey',
-    sup_pk:
-      'Chromium 與 Firefox／Camoufox（透過 Marionette）的網頁登入與註冊（只新增）。簽章計數器會寫回密碼庫。Chromium 已在 webauthn.io 與 github.com（拋棄式帳號）上測試，Camoufox 已登入 Google 帳號。',
-    sup_and:
-      '輔助 APK：密碼走自動填入服務（登入與註冊），密碼與 passkey 走 Credential Manager，支援 WebView 登入。已用正式金鑰簽署；以 <code>blindfill android install --serial &lt;s&gt;</code> 安裝，每次填入前主機都會核對手機上 APK 的簽署者。在一支手機與模擬器上用假 app 測試過；同一支手機上的真實 app：Threads 登入成功，Instagram 部分完成。',
-    sup_bw:
-      '<code>bw</code>，CI 用模擬 CLI 與測試資料驗證；也在真實的 Vaultwarden 上登入過 Fastmail、QuickBooks、iCHEF、Wayfair、Amazon Seller Central、Instagram、GitHub 與 Google（2026-11-27／28，Chromium 與 Camoufox）。部分網站仍會失敗或需要真人介入；每次測試都記在 TESTED.md。',
-    sup_oth: '只通過錄製資料的契約測試，從未在真實密碼庫上執行。',
-    sup_npm: '<code>npm i -g blindfill</code>。由 GitHub Actions 發佈，附 npm provenance。',
-    lim_h: '使用前先了解限制',
-    lim_ah: '尚未完成',
-    lim_a1:
-      'Android 真實 app 中的註冊、WebView 與 Credential Manager 密碼、passkey 註冊（只用假 app 測試過）。儲存手動輸入的登入。',
-    lim_a3: 'WebKit／Safari。',
-    lim_a4: 'Shadow DOM、封閉的 iframe 與 canvas 輸入框。遇到時 blindfill 會停止。',
-    lim_a5:
-      '會擋自動化或需要真人的網站（機器人驗證、部分 MFA 設定），見 TESTED.md。其餘六個後端從未在真實密碼庫上執行。',
-    lim_a6: '獨立資安審查。',
-    lim_bh: '不在威脅模型內',
-    lim_b0: 'blindfill 防的是模型與它的日誌，下列情況不在防護範圍：',
-    lim_b1: '惡意或已被入侵的網頁。你綁定的網頁上的指令碼讀得到填入的密碼。',
-    lim_b2: '能讀取行程記憶體、瀏覽器設定檔或密碼庫工作階段的被入侵瀏覽器或電腦。',
-    lim_b3: '連到同一個瀏覽器的其他工具，它們讀得到已填好的欄位。',
-    lim_b4: '會轉換密碼內容的網頁。遮蔽只能盡力而為。',
-    lim_link: '在 SECURITY.md 閱讀完整威脅模型',
-    faq_h: '常見問題',
-    q1: '模型會看到我的密碼嗎？',
-    a1: '透過 blindfill 不會：沒有任何指令、工具或函式會回傳 Secret 等級的值。密碼填入後存在於頁面的 DOM，其他瀏覽器工具讀得到。如果你在意這點，同一個工作階段就只給代理人 blindfill，不要再給不受限的瀏覽器工具。',
-    q2: '它讀得到我的一次性驗證碼嗎？',
-    a2: '可以，目前的驗證碼能像文字一樣讀取與填入，TOTP 種子則絕不回傳。驗證碼的安全性取決於網站來源綁定與它很快失效。',
-    q3: '代理人要怎麼呼叫它？',
-    a3: '透過 <code>blindfill</code> CLI、走 stdio 的 MCP 伺服器（<code>blindfill mcp</code>），或在自己的 Playwright 頁面上使用 TypeScript 函式庫。',
-    q4: '可以用在我的正式帳號上嗎？',
-    a4: '它是 alpha 軟體，沒有經過獨立審查。請先用拋棄式或影響不大的帳號試用，並先讀過威脅模型。',
-    ins_h: '安裝',
-    ins_p:
-      '需要 Node 20 以上；Bitwarden 後端需要 Bitwarden CLI（<code>bw</code>）。可用 <code>--executable</code> 指定自己的 Chromium，或先安裝一次 Playwright 的版本。',
+      '其他密碼管理器（1Password、KeePassXC、pass 等）已實作，但尚未驗證。<a href="https://github.com/mics8128/blindfill/blob/main/docs/TESTED.md" rel="noopener">完整支援狀態與測試紀錄</a>',
+    ins_h: '開始使用',
+    ins_p: '需要 Node 20 以上與 Bitwarden CLI（<code>bw</code>）。三行指令：',
+    ins_fine:
+      '還沒有 Chromium？先執行一次 <code>npx playwright-core install chromium</code>。給代理人用：<code>npx -y blindfill mcp</code>。天天用：<code>npm i -g blindfill</code>。',
+    lim_p:
+      'alpha 軟體：請先用不重要的帳號試。<a href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md" rel="noopener">在 SECURITY.md 閱讀限制</a>',
     copy: '複製指令',
-    cta_docs: '閱讀 README',
+    cta_docs: '閱讀文件',
     foot1: 'blindfill 以 MIT 授權開源。目前為 alpha，尚未經過獨立審查。',
     foot_arch: '架構文件',
     foot_issues: '回報問題',
@@ -156,6 +51,7 @@
     aria_theme: '切換深色／淺色主題',
     aria_term: '終端機示範紀錄',
     aria_src: '安裝指令',
+    aria_try: '試用指令',
     d_title: 'blindfill 登入流程',
     d_desc:
       '代理人請 blindfill 在某個網址上填入某個項目。blindfill 從密碼庫讀出密碼，把項目的網址與瀏覽器回報的網站來源比對，再把密碼填進頁面欄位。代理人只收到結果。',
@@ -199,19 +95,6 @@
     },
   };
 
-  // mobile tables stack each row; every cell shows its column name above the value
-  function labelTables() {
-    Array.prototype.forEach.call(document.querySelectorAll('table.stack'), function (t) {
-      var heads = t.querySelectorAll('thead th');
-      Array.prototype.forEach.call(t.querySelectorAll('tbody tr'), function (tr) {
-        if (tr.children.length !== heads.length) return;
-        Array.prototype.forEach.call(tr.children, function (c, i) {
-          if (c.tagName === 'TD') c.setAttribute('data-label', heads[i].textContent.trim());
-        });
-      });
-    });
-  }
-
   function setLang(lang, persist) {
     var dict = lang === 'zh-TW' ? zh : en;
     nodes.forEach(function (n) {
@@ -224,7 +107,6 @@
       n.setAttribute('aria-label', (lang === 'zh-TW' ? zh : enAria)[k]);
     });
     root.lang = lang;
-    labelTables();
     document.title = meta[lang].title;
     document.querySelector('meta[name="description"]').setAttribute('content', meta[lang].desc);
     Array.prototype.forEach.call(document.querySelectorAll('[data-lang]'), function (b) {
@@ -250,7 +132,6 @@
     ? qs[1]
     : saved || ((navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh-TW' : 'en');
   if (initial === 'zh-TW') setLang('zh-TW', false);
-  else labelTables();
 
   /* ---------- theme ---------- */
   document.getElementById('theme').addEventListener('click', function () {
