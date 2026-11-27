@@ -1,6 +1,7 @@
 # Passkey registration and sign-in in every browser: feasibility
 
-Status: research only (2026-11-27). Nothing here is built. Claims marked **[observed]** come from the
+Status: research (2026-11-27). Since built: Phase 1 (counter write-back, BE/BS) and Phase 2 (Chromium
+registration, add only); see ARCHITECTURE §3.8. Claims marked **[observed]** come from the
 local experiments in §8; **[source]** from the cited specification or source code; **[inference]** were
 not verified.
 

@@ -73,9 +73,9 @@ blindfill defends against **the model and its logs**:
    not scrubbed.
 6. **Shadow DOM, closed iframes and canvas inputs** are not supported by the field detector;
    blindfill stops (fail closed) rather than guessing.
-7. **Passkeys** are web sign-in in Chromium and Android app sign-in; new passkeys cannot be
-   registered. Assertions set the user-verified flag without a biometric: the vault unlock and the
-   item binding stand in for it. They also set backup-eligible and backed-up, as Bitwarden clients do.
+7. **Passkeys** are web sign-in and registration in Chromium and Android app sign-in. Assertions set
+   the user-verified flag without a biometric: the vault unlock and the item binding stand in for it.
+   They also set backup-eligible and backed-up, as Bitwarden clients do.
    After a signature the sign counter is raised in the vault without a person at a terminal (owner
    decision): that write changes only the counter and never lowers it. A stored counter of 0 stays 0
    on Android; Chromium always counts up. A failed write is reported (`counter_written_back: false`,
@@ -129,6 +129,14 @@ blindfill defends against **the model and its logs**:
     item id. An item that already has a seed is refused (the `bw` backend refuses too), so an agent
     cannot swap a working seed for one it controls. It can still give a seedless item a seed from any
     page that item binds, which is the purpose. No QR decoding; a key inside an iframe is unreachable.
+19. **An agent can add a passkey to an item that has none** (`passkey register`, owner decision
+    2026-11-27, no terminal). The item must bind the page and carry `blindfill.registration=allow`;
+    an item that already holds a passkey is refused, so an agent cannot replace a working one. The
+    page's own `create()` is answered once by an empty Chromium virtual authenticator, offered ES256
+    only; the new private key goes from the browser into the vault in one `bw edit` and the agent
+    gets the rpId and credential id. If the vault write fails (`vault_write_failed`) or the key is
+    unusable (`not_stored`), the relying party may keep a passkey the vault does not have; a person
+    must delete it there.
 
 ## Reporting a vulnerability
 

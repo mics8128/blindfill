@@ -127,8 +127,8 @@ Legend: **ported** (same or stricter, covered by tests unless noted), **partial*
 
 - **Android**: companion APK instead of scrcpy (ARCHITECTURE 3.2). No mobile registration or WebView logins yet; tested on
   one phone with a fake app.
-- **Passkeys**: olliepm had none. blindfill signs web passkey logins in Chromium (`passkey` / `passkey_sign`, ARCHITECTURE 3.8);
-  the sign counter is not written back and passkey creation is not supported.
+- **Passkeys**: olliepm had none. blindfill signs web passkey logins in Chromium (`passkey` / `passkey_sign`, ARCHITECTURE 3.8),
+  writes the sign counter back, and can add a new passkey to an opted-in item (`passkey register` / `passkey_register`).
 - **Grants**: replaced by a per-call, one-time arm token for one item (Android); no standing grants.
 - **Credential pipe export and local reveal**: intentionally absent.
 - **Share daemon**: replaced by in-process `withPage`; there is no cross-process page lending.

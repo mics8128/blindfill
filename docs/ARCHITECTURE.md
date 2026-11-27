@@ -218,7 +218,7 @@ flow.
 - Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
   creates a digest (as olliepm does) the engine checks at fill time.
 
-### 3.8 Passkeys (web sign-in built; Chromium only)
+### 3.8 Passkeys (web sign-in and registration built; Chromium only)
 
 Checked against a live Vaultwarden on 2026-11-27: `bw` returns `login.fido2Credentials`
 (`credentialId`, `rpId`, `keyAlgorithm` ECDSA, `keyCurve` P-256, `keyValue` PKCS8 base64url,
@@ -242,7 +242,16 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
   credential id, never lowered). Chromium reports stored + 1; the Android host keeps a stored 0 at 0
   (Bitwarden's rule) and otherwise signs stored + 1. Both sign with BE=BS=1 like Bitwarden clients.
   The result reports `sign_count` and `counter_written_back` (plus `counter_error` on a failed write).
-- Open: registration (`create`), and credentials created by real Bitwarden clients.
+- Registration (owner decision 2026-11-27, no terminal, add only): `Engine.passkeyRegister` needs an
+  item that binds the page, carries `blindfill.registration=allow` and holds no passkey; then
+  one-shot per session+origin. `WebActuator.passkeyCreate` adds an empty virtual authenticator,
+  narrows the page's next `create()` to ES256 (what an ES256-only authenticator such as Bitwarden's
+  picks; webauthn.io lists Ed25519 first), clicks `click`, and takes the key from
+  `WebAuthn.credentialAdded` into a `SecretHandle`. The engine checks rpId covers the page and the key
+  is P-256, then `Backend.addPasskey` (bw: Bitwarden's shape, `b64.`/GUID id, counter after creation;
+  refuses an item that already has one). Statuses: `registered`, `not_used`, `not_stored`,
+  `vault_write_failed` (the last two tell a person to delete the orphan at the relying party).
+- Open: credentials created by real Bitwarden clients (and blindfill-made ones in the extension).
 - Android: Credential Manager prompts need biometric/device unlock; not promised.
 
 ## 4. Threat model (short)
@@ -337,5 +346,5 @@ Decided: name `blindfill`; license MIT; TypeScript/Node; TOTP code is readable l
 2. Does Vaultwarden return `androidapp://` URIs intact for items created by the real clients?
    (Created by script: returned intact; real-client check pending.)
 3. How strict the default web match should be (Host vs Base domain). Current default: Host.
-4. Passkey encoding written by real Bitwarden clients, counter write-back, and registration.
+4. Passkey encoding written by real Bitwarden clients, and blindfill-made passkeys used by them.
 5. Ego Lite attach provider: needs the traffic and operation-log review first.

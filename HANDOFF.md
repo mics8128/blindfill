@@ -4,7 +4,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## State
 
-- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 242 passed, 11 skipped
+- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 251 passed, 11 skipped
   (opt-in Firefox, live-vault and Android-device tests).
 - Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
   `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
@@ -25,10 +25,12 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   websites. Passkey data shape was checked by hand with `bw` (create and read back of a fake item,
   since deleted); real-client-created passkeys unverified.
 - Passkeys: web sign-in through a Chromium virtual authenticator and Android host signing, with the
-  counter written back to the vault (no terminal) and BE=BS=1 like Bitwarden clients. Tested against a
-  strict fake relying party (counter and BE) and, with the live Vault, three sign-ins in a row on
-  webauthn.io from a blindfill-stored `b64.` credential. No registration, no Firefox; passkeys made by
-  real Bitwarden clients still unverified (needs a person in the Bitwarden extension).
+  counter written back to the vault (no terminal) and BE=BS=1 like Bitwarden clients; web
+  registration in Chromium (`passkey register`, add only, opted-in items). Tested against a strict
+  fake relying party (counter, BE, registration then sign-in) and, with the live Vault, on webauthn.io:
+  three sign-ins in a row, and one registration then a sign-in (item `webauthn-io-interop`, kept for
+  Mics to try in the Bitwarden extension). No Firefox; passkeys made by real Bitwarden clients still
+  unverified (needs a person in the Bitwarden extension).
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
 - Android: companion APK (`android/`), passwords via autofill and passkeys via the credential
   provider, signed on the host. Release-signed (certificate SHA-256
@@ -42,7 +44,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
   `cd android && ./gradlew assembleDebug` (android/README.md). Real apps on the same Xperia with a
   live `bw` item and the companion debug build (2026-11-27): Threads sign-in succeeded; Instagram
   partial (suggestion filled and login tapped, result not checked). Rows in `docs/TESTED.md`.
-- Not supported: passkey registration, WebKit, Firefox on an already-running browser,
+- Not supported: passkeys in Firefox/Camoufox, WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
 
