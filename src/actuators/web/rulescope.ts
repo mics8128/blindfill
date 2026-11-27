@@ -11,6 +11,7 @@ import {
   DESCRIBE_FIELD,
   FIRST_IN_GROUP,
   FIRST_SEL,
+  FORM_ACTION,
   GROUP_KIND,
   IS_FRAME_EL,
   SUBMIT_CHECK,
@@ -140,9 +141,10 @@ export async function assertSubmitControl(
   frameUrl: string,
   isBound: (url: string) => boolean,
   precheck = false,
+  outside = false,
 ): Promise<void> {
   if (!precheck) await submitter.waitForElementState('enabled', { timeout: 3000 }).catch(() => undefined);
-  const r = (await submitter.evaluate(SUBMIT_CHECK, { group, native, kind, pending: precheck })) as {
+  const r = (await submitter.evaluate(SUBMIT_CHECK, { group, native, kind, pending: precheck, outside })) as {
     code: string;
     reason?: string;
     action?: string;
@@ -175,7 +177,9 @@ export async function resolveRuleSubmit(
       'POLICY',
       'unsafe form: the rule has no submit control (add "submit" to the rule)',
     );
-  const submitter = await unique(scope.group, s.selector, 'rule submit').catch((e: BlindfillError) => {
+  // outside_form: searched in the rule's own (origin-bound) frame document only, never other frames
+  const root = s.outside_form ? await documentRoot(scope.frame) : scope.group;
+  const submitter = await unique(root, s.selector, 'rule submit').catch((e: BlindfillError) => {
     throw new BlindfillError('POLICY', `unsafe form: submit control: ${e.message}`);
   });
   await assertSubmitControl(
@@ -186,11 +190,12 @@ export async function resolveRuleSubmit(
     scope.frame.url(),
     isBound,
     precheck,
+    s.outside_form === true,
   );
   return submitter;
 }
 
-/** Click the validated submit control once. For kind "js": block GET navigations and default submission. */
+/** Click the validated submit control once. For kind "js": block native GET submission and default submission. */
 export async function clickRuleSubmit(
   page: Page,
   scope: RuleScope,
@@ -202,9 +207,18 @@ export async function clickRuleSubmit(
     return;
   }
   const frame = scope.frame;
+  // a native GET submission of this form navigates the frame to its action with the values as the query
+  const action = (await scope.group.evaluate(FORM_ACTION)).split(/[?#]/)[0];
   const block = async (route: import('playwright-core').Route) => {
     const req = route.request();
-    if (req.isNavigationRequest() && req.method() === 'GET' && req.frame() === frame)
+    const url = req.url();
+    if (
+      req.isNavigationRequest() &&
+      req.method() === 'GET' &&
+      req.frame() === frame &&
+      url.includes('?') &&
+      url.split(/[?#]/)[0] === action
+    )
       await route.abort('blockedbyclient');
     else await route.fallback();
   };
@@ -215,6 +229,9 @@ export async function clickRuleSubmit(
     guard = await doc.evaluateHandle(SUBMIT_GUARD, scope.group);
     await recheck();
     await submitter.click({ timeout: 5000, noWaitAfter: true });
+    // form.submit() fires no submit event and its request starts after click() returns: keep the guard a while.
+    // shortcut: covers native submits within 1.5 s of the click; one fired later (after a slow XHR) is not caught.
+    await page.waitForTimeout(1500);
   } finally {
     if (guard) await guard.evaluate((c: () => void) => c()).catch(() => undefined);
     await page.unroute('**/*', block).catch(() => undefined);

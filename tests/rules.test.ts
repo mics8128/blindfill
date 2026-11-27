@@ -23,6 +23,7 @@ const keep = <T>(v: T): T => {
 };
 const good = (p: string) => sites.url('good.localhost', p);
 const goodOrigin = () => `http://good.localhost:${sites.port}`;
+const cdnOrigin = () => `http://cdn.localhost:${sites.port}`;
 
 const field = (name: string, value: string, type = 0) => ({ name, value, type });
 const rules = (rs: unknown[]) => field('blindfill.rules', JSON.stringify({ version: 2, rules: rs }));
@@ -72,6 +73,13 @@ beforeAll(async () => {
     submit: { selector: '#create', kind: 'native' },
     ...extra,
   });
+  const outsideRule = {
+    id: 'eccang',
+    top_origin: O,
+    form: '#lf',
+    fields: { username: '#em', password: '#pw' },
+    submit: { selector: '#go', kind: 'js', outside_form: true },
+  };
   const reg = field('blindfill.registration', 'allow');
   const policy = field(
     'blindfill.password_policy',
@@ -102,6 +110,13 @@ beforeAll(async () => {
           },
         ]),
       ]),
+      item('outside', [rules([outsideRule])]),
+      item('outside-both', [rules([outsideRule])], [`${O}/`, `${cdnOrigin()}/`]),
+      item(
+        'outside-framed',
+        [rules([{ ...outsideRule, frame: { selector: 'iframe', origin: cdnOrigin() } }])],
+        [`${O}/`, `${cdnOrigin()}/`],
+      ),
       item('localonly'),
     ]),
   );
@@ -126,6 +141,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   sites.received.length = 0;
+  sites.requested.length = 0;
   globalScrubber.register(CANARY);
 });
 
@@ -155,6 +171,15 @@ describe('explicit field rules', () => {
         { ...base, container: 'div', form: undefined, submit: { selector: 'b', kind: 'native' } },
       ]),
     ).toThrow();
+    // outside_form: form rules with a js submit only
+    const out = { selector: '#go', kind: 'js', outside_form: true };
+    expect(validateRules([{ ...base, submit: out }])[0].submit).toEqual(out);
+    for (const bad of [
+      { ...base, submit: { ...out, kind: 'native' } },
+      { ...base, submit: { ...out, outside_form: 'yes' } },
+      { ...base, form: undefined, container: 'div', submit: { ...out, kind: 'click' } },
+    ])
+      expect(() => validateRules([bad])).toThrow(/outside_form/);
   });
 
   it('item rule picks the right form among ambiguous ones; native POST submit; lock', async () => {

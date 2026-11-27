@@ -36,6 +36,13 @@ blindfill defends against **the model and its logs**:
   only after the fields hold values. After filling, blindfill waits up to 3 s for it to enable,
   checks it again in full and clicks once; if it stays disabled the submit is refused with the
   fields already filled. A control under `[inert]` is refused before filling.
+- A rule submit of kind `js` blocks, from just before the click until 1.5 s after it, the
+  form's `submit` event and any GET navigation of the rule's frame to the form's action with a
+  query (a native GET submission), so filled values cannot reach a URL that way. A native
+  submission the page fires later (after a slow request) is not covered. With
+  `"outside_form": true` the control may sit outside every form (a button, `role=button` or
+  `<a>` with no form owner and no `form*` attributes); it is looked up only in the rule's own
+  origin-bound frame, must be unique and visible, and is checked before any secret is read.
 - Secrets are typed over https only; plain http is accepted for loopback dev hosts alone. Malformed
   `blindfill.*` control data fails the operation instead of being skipped.
 - A passkey's private key goes from the vault to a temporary Chromium virtual authenticator over

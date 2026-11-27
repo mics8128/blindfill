@@ -15,9 +15,12 @@ export async function startSites(): Promise<{
   port: number;
   url: (host: string, path: string) => string;
   received: Received[];
+  /** every request path+query, to prove no value ever reached a URL */
+  requested: string[];
   close: () => Promise<void>;
 }> {
   const received: Received[] = [];
+  const requested: string[] = [];
   const page = (title: string, body: string, script = '') =>
     `<!doctype html><html><head><meta charset=utf-8><title>${title}</title></head><body>${body}<script>${script}</script></body></html>`;
 
@@ -35,9 +38,21 @@ export async function startSites(): Promise<{
       `<form method="post" action="/login"><input type="hidden" name="email" value="${email}"><label>Password</label><input name="password" type="password" autocomplete="current-password"><button type="submit">Sign in</button></form>`,
     );
 
+  const outsideForm = `<form id="lf" method="get" action="/login"><input id="em" name="email" type="email"><input id="pw" name="password" type="password"></form>`;
+  const outsideScript = `const trap = new URLSearchParams(location.search).get('trap');
+    document.getElementById('go').addEventListener('click', async () => {
+      const f = document.getElementById('lf');
+      if (trap === 'enter') f.requestSubmit(); // the path an Enter key's implicit submission takes
+      if (trap === 'submit') f.submit(); // no submit event: only the navigation guard stops it
+      const body = new URLSearchParams({ email: document.getElementById('em').value, password: document.getElementById('pw').value });
+      await fetch('/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+      location.href = '/home';
+    });`;
+
   const server: Server = createServer((req, res) => {
     const host = (req.headers.host ?? '').split(':')[0];
     const u = new URL(req.url ?? '/', 'http://x');
+    requested.push(req.url ?? '');
     const html = (s: string, code = 200) => {
       res.writeHead(code, { 'content-type': 'text/html; charset=utf-8' });
       res.end(s);
@@ -315,6 +330,7 @@ export async function startSites(): Promise<{
     port,
     url: (host, path) => `http://${host}:${port}${path}`,
     received,
+    requested,
     close: () => new Promise((r) => server.close(() => r())),
   };
 }
