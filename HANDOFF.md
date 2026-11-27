@@ -62,7 +62,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    ollie-ubuntu), including `item create|generate`.
 2. Ollie's real-use test round, recorded in `docs/TESTED.md`; then align README x5, SECURITY.md,
    this file and the website with it.
-3. Close the partial safety rows in docs/MIGRATING-FROM-OLLIEPM.md section 3 that matter for own use.
+3. Remaining partial rows in docs/MIGRATING-FROM-OLLIEPM.md section 3 (MCP `profile_login`/`list_credentials`).
 4. Owner decisions still open: migrate ~15 olliepm items into the Vault, `agent-ollie` collection
    permission (read-only suggested), default web match strictness (Host vs Base domain), where rules
    live (custom field vs Notes).

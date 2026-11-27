@@ -69,8 +69,8 @@ Notes:
 - Secrets live in the OS Secret Service, not in `vault.json`. Moving them is a human step done in a
   terminal you control (olliepm's own local reveal, then the vault UI or `blindfill item create`). Never pass them
   through an agent, a log, a pipe or the clipboard.
-- A malformed `blindfill.rules` or `blindfill.password_policy` value is currently ignored rather than
-  refused (see section 3, row 6). Check with `page discover` after editing.
+- A malformed `blindfill.rules` or `blindfill.password_policy` value fails the operation (section 3);
+  `item edit --set blindfill.rules=` validates before writing. Check with `page discover` after editing.
 - Vault custom-field length limits may constrain very large rule sets [unverified]; use the local rules
   file in that case.
 
