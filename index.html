@@ -323,8 +323,9 @@
             <article class="card">
               <h3 data-i18n="f1h">Fill-only secrets</h3>
               <p data-i18n="f1">
-                Passwords, TOTP seeds, hidden fields, card numbers and private keys can be typed into a field.
-                No CLI command, MCP tool or library call returns them.
+                Passwords, hidden fields and card numbers can only be typed into a field. TOTP seeds and
+                private keys are never typed anywhere. No CLI command, MCP tool or library call returns any of
+                them.
               </p>
             </article>
             <article class="card">
@@ -364,11 +365,15 @@
               <tbody>
                 <tr>
                   <th scope="row" data-i18n="cls_r1">Secret</th>
-                  <td data-i18n="cls_e1">
-                    Password, TOTP seed, hidden custom fields, card number and CVV, private keys
-                  </td>
+                  <td data-i18n="cls_e1">Password, hidden custom fields, card number and CVV</td>
                   <td data-i18n="cls_never">Never</td>
                   <td data-i18n="yes">Yes</td>
+                </tr>
+                <tr>
+                  <th scope="row" data-i18n="cls_r5">Key</th>
+                  <td data-i18n="cls_e5">TOTP seed, SSH private keys, passkey private keys</td>
+                  <td data-i18n="cls_never">Never</td>
+                  <td data-i18n="cls_sign">Never (a passkey only signs)</td>
                 </tr>
                 <tr>
                   <th scope="row" data-i18n="cls_r2">Ephemeral</th>
