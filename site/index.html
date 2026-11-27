@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>blindfill: let AI agents sign in without ever seeing the password</title>
+    <title>blindfill: AI agents sign in without seeing the password</title>
     <meta
       name="description"
-      content="blindfill types passwords from your vault straight into the browser field. The model never receives them. Open source, MIT, alpha."
+      content="blindfill fills logins from your password manager straight into the page. The agent picks the account; the password never enters the model's context. Open source, MIT, alpha."
     />
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -19,6 +19,14 @@
     </script>
   </head>
   <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-gh" viewBox="0 0 16 16">
+        <path
+          fill="currentColor"
+          d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+        />
+      </symbol>
+    </svg>
     <a class="skip" href="#main" data-i18n="skip">Skip to content</a>
 
     <header class="nav">
@@ -35,8 +43,8 @@
         </a>
         <nav aria-label="Primary" data-i18n-aria="aria_primary" class="links">
           <a href="#how" data-i18n="nav_how">How it works</a>
-          <a href="#compare" data-i18n="nav_compare">Compare</a>
-          <a href="#limits" data-i18n="nav_limits">Limits</a>
+          <a href="#security" data-i18n="nav_sec">Security</a>
+          <a href="#status" data-i18n="nav_status">Password managers</a>
           <a href="#faq" data-i18n="nav_faq">FAQ</a>
         </nav>
         <div class="tools">
@@ -55,13 +63,10 @@
               <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor" />
             </svg>
           </button>
-          <a
-            class="btn btn-sm ghost"
-            href="https://github.com/mics8128/blindfill"
-            rel="noopener"
-            data-i18n="gh"
-            >GitHub</a
-          >
+          <a class="gh-link" href="https://github.com/mics8128/blindfill" rel="noopener">
+            <svg width="18" height="18" aria-hidden="true"><use href="#i-gh" /></svg>
+            <span>GitHub</span>
+          </a>
         </div>
       </div>
     </header>
@@ -70,28 +75,21 @@
       <section class="hero" id="top">
         <div class="wrap hero-grid">
           <div>
-            <p class="badge">
-              <span class="dot"></span><span data-i18n="badge">Alpha · 0.1.0-alpha.0 · MIT</span>
-            </p>
-            <h1 data-i18n-html="h1">Let agents sign in.<br /><em>Never let them see the password.</em></h1>
-            <p class="lead" data-i18n-html="lead">
-              blindfill pulls the credential from your password manager, checks it belongs to the page in
-              front of the browser, and types it into the real form. The model gets back structure and an
-              outcome, never the secret.
+            <h1 data-i18n="h1">Your AI agent signs in. It never sees the password.</h1>
+            <p class="lead" data-i18n="lead">
+              blindfill connects your password manager, such as Bitwarden, to the browser and types the
+              credential straight into the login field. The agent picks the account; the password never enters
+              the model's context.
             </p>
             <div class="cta-row">
-              <a class="btn primary" href="#install" data-i18n="cta_install">Install</a>
-              <a
-                class="btn ghost"
-                href="https://github.com/mics8128/blindfill"
-                rel="noopener"
-                data-i18n="cta_gh"
-                >View on GitHub</a
-              >
+              <a class="btn primary" href="#install" data-i18n="cta_start">Get started</a>
+              <a class="btn" href="https://github.com/mics8128/blindfill" rel="noopener">
+                <svg width="18" height="18" aria-hidden="true"><use href="#i-gh" /></svg>
+                <span data-i18n="cta_gh">View on GitHub</span>
+              </a>
             </div>
             <p class="fine" data-i18n="hero_fine">
-              Alpha software, no independent security review yet. Web only. Read the limits below before
-              trusting it with an account you can't afford to lose.
+              Open source under MIT. Alpha: not yet independently reviewed or published to npm.
             </p>
           </div>
 
@@ -116,45 +114,17 @@
 <span class="ln"><i class="p">$</i> blindfill fill --item &lt;id&gt; --url https://examp1e.com/login</span>
 <span class="ln err">refused: origin does not match the item. No secret was read.</span></code></pre>
             <figcaption id="term-cap" data-i18n="term_cap">
-              Illustrative transcript based on the README examples. Exact field names and messages may differ.
+              Illustrative output based on the README examples.
             </figcaption>
           </figure>
         </div>
       </section>
 
-      <section class="strip" aria-label="Key facts" data-i18n-aria="aria_facts">
-        <div class="wrap strip-in">
-          <p>
-            <b data-i18n="s1b">Write-only</b>
-            <span data-i18n="s1">Secret-class values have no read path</span>
-          </p>
-          <p>
-            <b data-i18n="s2b">Origin-bound</b> <span data-i18n="s2">binding comes from the vault item</span>
-          </p>
-          <p><b data-i18n="s3b">One shot</b> <span data-i18n="s3">fill and submit once, never retry</span></p>
-          <p>
-            <b data-i18n="s4b">Locked after fill</b> <span data-i18n="s4">no text, DOM or screenshots</span>
-          </p>
-        </div>
-      </section>
-
-      <section id="problem" class="sec">
-        <div class="wrap narrow">
-          <h2 data-i18n="prob_h">Today's options for agent logins are all a bit awkward</h2>
-          <p class="sub" data-i18n="prob_p">
-            To get an agent past a login page you usually paste the password into the prompt, or hand it a
-            password-manager CLI whose commands return plaintext. Either way the secret enters the model's
-            context, and from there it can reach transcripts, logs and tool output. blindfill is a different
-            shape: the agent picks <em>which account and which page</em>, and never receives the value.
-          </p>
-        </div>
-      </section>
-
       <section id="how" class="sec alt">
         <div class="wrap">
-          <h2 data-i18n="how_h">How it works</h2>
+          <h2 data-i18n="how_h">The password goes from vault to form, not through the model</h2>
           <p class="sub" data-i18n="how_p">
-            The password takes a short trip that skips the model entirely. Only the outcome comes back.
+            The agent names an account and a page. blindfill does the rest and reports only the outcome.
           </p>
 
           <figure class="diagram">
@@ -195,24 +165,24 @@
                   <path d="M0 0L10 5L0 10z" class="acc-fill" />
                 </marker>
               </defs>
-              <rect class="bx" x="10" y="115" width="190" height="90" rx="14" />
+              <rect class="bx" x="10" y="115" width="190" height="90" rx="12" />
               <text class="t1" x="105" y="153" text-anchor="middle" data-i18n="d_agent">Agent / LLM</text>
               <text class="t2" x="105" y="177" text-anchor="middle" data-i18n="d_agent2">
                 sees outcomes only
               </text>
 
-              <rect class="bx core" x="355" y="100" width="190" height="120" rx="14" />
+              <rect class="bx core" x="355" y="100" width="190" height="120" rx="12" />
               <text class="t1" x="450" y="142" text-anchor="middle">blindfill</text>
               <text class="t2" x="450" y="166" text-anchor="middle" data-i18n="d_core1">checks origin</text>
               <text class="t2" x="450" y="186" text-anchor="middle" data-i18n="d_core2">
-                scrubs output · locks
+                scrubs output, locks
               </text>
 
-              <rect class="bx" x="700" y="115" width="190" height="90" rx="14" />
+              <rect class="bx" x="700" y="115" width="190" height="90" rx="12" />
               <text class="t1" x="795" y="153" text-anchor="middle" data-i18n="d_page">Browser page</text>
               <text class="t2" x="795" y="177" text-anchor="middle" data-i18n="d_page2">real login form</text>
 
-              <rect class="bx" x="355" y="265" width="190" height="55" rx="14" />
+              <rect class="bx" x="355" y="265" width="190" height="55" rx="12" />
               <text class="t1" x="450" y="298" text-anchor="middle" data-i18n="d_vault">Your vault</text>
 
               <path class="ln-a" d="M200 140H352" marker-end="url(#ah)" />
@@ -277,7 +247,7 @@
                   <path d="M0 0L10 5L0 10z" class="acc-fill" />
                 </marker>
               </defs>
-              <rect class="bx" x="40" y="10" width="280" height="76" rx="14" />
+              <rect class="bx" x="40" y="10" width="280" height="76" rx="12" />
               <text class="t1" x="180" y="44" text-anchor="middle" data-i18n="d_agent">Agent / LLM</text>
               <text class="t2" x="180" y="68" text-anchor="middle" data-i18n="d_agent2">
                 sees outcomes only
@@ -288,11 +258,11 @@
               <path class="ln-a dash" d="M250 196V89" marker-end="url(#bh)" />
               <text class="t3" x="260" y="146" data-i18n="d_ok">ok / url only</text>
 
-              <rect class="bx core" x="40" y="200" width="280" height="110" rx="14" />
+              <rect class="bx core" x="40" y="200" width="280" height="110" rx="12" />
               <text class="t1" x="180" y="244" text-anchor="middle">blindfill</text>
               <text class="t2" x="180" y="268" text-anchor="middle" data-i18n="d_core1">checks origin</text>
               <text class="t2" x="180" y="288" text-anchor="middle" data-i18n="d_core2">
-                scrubs output · locks
+                scrubs output, locks
               </text>
 
               <path class="ln-s" d="M90 310V400" marker-end="url(#bh2)" />
@@ -302,9 +272,9 @@
               <text class="t3 acc" x="280" y="352" data-i18n="d_typed1">typed into</text>
               <text class="t3 acc" x="280" y="368" data-i18n="d_typed2">the field</text>
 
-              <rect class="bx" x="20" y="404" width="150" height="70" rx="14" />
+              <rect class="bx" x="20" y="404" width="150" height="70" rx="12" />
               <text class="t1" x="95" y="446" text-anchor="middle" data-i18n="d_vault">Your vault</text>
-              <rect class="bx" x="190" y="404" width="150" height="70" rx="14" />
+              <rect class="bx" x="190" y="404" width="150" height="70" rx="12" />
               <text class="t1" x="265" y="446" text-anchor="middle" data-i18n="d_page">Browser page</text>
 
               <text class="t3 bad" x="180" y="515" text-anchor="middle" data-i18n="d_bad1">
@@ -319,437 +289,373 @@
 
           <ol class="steps">
             <li>
-              <h3 data-i18n="st1h">The agent asks</h3>
-              <p data-i18n-html="st1">
-                It names a vault item and a login URL. It never chooses where the secret goes: binding comes
-                from the item's own URIs.
+              <h3 data-i18n="st1h">The agent names an item and a URL</h3>
+              <p data-i18n="st1">
+                It can't choose where the secret goes. The target comes from the item's own URIs.
               </p>
             </li>
             <li>
-              <h3 data-i18n="st2h">blindfill checks the page</h3>
+              <h3 data-i18n="st2h">blindfill verifies the site</h3>
               <p data-i18n="st2">
-                The origin the browser actually reports is compared with the item's binding. A lookalike
-                domain or a cross-origin iframe is refused before any secret is read.
+                The origin the browser reports must match the item. Lookalike domains and cross-origin iframes
+                are refused before any secret is read.
               </p>
             </li>
             <li>
-              <h3 data-i18n="st3h">The secret is typed, then sealed</h3>
+              <h3 data-i18n="st3h">The form is filled, then the session locks</h3>
               <p data-i18n="st3">
-                The value goes from the vault into the field and the form is submitted at most once.
-                Afterwards the session refuses page text, DOM and screenshots, and output is scrubbed.
+                The form is submitted at most once. Afterwards page text, DOM and screenshots are refused, and
+                all output is scrubbed.
               </p>
             </li>
           </ol>
         </div>
       </section>
 
-      <section id="features" class="sec">
+      <section id="security" class="sec">
         <div class="wrap">
-          <h2 data-i18n="feat_h">The hard parts, handled by design</h2>
+          <h2 data-i18n="feat_h">Secrets stay out of the model's context</h2>
+          <p class="sub" data-i18n-html="feat_p">
+            blindfill runs on your machine and reads from your password manager's own CLI. Call it as a CLI,
+            an MCP server over stdio, or a TypeScript library on your own Playwright page.
+          </p>
           <div class="cards">
             <article class="card">
               <h3 data-i18n="f1h">Fill-only secrets</h3>
               <p data-i18n="f1">
-                Passwords, TOTP seeds, hidden fields, card numbers and private keys can be written into a
-                field, never returned. No CLI command, MCP tool or library function hands one back.
+                Passwords, TOTP seeds, hidden fields, card numbers and private keys can be typed into a field.
+                No CLI command, MCP tool or library call returns them.
               </p>
             </article>
             <article class="card">
-              <h3 data-i18n="f2h">Readable where it helps</h3>
+              <h3 data-i18n="f2h">Bound to the right site</h3>
               <p data-i18n="f2">
-                Usernames, item names, URIs, text fields and the current one-time code are readable so the
-                agent can reason and act. The TOTP seed itself stays in the backend.
+                The vault item and the observed origin decide where a secret is typed, not the agent. A page
+                can't redirect it.
               </p>
             </article>
             <article class="card">
-              <h3 data-i18n="f3h">Phishing and injection resistant</h3>
+              <h3 data-i18n="f3h">Locked after fill</h3>
               <p data-i18n="f3">
-                A page can't talk the agent into typing the password elsewhere: the target is decided by the
-                vault item and the observed origin, not by the caller.
+                Once a secret is filled, page text, DOM and screenshots are refused, and every output is
+                scrubbed.
               </p>
             </article>
             <article class="card">
-              <h3 data-i18n="f4h">Fails closed</h3>
+              <h3 data-i18n="f4h">Stops instead of guessing</h3>
               <p data-i18n="f4">
-                Honeypot fields are skipped. An ambiguous field, an origin mismatch or an unknown outcome
-                makes blindfill stop and report. It doesn't guess and doesn't retry.
-              </p>
-            </article>
-            <article class="card">
-              <h3 data-i18n="f5h">CLI, MCP and library</h3>
-              <p data-i18n-html="f5">
-                Use the <code>blindfill</code> CLI, an MCP server over stdio, or the TypeScript library with
-                your own Playwright page.
-              </p>
-            </article>
-            <article class="card">
-              <h3 data-i18n="f6h">Tested with a canary</h3>
-              <p data-i18n="f6">
-                A leak test fills a canary password and searches all output and state files for it. It's one
-                safety net, not a proof.
+                Ambiguous fields, origin mismatches and unknown outcomes are reported, never retried. Honeypot
+                fields are skipped.
               </p>
             </article>
           </div>
-          <p class="fine" data-i18n-html="feat_src">
-            Sources:
-            <a href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md" rel="noopener"
-              >SECURITY.md</a
-            >
-            and the
-            <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>.
-          </p>
-        </div>
-      </section>
 
-      <section id="classes" class="sec alt">
-        <div class="wrap">
-          <h2 data-i18n="cls_h">What the agent can read, and what it can only fill</h2>
+          <h3 class="h-table" id="cap-cls" data-i18n="cls_h">What the agent can read</h3>
           <div class="table-wrap" tabindex="0" role="region" aria-labelledby="cap-cls">
-            <table>
-              <caption id="cap-cls" class="sr-only" data-i18n="cls_cap">
-                Field classes
-              </caption>
+            <table class="stack">
               <thead>
                 <tr>
                   <th scope="col" data-i18n="cls_c1">Class</th>
                   <th scope="col" data-i18n="cls_c2">Examples</th>
-                  <th scope="col" data-i18n="cls_c3">Agent can read</th>
-                  <th scope="col" data-i18n="cls_c4">Agent can fill</th>
+                  <th scope="col" data-i18n="cls_c3">Read</th>
+                  <th scope="col" data-i18n="cls_c4">Fill</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <th scope="row" data-i18n="cls_r1">Secret</th>
                   <td data-i18n="cls_e1">
-                    password, TOTP seed, hidden custom fields, card number/CVV, private keys
+                    Password, TOTP seed, hidden custom fields, card number and CVV, private keys
                   </td>
                   <td data-i18n="cls_never">Never</td>
                   <td data-i18n="yes">Yes</td>
                 </tr>
                 <tr>
                   <th scope="row" data-i18n="cls_r2">Ephemeral</th>
-                  <td data-i18n="cls_e2">the current TOTP code (short-lived)</td>
+                  <td data-i18n="cls_e2">The current TOTP code</td>
                   <td data-i18n="yes">Yes</td>
                   <td data-i18n="yes">Yes</td>
                 </tr>
                 <tr>
                   <th scope="row" data-i18n="cls_r3">Readable</th>
-                  <td data-i18n="cls_e3">username, item name, URIs, text fields</td>
+                  <td data-i18n="cls_e3">Username, item name, URIs, text fields</td>
                   <td data-i18n="yes">Yes</td>
                   <td data-i18n="yes">Yes</td>
                 </tr>
                 <tr>
                   <th scope="row" data-i18n="cls_r4">Notes</th>
-                  <td data-i18n="cls_e4">free-form notes (may hold secrets)</td>
-                  <td data-i18n="cls_def">No by default; opt in per item</td>
+                  <td data-i18n="cls_e4">Free-form notes, which may hold secrets</td>
+                  <td data-i18n="cls_def">Off by default; opt in per item</td>
                   <td data-i18n="no">No</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p class="fine" data-i18n-html="cls_fine">
-            The class comes from the vault's own field type, so you control it in your normal vault UI.
-            Unknown data defaults to Secret.
-            <a href="https://github.com/mics8128/blindfill/blob/main/docs/ARCHITECTURE.md" rel="noopener"
-              >Source</a
-            >.
+            The class comes from the field type in your vault. Unknown data is treated as Secret. A canary
+            leak test searches every output and state file for the password.
+            <a href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md" rel="noopener"
+              >Read SECURITY.md</a
+            >
           </p>
         </div>
       </section>
 
-      <section id="compare" class="sec">
+      <section id="compare" class="sec alt">
         <div class="wrap">
-          <h2 data-i18n="cmp_h">How it differs from the usual approaches</h2>
+          <h2 data-i18n="cmp_h">Compared with common approaches</h2>
           <p class="sub" data-i18n="cmp_p">
-            General descriptions of how each approach tends to work, not benchmarks. Specific products vary,
-            so check the one you use.
+            How each approach typically handles the password. Products vary, so check the one you use.
           </p>
           <div class="table-wrap" tabindex="0" role="region" aria-labelledby="cap-cmp">
-            <table class="cmp">
+            <table class="stack cmp">
               <caption id="cap-cmp" class="sr-only" data-i18n="cmp_cap">
                 Comparison of approaches to giving an agent a login
               </caption>
               <thead>
                 <tr>
-                  <th scope="col"></th>
-                  <th scope="col" class="us">blindfill</th>
-                  <th scope="col" data-i18n="cmp_c2">Password pasted into the prompt</th>
-                  <th scope="col" data-i18n="cmp_c3">Password-manager CLI given to the agent</th>
-                  <th scope="col" data-i18n="cmp_c4">Browser extension autofill</th>
-                  <th scope="col" data-i18n="cmp_c5">Cloud browser service</th>
+                  <th scope="col" data-i18n="cmp_c1">Approach</th>
+                  <th scope="col" data-i18n="cmp_c2">Password enters the model's context</th>
+                  <th scope="col" data-i18n="cmp_c3">Who decides where it's typed</th>
+                  <th scope="col" data-i18n="cmp_c4">Where it runs</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <th scope="row" data-i18n="cmp_r1">Does the password enter the model's context?</th>
-                  <td class="us" data-i18n="cmp_a1">Not by design: Secret-class values are fill-only</td>
-                  <td data-i18n="cmp_b1">Yes, by definition</td>
-                  <td data-i18n="cmp_c1x">Typically yes: the CLI prints plaintext to whoever called it</td>
-                  <td data-i18n="cmp_d1">
-                    Usually not at fill time; depends on what the agent can read afterwards
-                  </td>
-                  <td data-i18n="cmp_e1">Depends on the vendor and how credentials are supplied</td>
+                <tr class="us">
+                  <th scope="row">blindfill</th>
+                  <td data-i18n="cmp_a1">Not by design: secret values are fill-only</td>
+                  <td data-i18n="cmp_a2">The vault item, checked against the browser's origin</td>
+                  <td data-i18n="cmp_a3">Your machine, with your vault CLI</td>
                 </tr>
                 <tr>
-                  <th scope="row" data-i18n="cmp_r2">Who decides where it gets typed?</th>
-                  <td class="us" data-i18n="cmp_a2">
-                    The vault item's URIs vs. the origin the browser reports
-                  </td>
-                  <td data-i18n="cmp_b2">The model</td>
-                  <td data-i18n="cmp_c2x">The model</td>
-                  <td data-i18n="cmp_d2">The extension's own site matching</td>
+                  <th scope="row" data-i18n="cmp_b0">Password in the prompt</th>
+                  <td data-i18n="cmp_b1">Yes</td>
+                  <td data-i18n="cmp_model">The model</td>
+                  <td data-i18n="cmp_b3">Wherever the model runs</td>
+                </tr>
+                <tr>
+                  <th scope="row" data-i18n="cmp_c0">Password manager CLI given to the agent</th>
+                  <td data-i18n="cmp_c1x">Usually: the CLI prints plaintext to its caller</td>
+                  <td data-i18n="cmp_model">The model</td>
+                  <td data-i18n="cmp_c3x">Your machine</td>
+                </tr>
+                <tr>
+                  <th scope="row" data-i18n="cmp_d0">Browser extension autofill</th>
+                  <td data-i18n="cmp_d1">Usually not at fill time; depends on what the agent reads later</td>
+                  <td data-i18n="cmp_d2">The extension's site matching</td>
+                  <td data-i18n="cmp_d3">Your browser</td>
+                </tr>
+                <tr>
+                  <th scope="row" data-i18n="cmp_e0">Cloud browser service</th>
+                  <td data-i18n="cmp_e1">Depends on the vendor</td>
                   <td data-i18n="cmp_e2">Varies</td>
-                </tr>
-                <tr>
-                  <th scope="row" data-i18n="cmp_r3">Risk of landing in logs or transcripts</th>
-                  <td class="us" data-i18n="cmp_a3">
-                    Output is scrubbed and the session locks after fill (best effort)
-                  </td>
-                  <td data-i18n="cmp_b3">High: it is part of the conversation</td>
-                  <td data-i18n="cmp_c3x">Present whenever tool output is logged</td>
-                  <td data-i18n="cmp_d3">Lower, unless the agent reads the filled field</td>
-                  <td data-i18n="cmp_e3">Varies</td>
-                </tr>
-                <tr>
-                  <th scope="row" data-i18n="cmp_r4">Malicious page that reads the field</th>
-                  <td class="us" data-i18n="cmp_a4">
-                    Not protected. Binding to the right origin is the defence
-                  </td>
-                  <td data-i18n="cmp_b4">Not protected</td>
-                  <td data-i18n="cmp_c4x">Not protected</td>
-                  <td data-i18n="cmp_d4">Varies by extension</td>
-                  <td data-i18n="cmp_e4">Varies</td>
-                </tr>
-                <tr>
-                  <th scope="row" data-i18n="cmp_r5">Where it runs</th>
-                  <td class="us" data-i18n="cmp_a5">On your machine, with your own vault CLI</td>
-                  <td data-i18n="cmp_b5">Wherever the model runs</td>
-                  <td data-i18n="cmp_c5x">On your machine</td>
-                  <td data-i18n="cmp_d5">In your browser</td>
-                  <td data-i18n="cmp_e5">On the vendor's infrastructure</td>
-                </tr>
-                <tr>
-                  <th scope="row" data-i18n="cmp_r6">Maturity</th>
-                  <td class="us" data-i18n="cmp_a6">Alpha, no independent review, web only</td>
-                  <td data-i18n="cmp_b6">n/a</td>
-                  <td data-i18n="cmp_c6x">n/a</td>
-                  <td data-i18n="cmp_d6">Varies by product</td>
-                  <td data-i18n="cmp_e6">Varies by product</td>
+                  <td data-i18n="cmp_e3">The vendor's infrastructure</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p class="fine" data-i18n="cmp_fine">
-            These approaches can also be combined. Note that the post-fill lock only covers blindfill's own
-            interfaces: if the agent has another tool attached to the same browser, it can read the DOM
-            through that tool.
+            The post-fill lock covers blindfill's own interfaces only. Another tool attached to the same
+            browser can still read the page.
           </p>
         </div>
       </section>
 
-      <section id="support" class="sec alt">
+      <section id="status" class="sec">
         <div class="wrap">
-          <h2 data-i18n="sup_h">What's supported today</h2>
+          <h2 data-i18n="sup_h">Password managers and browsers</h2>
           <p class="sub" data-i18n-html="sup_p">
-            Status as of main (commit fa64962, 0.1.0-alpha.0), from the repo's docs:
-            <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>,
+            Status of <code>main</code> at 0.1.0-alpha.0, from the
+            <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a> and
             <a href="https://github.com/mics8128/blindfill/blob/main/docs/browsers.md" rel="noopener"
               >browsers.md</a
             >.
           </p>
-          <div class="two">
-            <div>
-              <h3 data-i18n="sup_bh">Password managers</h3>
-              <ul class="status">
-                <li>
-                  <span class="pill warn" data-i18n="p_mock">mock-verified</span>
-                  <span data-i18n-html="sup_bw"
-                    ><b>Bitwarden / Vaultwarden</b> (<code>bw</code>): tested against a mock CLI and fixtures.
-                    Not yet tested end to end on a live vault.</span
-                  >
-                </li>
-                <li>
-                  <span class="pill gray" data-i18n="p_blind">blind-written</span>
-                  <span data-i18n-html="sup_oth"
-                    ><b>1Password</b> (<code>op</code>), <b>rbw</b>, <b>pass</b>, <b>gopass</b>,
-                    <b>KeePassXC</b>, <b>Secret Service</b>: pass contract tests on recorded fixtures only.
-                    Never touched a real vault.</span
-                  >
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 data-i18n="sup_th">Browsers and platforms</h3>
-              <ul class="status">
-                <li>
-                  <span class="pill ok" data-i18n="p_ok">supported, tested</span>
-                  <span data-i18n-html="sup_chr"
-                    ><b>Chromium</b>: Playwright's bundled build, any Chromium build via
-                    <code>--executable</code>, or loopback CDP.</span
-                  >
-                </li>
-                <li>
-                  <span class="pill warn" data-i18n="p_optin">opt-in</span>
-                  <span data-i18n="sup_ff"
-                    ><b>Firefox / Camoufox</b>: via a loopback Playwright server, tested in an opt-in suite
-                    against Camoufox 158.0.1-beta.41 and 159.0-beta.43. A long-running instance of your own is
-                    untested.</span
-                  >
-                </li>
-                <li>
-                  <span class="pill warn" data-i18n="p_sep">separate instance</span>
-                  <span data-i18n="sup_ego"
-                    ><b>Ego Lite</b>: works only as a separately launched instance with an empty profile. It
-                    can't attach to the one you're already running.</span
-                  >
-                </li>
-                <li>
-                  <span class="pill warn" data-i18n="p_pk">limited</span>
-                  <span data-i18n="sup_pk"
-                    ><b>Passkeys</b>: web sign-in on Chromium (CDP virtual authenticator) and Android app
-                    sign-in (signed on the host), tested against fake relying parties. No counter write-back,
-                    no registration.</span
-                  >
-                </li>
-                <li>
-                  <span class="pill gray" data-i18n="p_plan">not supported</span>
-                  <span data-i18n="sup_plan"
-                    ><b>WebKit/Safari</b>: not supported. <b>Android</b>: companion APK (Android 14+), tested
-                    on one phone with a fake app; build it yourself.</span
-                  >
-                </li>
-              </ul>
-            </div>
+          <div class="table-wrap" tabindex="0" role="region" aria-labelledby="cap-sup">
+            <table class="stack status">
+              <caption id="cap-sup" class="sr-only" data-i18n="sup_cap">
+                Support status
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" data-i18n="sup_c1">Component</th>
+                  <th scope="col" data-i18n="sup_c2">Status</th>
+                  <th scope="col" data-i18n="sup_c3">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="grp">
+                  <th scope="rowgroup" colspan="3" data-i18n="sup_g2">Password managers</th>
+                </tr>
+                <tr>
+                  <th scope="row">Bitwarden / Vaultwarden</th>
+                  <td><span class="st warn" data-i18n="st_mock">Mock-tested</span></td>
+                  <td data-i18n-html="sup_bw">
+                    <code>bw</code>, tested with a mock CLI and fixtures. Not yet run end to end on a live
+                    vault.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">1Password, rbw, pass, gopass, KeePassXC, Secret Service</th>
+                  <td><span class="st no" data-i18n="st_unv">Unverified</span></td>
+                  <td data-i18n="sup_oth">
+                    Contract tests on recorded fixtures only. Never run on a real vault.
+                  </td>
+                </tr>
+                <tr class="grp">
+                  <th scope="rowgroup" colspan="3" data-i18n="sup_g1">Browsers and platforms</th>
+                </tr>
+                <tr>
+                  <th scope="row">Chromium</th>
+                  <td><span class="st ok" data-i18n="st_ok">Supported, tested</span></td>
+                  <td data-i18n-html="sup_chr">
+                    Playwright's bundled build, any Chromium build via <code>--executable</code>, or loopback
+                    CDP.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Firefox / Camoufox</th>
+                  <td><span class="st warn" data-i18n="st_optin">Opt-in tests</span></td>
+                  <td data-i18n="sup_ff">
+                    Through a loopback Playwright server. Tested against Camoufox 158.0.1-beta.41 and
+                    159.0-beta.43; a long-running instance is untested.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Ego Lite</th>
+                  <td><span class="st warn" data-i18n="st_sep">Separate instance only</span></td>
+                  <td data-i18n="sup_ego">
+                    A separately launched instance with an empty profile. Attaching to the running app is
+                    unsupported.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row" data-i18n="sup_pkh">Passkeys</th>
+                  <td><span class="st warn" data-i18n="st_lim">Limited</span></td>
+                  <td data-i18n="sup_pk">
+                    Web sign-in on Chromium, tested against a fake relying party. No counter write-back, no
+                    registration.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Android 14+</th>
+                  <td><span class="st warn" data-i18n="st_exp">Experimental</span></td>
+                  <td data-i18n="sup_and">
+                    Companion APK you build yourself: autofill for passwords, credential provider for passkeys
+                    (signed on the host). Tested on one phone with a fake app, not with real apps.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">WebKit / Safari</th>
+                  <td><span class="st no" data-i18n="st_no">Not supported</span></td>
+                  <td></td>
+                </tr>
+                <tr class="grp">
+                  <th scope="rowgroup" colspan="3" data-i18n="sup_g3">Distribution</th>
+                </tr>
+                <tr>
+                  <th scope="row">npm</th>
+                  <td><span class="st no" data-i18n="st_npm">Not published</span></td>
+                  <td data-i18n-html="sup_npm">
+                    The <code>latest</code> tag is an empty placeholder. Build from source.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
 
-      <section id="limits" class="sec">
+      <section id="limits" class="sec alt">
         <div class="wrap">
-          <h2 data-i18n="lim_h">What it can't do (yet)</h2>
+          <h2 data-i18n="lim_h">Know the limits before you rely on it</h2>
           <div class="cards two-col">
-            <article class="card plain">
+            <article class="card">
               <h3 data-i18n="lim_ah">Not built yet</h3>
               <ul>
-                <li data-i18n="lim_a1">
-                  Android works only through the companion APK you build yourself, tested on one phone with a
-                  fake app; no WebView logins, no saving new logins.
+                <li data-i18n="lim_a1">Android: WebView logins, saving new logins, a signed release APK.</li>
+                <li data-i18n="lim_a2">Passkey registration and counter write-back.</li>
+                <li data-i18n="lim_a3">WebKit / Safari.</li>
+                <li data-i18n="lim_a4">
+                  Shadow DOM, closed iframes and canvas inputs. blindfill stops when it meets them.
                 </li>
-                <li data-i18n="lim_a2">
-                  Passkeys: web sign-in on Chromium only. No counter write-back, no registration.
-                </li>
-                <li data-i18n="lim_a3">No WebKit/Safari. Firefox/Camoufox is opt-in.</li>
-                <li data-i18n="lim_a4">No backend has been verified end to end on a live vault.</li>
-                <li data-i18n="lim_a5">
-                  Shadow DOM, closed iframes and canvas inputs aren't detected, so it stops.
-                </li>
-                <li data-i18n="lim_a6">Not published to npm yet, and no independent security review.</li>
+                <li data-i18n="lim_a5">An end-to-end test of any backend on a live vault.</li>
+                <li data-i18n="lim_a6">An npm release and an independent security review.</li>
               </ul>
             </article>
-            <article class="card plain warnbox" id="threat">
-              <h3 data-i18n="lim_bh">Threat model, in plain words</h3>
+            <article class="card">
+              <h3 data-i18n="lim_bh">Outside the threat model</h3>
               <p data-i18n="lim_b0">
-                blindfill defends against the model and its logs. It does not defend against:
+                blindfill protects against the model and its logs. It does not protect against:
               </p>
               <ul>
                 <li data-i18n="lim_b1">
-                  <b>A malicious or compromised page.</b> The password is typed into the page's DOM, so
-                  scripts on a page you bound the item to can read it.
+                  A malicious or compromised page. Scripts on a page you bound the item to can read the typed
+                  password.
                 </li>
                 <li data-i18n="lim_b2">
-                  <b>A compromised browser or machine.</b> Anyone who can read process memory, the browser
-                  profile or your vault session wins.
+                  A compromised browser or machine that can read process memory, the profile or your vault
+                  session.
                 </li>
                 <li data-i18n="lim_b3">
-                  <b>Another tool on the same browser.</b> A second tool attached to the browser can read a
-                  filled field.
+                  Another tool attached to the same browser, which can read a filled field.
                 </li>
-                <li data-i18n="lim_b4">
-                  <b>Scrubbing is best effort.</b> A page that transforms the secret can defeat it.
-                </li>
+                <li data-i18n="lim_b4">A page that transforms the secret. Scrubbing is best effort.</li>
               </ul>
-              <p class="fine">
-                <a
-                  href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md"
-                  rel="noopener"
-                  data-i18n="lim_link"
-                  >Read SECURITY.md</a
-                >
-              </p>
             </article>
           </div>
+          <p class="fine">
+            <a
+              href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md"
+              rel="noopener"
+              data-i18n="lim_link"
+              >Read the full threat model in SECURITY.md</a
+            >
+          </p>
         </div>
       </section>
 
-      <section id="faq" class="sec alt">
+      <section id="faq" class="sec">
         <div class="wrap narrow">
-          <h2 data-i18n="faq_h">FAQ</h2>
+          <h2 data-i18n="faq_h">Questions</h2>
           <details>
             <summary data-i18n="q1">Does the model ever see my password?</summary>
             <p data-i18n="a1">
-              Not through blindfill: no command, tool or function returns a Secret-class value. The password
-              does exist in the page's DOM once typed, and another tool attached to the same browser could
-              read it, so don't give the agent an unrestricted browser tool for the same session if that
-              matters to you.
+              Not through blindfill: no command, tool or function returns a Secret-class value. Once typed,
+              the password is in the page's DOM, where another browser tool could read it. If that matters,
+              give the agent blindfill instead of an unrestricted browser tool for the same session.
             </p>
           </details>
           <details>
             <summary data-i18n="q2">Can it read my one-time codes?</summary>
             <p data-i18n="a2">
-              The current 6-digit code is readable and fillable, like text. The TOTP seed is never returned.
-              Its safety rests on origin binding and its short lifetime.
+              Yes, the current code is readable and fillable like text. The TOTP seed is never returned. The
+              code's safety rests on origin binding and its short lifetime.
             </p>
           </details>
           <details>
-            <summary data-i18n="q3">Which password managers work?</summary>
-            <p data-i18n="a3">
-              Bitwarden/Vaultwarden through <code>bw</code> is the verified-against-mocks backend. 1Password,
-              rbw, pass, gopass, KeePassXC and Secret Service are blind-written and unverified.
-              <code>blindfill backend selftest &lt;id&gt;</code> runs a fake-item round trip, and reports are
-              welcome.
+            <summary data-i18n="q3">How does my agent call it?</summary>
+            <p data-i18n-html="a3">
+              Through the <code>blindfill</code> CLI, the MCP server over stdio (<code>blindfill mcp</code>),
+              or the TypeScript library with your own Playwright page.
             </p>
           </details>
           <details>
-            <summary data-i18n="q4">Which browsers work?</summary>
+            <summary data-i18n="q4">Is it safe for my real accounts?</summary>
             <p data-i18n="a4">
-              Chromium is supported and tested. Firefox/Camoufox is opt-in: tested against Camoufox
-              158.0.1-beta.41 and 159.0-beta.43 through a loopback Playwright server. Ego Lite works only as a
-              separately launched, empty-profile instance. WebKit isn't supported.
+              It's alpha software with no independent review. Start with throwaway or low-stakes accounts and
+              read the threat model first.
             </p>
-          </details>
-          <details>
-            <summary data-i18n="q5">What about phones and passkeys?</summary>
-            <p data-i18n="a5">
-              Android works through a companion APK (Android 14+): autofill for passwords and a credential
-              provider for passkeys, with the signature made on the host. Tested on one phone (Android 17)
-              with a fake app, not with real apps. Web passkeys work on Chromium only. Both were tested
-              against fake relying parties: no counter write-back and no registration.
-            </p>
-          </details>
-          <details>
-            <summary data-i18n="q6">Is it safe to use on my real accounts?</summary>
-            <p data-i18n="a6">
-              It's alpha software with no independent review. Try it on throwaway or low-stakes accounts
-              first, and read the threat model above.
-            </p>
-          </details>
-          <details>
-            <summary data-i18n="q7">What does it cost, and what's the license?</summary>
-            <p data-i18n="a7">It's free and open source under the MIT license.</p>
           </details>
         </div>
       </section>
 
-      <section id="install" class="sec cta">
-        <div class="wrap narrow center">
-          <h2 data-i18n="ins_h">Give your agent a login it can't leak</h2>
+      <section id="install" class="sec alt">
+        <div class="wrap narrow">
+          <h2 data-i18n="ins_h">Build from source</h2>
           <p class="sub" data-i18n-html="ins_p">
-            The package isn't on npm yet (the <code>latest</code> tag there is an empty placeholder), so don't
-            run <code>npx blindfill</code>. Build from source.
-          </p>
-          <p class="fine" data-i18n-html="ins_note">
-            Requires Node 20 or newer and, for the one mock-verified backend, the Bitwarden CLI
-            (<code>bw</code>). Steps follow the README's "Try it".
+            blindfill isn't on npm yet, so don't run <code>npx blindfill</code>. You need Node 20 or newer
+            and, for the mock-tested backend, the Bitwarden CLI (<code>bw</code>).
           </p>
           <pre
             class="src"
@@ -763,18 +669,11 @@ export BW_SESSION="$(bw unlock --raw)"   # env only
 mkdir -p ~/.config/blindfill &amp;&amp; echo '{"backend":"bw"}' &gt; ~/.config/blindfill/config.json
 node dist/cli.js session start --headless
 node dist/cli.js fill --item &lt;id&gt; --url https://example.com/login --submit</code></pre>
-          <div class="cta-row center">
-            <button type="button" id="copy" class="btn ghost" data-i18n="copy">Copy</button>
+          <div class="cta-row">
+            <button type="button" id="copy" class="btn" data-i18n="copy">Copy commands</button>
             <span id="copied" class="sr-only" role="status"></span>
             <a
-              class="btn primary"
-              href="https://github.com/mics8128/blindfill"
-              rel="noopener"
-              data-i18n="cta_gh2"
-              >Star or fork on GitHub</a
-            >
-            <a
-              class="btn ghost"
+              class="btn"
               href="https://github.com/mics8128/blindfill/blob/main/README.md"
               rel="noopener"
               data-i18n="cta_docs"
@@ -787,15 +686,35 @@ node dist/cli.js fill --item &lt;id&gt; --url https://example.com/login --submit
 
     <footer class="foot">
       <div class="wrap foot-in">
-        <p data-i18n="foot1">blindfill is open source (MIT) and alpha. No independent security review yet.</p>
-        <p>
-          <a href="https://github.com/mics8128/blindfill" rel="noopener">GitHub</a> ·
-          <a href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>
-          ·
-          <a href="https://github.com/mics8128/blindfill/blob/main/docs/ARCHITECTURE.md" rel="noopener"
-            >Architecture</a
-          >
+        <p data-i18n="foot1">
+          blindfill is open source under the MIT license. Alpha, not independently reviewed.
         </p>
+        <ul class="foot-links">
+          <li>
+            <a class="gh-link" href="https://github.com/mics8128/blindfill" rel="noopener">
+              <svg width="16" height="16" aria-hidden="true"><use href="#i-gh" /></svg>
+              <span>mics8128/blindfill</span>
+            </a>
+          </li>
+          <li>
+            <a href="https://github.com/mics8128/blindfill/blob/main/SECURITY.md" rel="noopener"
+              >SECURITY.md</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://github.com/mics8128/blindfill/blob/main/docs/ARCHITECTURE.md"
+              rel="noopener"
+              data-i18n="foot_arch"
+              >Architecture</a
+            >
+          </li>
+          <li>
+            <a href="https://github.com/mics8128/blindfill/issues" rel="noopener" data-i18n="foot_issues"
+              >Issues</a
+            >
+          </li>
+        </ul>
       </div>
     </footer>
     <script src="app.js"></script>
