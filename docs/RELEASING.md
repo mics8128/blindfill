@@ -1,10 +1,10 @@
 # Releasing
 
 Publishing is done **only** by `.github/workflows/release.yml`. It runs when a push to `main`
-changes `package.json`, and publishes only if that push changed the `version` field to a version
-not yet on npm. No token is stored in the repository. Maintainers do not run `npm publish` or
-push release tags by hand: the workflow creates the tag `v<version>` and the GitHub Release after
-a successful publish.
+changes `package.json`, or when started by hand on `main`, and publishes only if the `package.json`
+version is not on npm yet. No token is stored in the repository. Maintainers do not run
+`npm publish` or push release tags by hand: the workflow creates the tag `v<version>` and the
+GitHub Release after a successful publish.
 
 ## One-time owner setup (npm Trusted Publishing) — done
 
@@ -34,6 +34,11 @@ tarball contains `dist/android/blindfill-companion.apk`, runs
 Release with generated notes (marked pre-release for `-alpha`/`-rc` versions).
 Versions with a pre-release suffix (`-alpha.0`, `-rc.1`, …) are published under the `next`
 dist-tag (`npm i blindfill@next`); plain `X.Y.Z` versions become `latest`.
+
+If a release run fails (for example `test-windows`), nothing is published. Fix the cause on `main`,
+then start the workflow again without changing the version:
+`gh workflow run release.yml --ref main` (or Actions → Release → Run workflow). A run on any other
+branch publishes nothing.
 
 ## Dry run (safe, publishes nothing)
 

@@ -1,5 +1,6 @@
-# Release: runs only when a push to main changes package.json, and publishes only when its version is
-# not on npm yet. Nothing else can publish; do not tag or `npm publish` by hand.
+# Release: runs when a push to main changes package.json, or by hand (Actions > Release > Run workflow on
+# main), and publishes only when package.json's version is not on npm yet. Nothing else can publish; do not
+# tag or `npm publish` by hand.
 # Publishing uses npm Trusted Publishing (OIDC): no long-lived token is stored in the repo.
 name: Release
 on:
@@ -7,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'package.json'
+  workflow_dispatch:
 
 concurrency:
   group: release
@@ -17,30 +19,25 @@ permissions:
 
 jobs:
   version:
+    # a manual run from another branch publishes nothing
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check.outputs.version }}
       publish: ${{ steps.check.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
-      - name: Did this push change package.json's version, and is it new on npm?
+      - name: Is package.json's version new on npm?
         id: check
-        env:
-          BEFORE: ${{ github.event.before }}
         run: |
           V="$(node -p "require('./package.json').version")"
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          git fetch --quiet --depth=1 origin "$BEFORE"
-          OLD="$(git show "$BEFORE:package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).version")"
-          if [ "$OLD" = "$V" ]; then
-            echo "version unchanged ($V); nothing to do"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
           # empty output (exit 0) when the package exists but this version does not
-          elif [ -n "$(npm view "blindfill@$V" version 2>/dev/null)" ]; then
+          if [ -n "$(npm view "blindfill@$V" version 2>/dev/null)" ]; then
             echo "blindfill@$V is already published; nothing to do"
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "version $OLD -> $V; publishing"
+            echo "blindfill@$V is not on npm; publishing"
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
