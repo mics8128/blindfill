@@ -281,15 +281,15 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
 
 ## 4. Threat model (short)
 
-| Threat                              | Handled by                                                 |
-| ----------------------------------- | ---------------------------------------------------------- |
-| Model asks for password             | no read API                                                |
-| Prompt injection from the page      | origin binding from vault; caller cannot choose the target |
-| Secret echoed in logs / tool output | scrubber (raw, URL-encoded, Base64), post-fill lock        |
-| Wrong site (phishing, redirect)     | observed origin vs item URIs, Host match by default        |
+| Threat                              | Handled by                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Model asks for password             | no read API                                                                                          |
+| Prompt injection from the page      | origin binding from vault; caller cannot choose the target                                           |
+| Secret echoed in logs / tool output | scrubber (raw, URL-encoded, Base64), post-fill lock                                                  |
+| Wrong site (phishing, redirect)     | observed origin vs item URIs, Host match by default                                                  |
 | Rogue app on phone                  | package (+ signer pin when the item has one), fail closed; WebViews by https domain (SECURITY 21–22) |
-| Malicious page reads DOM            | **not handled**, documented                                |
-| Compromised host                    | out of scope                                               |
+| Malicious page reads DOM            | **not handled**, documented                                                                          |
+| Compromised host                    | out of scope                                                                                         |
 
 ## 5. Repo layout
 
