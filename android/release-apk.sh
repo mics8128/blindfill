@@ -12,6 +12,7 @@ apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
 certs=$("$apksigner" verify --print-certs "$apk")
 got=$(sed -nE 's/^Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})$/\1/p' <<<"$certs" | tr a-f A-F)
 if [ -z "$want" ] || [ "$got" != "$want" ] || grep -q '^Signer #2' <<<"$certs"; then
+  printf '%s\n' "$apksigner:" "$certs" >&2 # certificate digests are public
   echo "companion APK signer ${got:-none} is not the pinned ${want:-?}" >&2
   exit 1
 fi
