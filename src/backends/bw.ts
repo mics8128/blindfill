@@ -2,6 +2,7 @@ import { BlindfillError, type ItemRef } from '../core/types.js';
 import type { Cap, FindQuery, ItemPatch, NewItemSpec, NewPasskey } from './spi.js';
 import { classifyBwFieldType } from '../core/fields.js';
 import { globalScrubber } from '../core/scrubber.js';
+import type { SecretHandle } from '../core/secret.js';
 import { execRunner, parseJson, safeErr, type Runner } from './runner.js';
 import { RawItemBackend } from './rawitem.js';
 import { bwCredentialId, type BwRawItem } from './bwmap.js';
@@ -139,6 +140,13 @@ export class BwBackend extends RawItemBackend {
       if (f.value && classifyBwFieldType(f.type) === 'secret') globalScrubber.register(f.value);
     if (mutate(raw) === false) return;
     await this.#bw(['edit', 'item', ref.id], this.#encode(raw));
+  }
+
+  /** A passkey is read after `bw sync`: another client (the Bitwarden extension) may have raised its
+   *  counter, and signing with the cached one gets the sign-in rejected and the write-back refused. */
+  override async openSecret(ref: ItemRef, field: string): Promise<SecretHandle> {
+    if (field === 'passkey') await this.#bw(['sync']);
+    return super.openSecret(ref, field);
   }
 
   async raisePasskeyCounter(ref: ItemRef, credentialId: string, counter: number): Promise<void> {

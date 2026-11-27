@@ -109,4 +109,34 @@ describe('bw item mapping', () => {
     expect(String(err)).not.toContain(key);
     await expect(b.raisePasskeyCounter(ref, 'b64.BBBB', 9)).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
+
+  it('syncs before reading a passkey (another client may have raised the counter)', async () => {
+    const cred = {
+      credentialId: 'b64.AAAA',
+      rpId: 'rp.test',
+      keyValue: randomBytes(32).toString('base64url'),
+      counter: '4',
+    };
+    const item = {
+      id: 'pk1',
+      name: 'n',
+      login: { username: 'u', password: 'pw-x', fido2Credentials: [cred] },
+    };
+    const calls: string[] = [];
+    const b = new BwBackend({
+      env: { BW_SESSION: 's' },
+      runner: async (_bin, args) => {
+        calls.push(args[0]);
+        return {
+          code: 0,
+          stdout: args[0] === 'get' ? JSON.stringify(item) : 'Syncing complete.',
+          stderr: '',
+        };
+      },
+    });
+    await b.openSecret({ backend: 'bw', id: 'pk1' }, 'password');
+    expect(calls).toEqual(['get']);
+    await b.openSecret({ backend: 'bw', id: 'pk1' }, 'passkey');
+    expect(calls).toEqual(['get', 'sync', 'get']);
+  });
 });
