@@ -184,14 +184,17 @@ blindfill defends against **the model and its logs**:
     site or app (web `register`, `android register`). An item made with `item generate --no-password`
     (passkey-only sites) has no password; password login, fill, `register` and `android fill` refuse
     it with "no password" rather than fill a blank.
-24. **`ego-cli` passes filled values through Ego Lite's Node runtime** (opt-in provider, not
-    supported; owner decision 2026-11-28). Values travel as CDP `Input.insertText` parameters through
-    Ego's own closed-source agent runtime, outside blindfill's control. Checked on Ego Lite 0.6.3.17
-    with fake passwords: outbound traffic (net-export with raw bytes, per-process sockets) carried the
-    value only to the page it was typed into; no Sentry or PostHog report was sent, also after forced
-    errors; a renderer crash dump did not contain it and Crashpad uploads are off; nothing on disk.
-    **Not checked**: the Ego UI operation log (the owner accepted this risk on 2026-11-28), QUIC
-    payloads, telemetry sent later, process memory, and later Ego versions. Details:
+24. **`ego-cli` passes filled values through Ego Lite's Node runtime** (supported provider; owner
+    decision 2026-11-28). Values travel as CDP `Input.insertText` parameters through Ego's own
+    closed-source agent runtime, outside blindfill's control. Cross-origin (out-of-process) iframes
+    are invisible to it, so their fields are refused. After a submit, Ego's password manager runs
+    Google's password leak check, as for a password typed by hand. Checked once on Ego Lite 0.6.3.17
+    (2026-11-28, about 3 minutes, fake login page and fake passwords): outbound traffic (net-export
+    with raw bytes, per-process sockets) carried the value only to the page it was typed into; no
+    Sentry or PostHog report was sent, also after forced errors; a renderer crash dump did not
+    contain it and Crashpad uploads are off; nothing on disk. **Not checked**, accepted by the owner
+    on 2026-11-28: longer traffic captures (telemetry sent later), the Ego UI operation log, QUIC
+    payloads, process memory, and later Ego versions. Details:
     [docs/browsers.md](docs/browsers.md#ego-lite).
 
 ## Reporting a vulnerability

@@ -11,7 +11,8 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   The owner authorises tags and npm publishing. Do not tag.
 - Website: https://mics8128.github.io/blindfill/, built from `site/` on branch `site/landing`
   (`git subtree split --prefix site site/landing` → `gh-pages`, normal push).
-- Branch `feature/ego-cli` (Ego Lite attach) stays unmerged; keep it in sync with `main` by merge.
+- `ego-cli` (Ego Lite attach) is merged and supported (owner decision 2026-11-28); a real-site sign-in
+  through it is pending until the owner's Mac has the agent's Vault key.
 
 ## Verified vs not
 
@@ -59,9 +60,9 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
   package like Bitwarden, `blindfill.signers` optional (SECURITY 21); WebViews by domain alone
   (SECURITY 22); Credential Manager passwords built. Sign-up, WebView and Credential Manager
   passwords tested with the fake app only (emulator and Xperia, 8/8, 2026-11-28).
-- Not supported: WebKit, Firefox on an already-running browser,
-  the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
-  empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
+- Not supported: WebKit, Firefox on an already-running browser. The owner's running Ego Lite (no
+  CDP) is reached through `ego-cli` (supported); a separately launched, empty-profile instance works
+  via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
 
 ## Rules to keep
 
@@ -71,9 +72,8 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
   and never filled: the seed only yields codes, a passkey only signs. TOTP codes are readable like
   text. Notes are unreadable by default.
 - README and website claims must match the code. Do not claim unverified support.
-- Do not build an attach provider for the running Ego Lite until an outbound-traffic capture and an
-  operation-log check show filled values do not leak, and TLS interception needs the user's consent.
-  Even then, never label it "supported".
+- `ego-cli` passes filled values through Ego's Node runtime (SECURITY 24). Re-run the outbound-traffic
+  check (docs/browsers.md, Ego Lite) after Ego updates; TLS interception needs the user's consent.
 - Before pushing: `git pull --rebase`, no force-push (including `--force-with-lease`), only push
   lint/build/test green state.
 - Do not touch the shared Camoufox profile (`/home/ollie/.camoufox/default`) from tests.

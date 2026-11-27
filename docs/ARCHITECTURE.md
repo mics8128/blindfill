@@ -128,8 +128,9 @@ interface Actuator {
   evaluate world, so heuristics use DOM evidence, never page globals. Observed origin comes
   from the page URL and frame URL, not from the caller. Adding a browser = adding one provider
   file plus its tests. A provider that cannot be attached to an already-running browser (no CDP,
-  no Playwright server) is not faked; Ego Lite's running instance is explicitly unsupported
-  until a traffic and operation-log review is done (`docs/browsers.md`).
+  no Playwright server) is not faked; Ego Lite's running instance is reached through its own CLI
+  instead (`ego-cli`, supported since 2026-11-28; values pass through Ego's Node runtime,
+  `docs/browsers.md`).
 - **Android actuator** (companion APK, `android/`; host side `src/actuators/android/`): chosen
   over scrcpy text injection because the system, not blindfill, attests which app is asking.
   Flow: `android fill|register|passkey --item --serial` arms the companion with a one-time token over
@@ -359,8 +360,8 @@ Goal: install in one command, no toolchain explanation.
   Threads (sign-in succeeded) and Instagram (partial).
 - **M3** community verification of the blind-written backends, public release and backend matrix.
 - **M4** community rule packs; desktop actuator exploration; Android saving logins typed by hand.
-- Optional: an attach provider for the already-running Ego Lite, only after an outbound-traffic
-  capture and an operation-log check show filled values do not leak; never labelled "supported".
+- Done 2026-11-28: `ego-cli`, an attach provider for the already-running Ego Lite (supported after
+  one outbound-traffic capture; the operation log was not checked, accepted by the owner).
 
 ## 10. Open questions
 
@@ -372,4 +373,3 @@ Decided: name `blindfill`; license MIT; TypeScript/Node; TOTP code is readable l
    (Created by script: returned intact; real-client check pending.)
 3. How strict the default web match should be (Host vs Base domain). Current default: Host.
 4. Passkey encoding written by real Bitwarden clients, and blindfill-made passkeys used by them.
-5. Ego Lite attach provider: needs the traffic and operation-log review first.

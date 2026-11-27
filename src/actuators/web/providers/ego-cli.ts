@@ -1,5 +1,5 @@
 /**
- * `ego-cli` provider (opt-in, NOT labelled supported): drives the user's running Ego Lite through
+ * `ego-cli` provider (supported since 2026-11-28): drives the user's running Ego Lite through
  * its own `ego-browser nodejs` CLI. Ego Lite exposes no CDP port, so a small script runs inside
  * Ego's Node runtime and serves page operations over a private unix socket (0700 state dir,
  * one client, nonce handshake). The script source never contains a secret; values travel only
@@ -577,7 +577,7 @@ const CAPS = {
 
 export const egoCli: BrowserProvider = {
   id: 'ego-cli',
-  title: 'Running Ego Lite via ego-browser (opt-in; values pass through Ego’s Node runtime)',
+  title: 'Running Ego Lite via ego-browser (values pass through Ego’s Node runtime)',
   attachable: true,
   capabilities: CAPS,
   async connect(opts) {

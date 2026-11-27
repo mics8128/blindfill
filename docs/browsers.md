@@ -3,13 +3,13 @@
 blindfill drives a Playwright `Page`. How that page is obtained is a **BrowserProvider**
 (`src/actuators/web/providers/`, one file per provider, registered in `registry.ts`).
 
-| id                | file                 | what it does                                                                                                   | attach to a running browser |
-| ----------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `chromium-launch` | `chromium-launch.ts` | Playwright launches Chromium (bundled, or `--executable` / `BLINDFILL_CHROMIUM` / `web.executablePath`)        | no (owns its browser)       |
-| `chromium-cdp`    | `chromium-cdp.ts`    | `connectOverCDP`, loopback only                                                                                | yes                         |
-| `firefox-connect` | `firefox-connect.ts` | Playwright browser-server websocket (Firefox / Camoufox), loopback only                                        | yes                         |
-| `ego-cli`         | `ego-cli.ts`         | **opt-in, not supported**: the running Ego Lite via `ego-browser nodejs` (`ego://new`, `ego://<space>/<page>`) | yes (Ego task spaces)       |
-| `borrowed-page`   | `borrowed-page.ts`   | library use: caller passes its own `Page` (`withPage(page, …)`); never closed by blindfill                     | n/a                         |
+| id                | file                 | what it does                                                                                            | attach to a running browser |
+| ----------------- | -------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `chromium-launch` | `chromium-launch.ts` | Playwright launches Chromium (bundled, or `--executable` / `BLINDFILL_CHROMIUM` / `web.executablePath`) | no (owns its browser)       |
+| `chromium-cdp`    | `chromium-cdp.ts`    | `connectOverCDP`, loopback only                                                                         | yes                         |
+| `firefox-connect` | `firefox-connect.ts` | Playwright browser-server websocket (Firefox / Camoufox), loopback only                                 | yes                         |
+| `ego-cli`         | `ego-cli.ts`         | supported: the running Ego Lite via `ego-browser nodejs` (`ego://new`, `ego://<space>/<page>`)          | yes (Ego task spaces)       |
+| `borrowed-page`   | `borrowed-page.ts`   | library use: caller passes its own `Page` (`withPage(page, …)`); never closed by blindfill              | n/a                         |
 
 ## Connecting a browser
 
@@ -41,7 +41,7 @@ launcher may rewrite it with a new port or token on each start.
 | Chrome / Chromium / Edge | start it with `--remote-debugging-port=9222`; endpoint `http://127.0.0.1:9222`. Chrome 136+ ignores that flag on the default profile directory, so also pass `--user-data-dir=<separate directory>`: a separate profile (log in there once). Never expose the port beyond loopback.                                                                                                                             |
 | Firefox                  | stock Firefox cannot be driven by Playwright. Run a Playwright-compatible Firefox (Playwright's own build, or Camoufox) as a **Playwright browser server** from a small launcher (`firefox.launchServer()`, or a persistent context published with `browser.bind`) and write its `wsEndpoint` to an endpoint file. Client and server Playwright versions must match ([Firefox / Camoufox](#firefox--camoufox)). |
 | Camoufox                 | the same, via `camoufox.server.launch_server` (no contexts: blindfill creates an empty one) or a launcher that publishes a persistent context. Example: Ollie's launcher on ollie-ubuntu writes `/run/user/$UID/camoufox-desktop/connection.json` (see below).                                                                                                                                                  |
-| Ego Lite                 | no CDP and no Playwright server. Either a separate instance that blindfill launches itself, `session start --executable '/Applications/ego lite.app/Contents/MacOS/ego lite'`, with an empty profile; or, opt-in and not supported, the running app through `ego-cli` with endpoint `ego://new` (values pass through Ego's Node runtime) ([Ego Lite](#ego-lite)).                                               |
+| Ego Lite                 | no CDP and no Playwright server. Either the running app through `ego-cli` with endpoint `ego://new` (supported; values pass through Ego's Node runtime), or a separate instance that blindfill launches itself, `session start --executable '/Applications/ego lite.app/Contents/MacOS/ego lite'`, with an empty profile ([Ego Lite](#ego-lite)).                                                               |
 
 ## Using them
 
@@ -123,7 +123,7 @@ Chromium-based (0.6.3.17, Chrome/156), checked on the owner's Mac on 2026-11-27.
 - Works via `chromium-launch` with a custom executable: `BLINDFILL_CHROMIUM='/Applications/ego lite.app/Contents/MacOS/ego lite'`
   (or `--executable`). e2e 17/17 and session start/status/stop passed. It is a separate instance with an **empty profile**.
 - **Cannot attach over CDP**: the running instance exposes no CDP and no Playwright server.
-- `ego-cli` (opt-in, **not supported**) reaches the running instance through Ego's own `ego-browser nodejs`: a script inside
+- `ego-cli` (**supported** since 2026-11-28, owner decision) reaches the running instance through Ego's own `ego-browser nodejs`: a script inside
   Ego's Node runtime serves page operations over a private unix socket (0700 state dir, nonce, one client). It adapts the
   slice of Playwright's Page / Frame / handle API that `WebActuator` uses, so origin binding, document binding, lock,
   one-shot and scrubbing are unchanged. All page code runs in one blindfill isolated world per frame document; every text
@@ -167,8 +167,11 @@ Chromium-based (0.6.3.17, Chrome/156), checked on the owner's Mac on 2026-11-27.
     the leak check, the new-tab page and the optimization guide), telemetry that is batched and sent later than ~3
     minutes, process memory, a version with Crashpad uploads on, Ego's agent features (Ego's own AI sidebar), the Ego
     UI operation log, and future Ego versions.
-- **Ego UI operation log: not checked** (omp has no macOS Accessibility permission to open the task-space panel). Mics
-  accepted this risk on 2026-11-28 and decided to merge `ego-cli` as opt-in. Re-run this check after Ego updates.
+- **Ego UI operation log: not checked** (omp has no macOS Accessibility permission to open the task-space panel).
+- **Support decision** (Mics, 2026-11-28): `ego-cli` is supported. The outbound traffic check above is the only one (about
+  3 minutes, fake page); a longer capture and the Ego UI operation log were not checked, and Mics accepted both (long-time
+  Ego user). A real-site sign-in through `ego-cli` is pending until this Mac has the agent's Vault key; it will be added to
+  [TESTED.md](TESTED.md). Re-run the traffic check after Ego updates.
 
 ## Adding a provider
 
