@@ -80,6 +80,9 @@ tests/android-device.test.ts` after `cd android && ./gradlew assembleDebug`); no
    production data), including `item create|generate`.
 4. Passkey `sign` for web (ARCHITECTURE.md section 3.8), then the Android actuator.
 5. Review and fix the website on `site/landing`, then ask the owner before deploying.
-6. Owner decisions still open: migrate ~15 olliepm items into the Vault, `agent-ollie` collection
-   permission (read-only suggested), default web match strictness (Host vs Base domain), where
-   rules live (custom field vs Notes), accept the `blindfill` GitHub org admin invitation.
+6. Owner decisions (2026-11-27): the name stays **blindfill**; the repo stays at `mics8128/blindfill`
+   (the `blindfill` GitHub org and npm name are held only against impersonation). Direction: own use
+   first (Ollie, real Vault), built to public-product standards; public launch later.
+   Still open: migrate ~15 olliepm items into the Vault, `agent-ollie` collection permission
+   (read-only suggested), default web match strictness (Host vs Base domain), where rules live
+   (custom field vs Notes).
