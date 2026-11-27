@@ -43,7 +43,7 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 | Ego Lite                                                                         | 별도의 빈 프로필 인스턴스로만 지원(`--executable`). 실행 중인 앱에 연결하는 것은 미지원                                                                                                                                                                                                                                                                                                                                                                                        |
 | WebKit / Safari                                                                  | 미지원                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Android(14 이상)                                                                 | 컴패니언 APK: 비밀번호는 자동 완성 서비스, passkey는 자격 증명 제공자(서명은 호스트에서). 정식 서명되며 호스트가 매번 채우기 전에 기기의 APK 서명을 확인. `blindfill android install --serial <s>`로 설치([android/README.md](android/README.md)). 가짜 앱으로 기기 1대(Xperia 5 II, Android 17)와 에뮬레이터(Android 16)에서 테스트. 같은 기기와 실제 `bw` Vault로 실제 앱 테스트(2026-11-27): Threads 로그인 성공, Instagram 부분 완료(제안은 채워졌으나 로그인 결과 미확인) |
-| Passkey                                                                          | 웹 로그인만, Chromium 전용(가짜 relying party로 테스트). 카운터 기록과 등록은 미지원                                                                                                                                                                                                                                                                                                                                                                                           |
+| Passkey                                                                          | 웹 로그인과 등록(추가만, opt-in 항목), Chromium 전용(엄격한 가짜 relying party로 테스트, 2026-11-27 `bw` Vault로 webauthn.io에서 연속 로그인 3회, 등록 1회 후 로그인). 카운터는 Vault에 기록                                                                                                                                                                                                                                                                                   |
 
 브라우저 제공자와 그 계약: [docs/browsers.md](docs/browsers.md). 실패를 포함한 모든 테스트 기록: [docs/TESTED.md](docs/TESTED.md).
 
@@ -61,7 +61,7 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 
 ## 미완료
 
-- Android: 새 로그인 저장, WebView 로그인. Passkey 카운터 기록과 등록. WebKit.
+- Android: 새 로그인 저장, WebView 로그인, passkey 등록. WebKit. Firefox/Camoufox의 passkey.
 - `bw`로 실제 웹사이트 로그인(실제 Vault 테스트는 로컬 가짜 페이지 사용). 나머지 여섯 백엔드는 맹목적으로 작성되어 미검증.
 - npm에 미게시(`latest`는 빈 플레이스홀더).
 - olliepm에서 이전: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).

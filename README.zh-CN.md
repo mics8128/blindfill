@@ -43,7 +43,7 @@
 | Ego Lite                                                                          | 仅限独立、空白配置文件的实例（`--executable`）；不支持连接正在运行的应用                                                                                                                                                                                                                                                                                                                                                      |
 | WebKit / Safari                                                                   | 不支持                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Android（14 以上）                                                                | 辅助 APK：密码走自动填充服务，passkey 走凭据提供程序（在主机端签名）；正式签名，每次填充前主机都会核对手机上 APK 的签名；用 `blindfill android install --serial <s>` 安装（[android/README.md](android/README.md)）；已用假 app 在一部手机（Xperia 5 II，Android 17）和模拟器（Android 16）测试。同一部手机配合真实 `bw` Vault 测试真实 app（2026-11-27）：Threads 登录成功；Instagram 部分完成（建议已填充，未确认登录结果） |
-| Passkey                                                                           | 网页登录，仅 Chromium（以假 relying party 测试）；不回写计数器、不支持注册                                                                                                                                                                                                                                                                                                                                                    |
+| Passkey                                                                           | 网页登录与注册（只新增、需 opt-in 的条目），仅 Chromium（以严格的假 relying party 测试；2026-11-27 以 `bw` Vault 在 webauthn.io 连续登录三次，并注册一次后登录）；计数器会回写 Vault                                                                                                                                                                                                                                          |
 
 浏览器提供者及其契约：[docs/browsers.md](docs/browsers.md)。每次测试记录（含失败）：[docs/TESTED.md](docs/TESTED.md)。
 
@@ -61,7 +61,7 @@
 
 ## 尚未完成
 
-- Android：保存新登录、WebView 登录。Passkey 计数器回写与注册。WebKit。
+- Android：保存新登录、WebView 登录、passkey 注册。WebKit。Firefox/Camoufox 的 passkey。
 - `bw` 登录真实网站（真实 Vault 测试使用的是本机假网页）。其余六个后端为盲写且未验证。
 - 尚未发布到 npm（`latest` 为空占位版本）。
 - 从 olliepm 迁移：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。

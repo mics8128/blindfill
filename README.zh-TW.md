@@ -43,7 +43,7 @@
 | Ego Lite                                                                          | 僅限獨立、空白設定檔的實例（`--executable`）；不支援連接執行中的應用程式                                                                                                                                                                                                                                                                                                                                                  |
 | WebKit / Safari                                                                   | 不支援                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Android（14 以上）                                                                | 輔助 APK：密碼走自動填入服務，passkey 走憑證提供者（在主機端簽署）；正式簽章，每次填入前主機都會核對手機上 APK 的簽章；以 `blindfill android install --serial <s>` 安裝（[android/README.md](android/README.md)）；已用假 app 在一支手機（Xperia 5 II，Android 17）與模擬器（Android 16）測試。同一支手機搭配真實 `bw` Vault 測真實 app（2026-11-27）：Threads 登入成功；Instagram 部分完成（建議已填入，未確認登入結果） |
-| Passkey                                                                           | 網頁登入，僅 Chromium（以假 relying party 測試）；不回寫計數器、不支援註冊                                                                                                                                                                                                                                                                                                                                                |
+| Passkey                                                                           | 網頁登入與註冊（只新增、需 opt-in 的項目），僅 Chromium（以嚴格的假 relying party 測試；2026-11-27 以 `bw` Vault 在 webauthn.io 連續登入三次，並註冊一次後登入）；計數器會回寫 Vault                                                                                                                                                                                                                                      |
 
 瀏覽器提供者及其契約：[docs/browsers.md](docs/browsers.md)。每次測試紀錄（含失敗）：[docs/TESTED.md](docs/TESTED.md)。
 
@@ -61,7 +61,7 @@
 
 ## 尚未完成
 
-- Android：儲存新登入、WebView 登入。Passkey 計數器回寫與註冊。WebKit。
+- Android：儲存新登入、WebView 登入、passkey 註冊。WebKit。Firefox/Camoufox 的 passkey。
 - `bw` 登入真實網站（真實 Vault 測試用的是本機假網頁）。其餘六個後端為盲寫且未驗證。
 - 尚未發布到 npm（`latest` 為空的佔位版本）。
 - 從 olliepm 遷移：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。
