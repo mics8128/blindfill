@@ -89,7 +89,7 @@
               </a>
             </div>
             <p class="fine" data-i18n="hero_fine">
-              Open source under MIT. Alpha: not yet independently reviewed or published to npm.
+              Open source under MIT, on npm. Alpha: not yet independently reviewed.
             </p>
           </div>
 
@@ -470,7 +470,7 @@
         <div class="wrap">
           <h2 data-i18n="sup_h">Password managers and browsers</h2>
           <p class="sub" data-i18n-html="sup_p">
-            Status of <code>main</code> at 0.1.0-alpha.0, from the
+            Status of release 0.1.0, from the
             <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>,
             <a href="https://github.com/mics8128/blindfill/blob/main/docs/browsers.md" rel="noopener"
               >browsers.md</a
@@ -499,10 +499,12 @@
                 </tr>
                 <tr>
                   <th scope="row">Bitwarden / Vaultwarden</th>
-                  <td><span class="st warn" data-i18n="st_mock">Mock-tested + one live run</span></td>
+                  <td><span class="st ok" data-i18n="st_mock">Tested on real sites</span></td>
                   <td data-i18n-html="sup_bw">
-                    <code>bw</code>, tested with a mock CLI and fixtures, plus one end-to-end run on a live
-                    vault on 2026-11-27 (throw-away items, local fake pages). Not yet used on real websites.
+                    <code>bw</code>, with a mock CLI and fixtures in CI, and on a live Vaultwarden: sign-ins
+                    on Fastmail, QuickBooks, iCHEF, Wayfair, Amazon Seller Central, Instagram, GitHub and
+                    Google (2026-11-27/28, Chromium and Camoufox). Some sites still fail or need a person;
+                    every run is in TESTED.md.
                   </td>
                 </tr>
                 <tr>
@@ -525,38 +527,52 @@
                 </tr>
                 <tr>
                   <th scope="row">Firefox / Camoufox</th>
-                  <td><span class="st warn" data-i18n="st_optin">Opt-in tests</span></td>
-                  <td data-i18n="sup_ff">
-                    Through a loopback Playwright server. Tested against Camoufox 158.0.1-beta.41 and
-                    159.0-beta.43; a long-running instance is untested.
+                  <td><span class="st ok" data-i18n="st_ok">Supported, tested</span></td>
+                  <td data-i18n-html="sup_ff">
+                    Through a loopback Playwright server (<code>--browser firefox-connect</code>). Tested
+                    against Camoufox 158.0.1-beta.41 and 159.0-beta.43; a running Camoufox with a persistent
+                    profile is reused as is (its cookies and logins, existing tabs left alone). Five real
+                    Instagram sign-ins through a shared Camoufox on 2026-11-28.
                   </td>
                 </tr>
                 <tr>
                   <th scope="row">Ego Lite</th>
-                  <td><span class="st warn" data-i18n="st_sep">Separate instance only</span></td>
-                  <td data-i18n="sup_ego">
-                    A separately launched instance with an empty profile. Attaching to the running app is
-                    unsupported.
+                  <td><span class="st ok" data-i18n="st_sup">Supported</span></td>
+                  <td data-i18n-html="sup_ego">
+                    The running app through the <code>ego-cli</code> provider, or a separate empty-profile
+                    instance. With <code>ego-cli</code>, filled values pass through Ego's Node runtime,
+                    cross-origin iframes are refused and there are no passkeys. Tested with the e2e suite on
+                    fake sites; a real-site sign-in is pending.
                   </td>
                 </tr>
                 <tr>
                   <th scope="row" data-i18n="sup_pkh">Passkeys</th>
-                  <td><span class="st warn" data-i18n="st_lim">Limited</span></td>
+                  <td><span class="st ok" data-i18n="st_ok">Supported, tested</span></td>
                   <td data-i18n="sup_pk">
-                    Web sign-in on Chromium, tested against a fake relying party. No counter write-back, no
-                    registration.
+                    Web sign-in and registration (add only) in Chromium, and in Firefox/Camoufox through
+                    Marionette. The sign counter is written back to the vault. Tested on webauthn.io and
+                    github.com (throw-away account) in Chromium, and a Google account sign-in in Camoufox.
                   </td>
                 </tr>
                 <tr>
                   <th scope="row">Android 14+</th>
                   <td><span class="st warn" data-i18n="st_exp">Experimental</span></td>
                   <td data-i18n-html="sup_and">
-                    Companion APK: autofill for passwords, credential provider for passkeys (signed on the
-                    host). Release-signed; install with
+                    Companion APK: autofill for passwords (login and sign-up), Credential Manager for
+                    passwords and passkeys, WebView logins. Release-signed; install with
                     <code>blindfill android install --serial &lt;s&gt;</code>, and the host checks the
-                    installed APK's signer before every fill. Tested on one phone with a fake app; on
-                    2026-11-27 with real apps on that phone: Threads sign-in succeeded, Instagram partial
-                    (login result not checked).
+                    installed APK's signer before every fill. Tested with a fake app on one phone and an
+                    emulator; with real apps on that phone: Threads sign-in succeeded, Instagram partial.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Windows 10/11</th>
+                  <td><span class="st warn" data-i18n="st_win">Test suite passes</span></td>
+                  <td data-i18n-html="sup_win">
+                    Unit, leak and e2e tests on local fake pages (Chromium) pass on one Windows 11 machine and
+                    run on <code>windows-latest</code> before each release. Real sites on Windows are not
+                    tested yet. Install <code>bw</code> as a native <code>bw.exe</code>;
+                    <code>ego-cli</code> is not available. macOS and Linux are the main platforms.
                   </td>
                 </tr>
                 <tr>
@@ -569,9 +585,9 @@
                 </tr>
                 <tr>
                   <th scope="row">npm</th>
-                  <td><span class="st no" data-i18n="st_npm">Not published</span></td>
+                  <td><span class="st ok" data-i18n="st_npm">Published</span></td>
                   <td data-i18n-html="sup_npm">
-                    The <code>latest</code> tag is an empty placeholder. Build from source.
+                    <code>npm i -g blindfill</code>. Published from GitHub Actions with npm provenance.
                   </td>
                 </tr>
               </tbody>
@@ -587,16 +603,19 @@
             <article class="card">
               <h3 data-i18n="lim_ah">Not built yet</h3>
               <ul>
-                <li data-i18n="lim_a1">Android: WebView logins, saving new logins.</li>
-                <li data-i18n="lim_a2">Passkey registration and counter write-back.</li>
+                <li data-i18n="lim_a1">
+                  Android in real apps: sign-up, WebView and Credential Manager passwords, passkey
+                  registration (tested with a fake app only). Saving logins typed by hand.
+                </li>
                 <li data-i18n="lim_a3">WebKit / Safari.</li>
                 <li data-i18n="lim_a4">
                   Shadow DOM, closed iframes and canvas inputs. blindfill stops when it meets them.
                 </li>
                 <li data-i18n="lim_a5">
-                  A sign-in to a real website with any backend (the one live-vault run used local fake pages).
+                  Sites that block automation or need a person (bot checks, some MFA setups); see TESTED.md.
+                  The other six backends have never run on a real vault.
                 </li>
-                <li data-i18n="lim_a6">An npm release and an independent security review.</li>
+                <li data-i18n="lim_a6">An independent security review.</li>
               </ul>
             </article>
             <article class="card">
@@ -668,23 +687,23 @@
 
       <section id="install" class="sec alt">
         <div class="wrap narrow">
-          <h2 data-i18n="ins_h">Build from source</h2>
+          <h2 data-i18n="ins_h">Install</h2>
           <p class="sub" data-i18n-html="ins_p">
-            blindfill isn't on npm yet, so don't run <code>npx blindfill</code>. You need Node 20 or newer
-            and, for the Bitwarden backend, the Bitwarden CLI (<code>bw</code>).
+            You need Node 20 or newer and, for the Bitwarden backend, the Bitwarden CLI (<code>bw</code>). Use
+            your own Chromium with <code>--executable</code>, or install Playwright's build once.
           </p>
           <pre
             class="src"
             tabindex="0"
             role="region"
-            aria-label="Build from source commands"
+            aria-label="Install commands"
             data-i18n-aria="aria_src"
-          ><code id="cmd">git clone https://github.com/mics8128/blindfill &amp;&amp; cd blindfill
-npm ci &amp;&amp; npm run build &amp;&amp; npx playwright-core install chromium
+          ><code id="cmd">npm i -g blindfill
+npx playwright-core install chromium
 export BW_SESSION="$(bw unlock --raw)"   # env only
 mkdir -p ~/.config/blindfill &amp;&amp; echo '{"backend":"bw"}' &gt; ~/.config/blindfill/config.json
-node dist/cli.js session start --headless
-node dist/cli.js fill --item &lt;id&gt; --url https://example.com/login --submit</code></pre>
+blindfill session start --headless
+blindfill fill --item &lt;id&gt; --url https://example.com/login --submit</code></pre>
           <div class="cta-row">
             <button type="button" id="copy" class="btn" data-i18n="copy">Copy commands</button>
             <span id="copied" class="sr-only" role="status"></span>
