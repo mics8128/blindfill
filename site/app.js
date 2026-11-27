@@ -142,10 +142,12 @@
     sup_pk:
       '<b>Passkey</b>：僅限網頁登入，僅限 Chromium（CDP 虛擬驗證器），只針對模擬的依賴方測試過。不回寫計數器，也不支援註冊。',
     p_plan: '尚未支援',
-    sup_plan: '<b>WebKit／Safari</b>：尚未支援。<b>Android</b>：尚未實作（只是空殼）。',
+    sup_plan:
+      '<b>WebKit／Safari</b>：尚未支援。<b>Android</b>：輔助 APK（Android 14 以上），已在一支手機用假 app 測試；需自行編譯。',
     lim_h: '它（目前）做不到的事',
     lim_ah: '還沒做',
-    lim_a1: '只支援網頁。Android 還沒有實作（只是一個會丟出錯誤的空殼）。',
+    lim_a1:
+      'Android 只能透過自行編譯的輔助 APK 使用，只在一支手機用假 app 測試過；不支援 WebView 登入，也不會儲存新登入。',
     lim_a2: 'Passkey：僅限 Chromium 上的網頁登入。不回寫計數器，也不支援註冊。',
     lim_a3: '不支援 WebKit／Safari。Firefox／Camoufox 需手動啟用。',
     lim_a4: '沒有任何後端在真實密碼庫上做過完整端到端驗證。',
@@ -168,7 +170,7 @@
     q4: '支援哪些瀏覽器？',
     a4: 'Chromium 受支援且已測試。Firefox／Camoufox 需手動啟用：透過本機 Playwright 伺服器，在 Camoufox 158.0.1-beta.41 與 159.0-beta.43 上測試過。Ego Lite 只能以另外啟動、空白設定檔的實例使用。不支援 WebKit。',
     q5: '手機和 passkey 呢？',
-    a5: 'Android 尚未實作（只是空殼）。Passkey 僅限 Chromium 上的網頁登入，只針對模擬的依賴方測試過：不回寫計數器，也不支援註冊。',
+    a5: 'Android 透過輔助 APK（Android 14 以上）：密碼走自動填入服務，passkey 走憑證提供者，簽章在主機端完成。只在一支手機（Android 17）用假 app 測試過，未用真實 app 測試。網頁 passkey 僅限 Chromium。兩者都只針對假的依賴方測試：不回寫計數器，也不支援註冊。',
     q6: '可以直接用在我的正式帳號上嗎？',
     a6: '它是 alpha 軟體，沒有經過獨立審查。建議先用拋棄式或影響不大的帳號試用，並讀過上面的威脅模型。',
     q7: '要付費嗎？授權是什麼？',
