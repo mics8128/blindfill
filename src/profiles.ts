@@ -6,9 +6,10 @@
  * File: <configDir>/profiles/<name>.json, mode 0600, owned by you, one link, no symlinks, <= 64 KiB.
  */
 import { createHash } from 'node:crypto';
-import { closeSync, constants, fsyncSync, lstatSync, mkdirSync, openSync, writeSync } from 'node:fs';
+import { closeSync, constants, fsyncSync, lstatSync, openSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { BlindfillError } from './core/types.js';
+import { mkdirPrivate, windowsPathsPrivate } from './core/acl.js';
 import { configDir, readPrivateFile, strictJson, validateRules, type Rule } from './rules.js';
 
 const ALIAS = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
@@ -149,15 +150,19 @@ export function createProfile(
   dir = profilesDir(),
 ): { path: string; profile: Profile } {
   const profile = validateProfile(doc, name);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  mkdirPrivate(dir);
   const st = lstatSync(dir);
   if (
     !st.isDirectory() ||
     st.isSymbolicLink() ||
-    (process.getuid && st.uid !== process.getuid()) ||
-    st.mode & 0o077
+    (process.platform === 'win32'
+      ? !windowsPathsPrivate([dir])
+      : (process.getuid && st.uid !== process.getuid()) || st.mode & 0o077)
   )
-    throw new BlindfillError('POLICY', 'profiles directory must be a private (0700) directory owned by you');
+    throw new BlindfillError(
+      'POLICY',
+      'profiles directory must be a private (0700; on Windows owner-only ACL) directory owned by you',
+    );
   const path = join(dir, `${name}.json`);
   let fd: number;
   try {

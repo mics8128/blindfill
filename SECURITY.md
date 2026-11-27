@@ -27,6 +27,18 @@ blindfill defends against **the model and its logs**:
   that must be owned by you with mode 0700 (otherwise refused). It is written atomically under a
   lock file, and the lock and one-shot records only grow until `session stop`, so a CLI and an MCP
   process running at once cannot clear each other's.
+- Windows has no owner/mode bits, so the same checks (state directory, profiles directory, local
+  rules and profile files and their directory) read the owner and DACL by SID through the built-in
+  Windows PowerShell (`Get-Acl`): the owner and every allow entry, inherit-only ones included, must
+  be you, SYSTEM or Administrators (plus the CREATOR OWNER / OWNER RIGHTS placeholders); anything
+  else (Users, Everyone, another account, an AppContainer capability), a symlink or junction, or a
+  failed read is refused. A directory blindfill creates gets that DACL with inheritance removed
+  (`icacls /inheritance:r`), as `mkdir -m 0700` would; one that already exists is checked, not
+  changed. Administrators and SYSTEM are trusted as root is on POSIX. Windows has no `O_NOFOLLOW`,
+  so a rules or profile file is opened, then checked to be the same non-symlink file (file index)
+  at its path before the ACL check. `%TEMP%` and `%LOCALAPPDATA%` can carry extra entries (on the
+  test machine: sandbox accounts), so keep these directories under your profile (the defaults
+  `~/.local/state/blindfill` and `~/.config/blindfill` are).
 - Changing secret values, origins, `blindfill.*` control fields or a password policy needs a
   person at a terminal. There is no command that reveals a stored secret. The exceptions only add
   or are field maps: adding a TOTP seed (`totp enroll`, point 18), adding a passkey (point 19) and

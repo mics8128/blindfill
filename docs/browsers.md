@@ -129,6 +129,8 @@ Chromium-based (0.6.3.17, Chrome/156), checked on the owner's Mac on 2026-11-27.
   one-shot and scrubbing are unchanged. All page code runs in one blindfill isolated world per frame document; every text
   input re-checks, inside Ego and in the same call, that the element's document still has the scanned origin and that the
   element has focus.
+  Not available on Windows (refused): the socket protection relies on a 0700 unix-socket directory, and a named-pipe
+  port has not been written. Ego Lite itself has a Windows beta.
   - Use: `blindfill session attach --endpoint ego://new` (a new task space; `ego://` selects `ego-cli`) or
     `--endpoint ego://72/p1` (a space this agent controls). A space blindfill creates keeps its page afterwards
     (`BLINDFILL_EGO_KEEP=0` closes it).

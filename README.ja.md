@@ -47,6 +47,8 @@ AI エージェントを、**パスワードを一切見せることなく**Web 
 
 **ブラウザの接続。** 何も設定しなければ、`blindfill session start` が自前の Chromium（空のプロファイル）を起動する。起動済みのブラウザを使うには、`~/.config/blindfill/config.json` に `web.endpoint`（`--remote-debugging-port` 付きで起動した Chrome なら `http://127.0.0.1:9222`）か `web.endpointFile`（どのランチャーでも書ける JSON ファイル `{"endpoint": "ws://…"}`）を設定するか、環境変数 `BLINDFILL_ENDPOINT` / `BLINDFILL_ENDPOINT_FILE` を使う。以後 `blindfill session attach` は引数不要。ブラウザごとの制限（Chrome の既定プロファイル、Firefox と Camoufox は Playwright サーバーが必要、Ego Lite は blindfill が起動する空のインスタンスか `ego-cli`）：[docs/browsers.md](docs/browsers.md#connecting-a-browser)。
 
+**プラットフォーム。** macOS と Linux。Windows 10/11：テストスイート（ユニット、漏えい、ローカル偽ページでの e2e、Chromium）は Windows 11 の 1 台で合格し、各リリース前に `windows-latest` でも実行する。**Windows での実サイトは未テスト**。Windows では状態・設定・プロファイルのディレクトリを 0700/0600 の代わりに ACL で検査する（SECURITY.md 参照）。`bw` はネイティブの `bw.exe`（scoop の `bitwarden-cli` または Bitwarden 公式のスタンドアロン版）を入れること。npm の `bw.cmd` はシェルなしでは起動できない。`ego-cli` プロバイダーは Windows では使えない。
+
 ブラウザプロバイダーとその契約：[docs/browsers.md](docs/browsers.md)。失敗も含む全テスト記録：[docs/TESTED.md](docs/TESTED.md)。
 
 ## 動作するもの（テストスイートで検証済み）

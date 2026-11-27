@@ -231,6 +231,9 @@ class EgoBridge {
     target: EgoTarget,
     bin = process.env.BLINDFILL_EGO_BIN ?? 'ego-browser',
   ): Promise<EgoBridge> {
+    // unix socket in the 0700 state dir; a Windows named pipe has no such protection yet
+    if (process.platform === 'win32')
+      throw new BlindfillError('ACTUATOR', 'the ego-cli provider is not supported on Windows yet');
     const dir = stateDir();
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const nonce = randomBytes(16).toString('hex');

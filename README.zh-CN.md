@@ -47,6 +47,8 @@
 
 **接入浏览器。** 什么都不配置时，`blindfill session start` 会自己启动一个 Chromium（空的配置文件）。要使用你已在运行的浏览器，在 `~/.config/blindfill/config.json` 设置 `web.endpoint`（以 `--remote-debugging-port` 启动的 Chrome 为 `http://127.0.0.1:9222`）或 `web.endpointFile`（任何启动器都能写的 JSON 文件 `{"endpoint": "ws://…"}`），或用环境变量 `BLINDFILL_ENDPOINT` / `BLINDFILL_ENDPOINT_FILE`；之后 `blindfill session attach` 无需参数。各浏览器的限制（Chrome 的默认配置文件、Firefox 与 Camoufox 需要 Playwright 服务器、Ego Lite 由 blindfill 自己启动空实例或通过 `ego-cli`）：[docs/browsers.md](docs/browsers.md#connecting-a-browser)。
 
+**平台。** macOS 与 Linux。Windows 10/11：测试套件（单元、泄漏与本机假页面 e2e，Chromium）在一台 Windows 11 电脑上通过，每次发布前也在 `windows-latest` 运行；**Windows 上的真实网站尚未测试**。Windows 上状态、配置与登录配置目录改用 ACL 检查，取代 0700/0600 权限（见 SECURITY.md）；`bw` 请安装原生 `bw.exe`（scoop 的 `bitwarden-cli` 或 Bitwarden 官方独立下载），npm 的 `bw.cmd` 不经 shell 无法启动；`ego-cli` 提供者不支持 Windows。
+
 浏览器提供者及其契约：[docs/browsers.md](docs/browsers.md)。每次测试记录（含失败）：[docs/TESTED.md](docs/TESTED.md)。
 
 ## 已可运行（由测试套件验证）

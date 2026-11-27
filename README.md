@@ -55,6 +55,12 @@ To use a browser you already run, set `web.endpoint` (`http://127.0.0.1:9222` fo
 needs no arguments. Per-browser limits (Chrome's default profile, Firefox and Camoufox need a Playwright server, Ego Lite
 as its own empty instance or through `ego-cli`): [docs/browsers.md](docs/browsers.md#connecting-a-browser).
 
+**Platforms.** macOS and Linux. Windows 10/11: the test suite (unit, leak and e2e on local fake pages, Chromium) passes
+on one Windows 11 machine and runs on `windows-latest` before each release; **real sites on Windows are not tested yet**. On Windows the
+state, config and profile directories are checked by ACL instead of mode 0700/0600 (see SECURITY.md); install `bw` as a
+native `bw.exe` (scoop `bitwarden-cli` or Bitwarden's standalone download), since npm's `bw.cmd` cannot be started
+without a shell; the `ego-cli` provider is not available on Windows.
+
 Browser providers and their contract: [docs/browsers.md](docs/browsers.md). Every test run, including failures: [docs/TESTED.md](docs/TESTED.md).
 
 ## What works (verified by the test suite)

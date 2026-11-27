@@ -10,6 +10,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from '
 import { dirname, join } from 'node:path';
 import { configPath } from './config.js';
 import { BlindfillError } from './core/types.js';
+import { windowsPathsPrivate } from './core/acl.js';
 
 const FIELD = /^[a-z][a-z0-9_]{0,63}$/;
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
@@ -230,7 +231,8 @@ export function readPrivateFile(dir: string, name: string, errCode: 'POLICY' = '
   const d = lstatSync(dir, { throwIfNoEntry: false });
   if (!d) return fail('file not found');
   if (!d.isDirectory() || d.isSymbolicLink()) fail('config directory must be a real directory');
-  if (uid !== undefined && (d.uid !== uid || d.mode & 0o022))
+  const win = process.platform === 'win32';
+  if (!win && uid !== undefined && (d.uid !== uid || d.mode & 0o022))
     fail('config directory must be owned by you and not group/world writable');
   const path = join(dir, name);
   let fd: number;
@@ -242,8 +244,16 @@ export function readPrivateFile(dir: string, name: string, errCode: 'POLICY' = '
   }
   try {
     const st = fstatSync(fd);
-    if (!st.isFile() || st.nlink !== 1 || (uid !== undefined && st.uid !== uid) || st.mode & 0o077)
+    if (!st.isFile() || st.nlink !== 1 || (uid !== undefined && st.uid !== uid) || (!win && st.mode & 0o077))
       fail('file must be a private regular file (mode 0600, one link, owned by you)');
+    // Windows has no O_NOFOLLOW or mode bits: the opened file must be the non-symlink at path, and ACLs owner-only
+    if (win) {
+      const l = lstatSync(path);
+      if (l.isSymbolicLink() || l.ino !== st.ino || !windowsPathsPrivate([dir, path]))
+        fail(
+          'file must be a private regular file (owner-only ACL, one link, no symlinks; its directory too)',
+        );
+    }
     if (st.size > LIMIT) fail('file too large');
     const buf = Buffer.alloc(LIMIT + 1);
     const n = readSync(fd, buf, 0, LIMIT + 1, 0);

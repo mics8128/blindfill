@@ -4,7 +4,6 @@ import {
   closeSync,
   existsSync,
   lstatSync,
-  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -18,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { chromium } from 'playwright-core';
 import { stateDir } from '../../core/audit.js';
 import { SessionPolicy } from '../../core/policy.js';
+import { mkdirPrivate, windowsPathsPrivate } from '../../core/acl.js';
 import { BlindfillError } from '../../core/types.js';
 import { WebActuator } from './web.js';
 import { getProvider, inferProviderId } from './providers/registry.js';
@@ -43,14 +43,17 @@ export interface SessionFile {
 const file = () => join(stateDir(), 'session.json');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** The state dir holds the lock state: it must be a real directory owned by this user with mode 0700. */
+/** The state dir holds the lock state: a real directory private to this user (0700, or an owner-only ACL on Windows). */
 function assertPrivateDir(dir: string): void {
-  if (process.platform === 'win32') return; // shortcut: no POSIX owner/mode on Windows; add an ACL check if Windows is supported
   const st = lstatSync(dir);
-  if (!st.isDirectory() || st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0)
+  const ok =
+    process.platform === 'win32'
+      ? st.isDirectory() && windowsPathsPrivate([dir])
+      : st.isDirectory() && st.uid === process.getuid?.() && (st.mode & 0o077) === 0;
+  if (!ok)
     throw new BlindfillError(
       'POLICY',
-      'the blindfill state directory must be a directory (not a symlink) owned by you with mode 0700',
+      'the blindfill state directory must be a directory (not a symlink) private to you (mode 0700; on Windows only you, SYSTEM and Administrators in its ACL)',
     );
 }
 
@@ -102,7 +105,7 @@ function withLock<T>(dir: string, fn: () => T): T {
  */
 export function saveSession(s: SessionFile): void {
   const dir = stateDir();
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  mkdirPrivate(dir);
   assertPrivateDir(dir);
   withLock(dir, () => {
     const cur = readSession();

@@ -184,7 +184,8 @@ describe('passkey sign-in (Chromium virtual authenticator)', () => {
     // the RP saw this credential registered with BE=0 (flags UP+UV+AT), counter 0
     const raw = vaultCreds('pk-be0')[0].credentialId.replace(/-/g, '');
     const authData = Buffer.concat([Buffer.alloc(32), Buffer.from([0x45]), Buffer.alloc(4)]);
-    await fetch(`${O()}/passkey-register`, {
+    // Node on Windows does not resolve *.localhost; this RP endpoint ignores the host
+    await fetch(`http://127.0.0.1:${sites.port}/passkey-register`, {
       method: 'POST',
       body: new URLSearchParams({
         id: Buffer.from(raw, 'hex').toString('base64url'),

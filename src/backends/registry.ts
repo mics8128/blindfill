@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
+import { mkdirPrivate } from '../core/acl.js';
 import { join } from 'node:path';
 import { stateDir } from '../core/audit.js';
 import { BlindfillError } from '../core/types.js';
@@ -106,7 +107,7 @@ export function unverifiedNotice(b: Backend): string | null {
   const marker = join(stateDir(), `notice-${b.id}`);
   if (existsSync(marker)) return null;
   try {
-    mkdirSync(stateDir(), { recursive: true, mode: 0o700 });
+    mkdirPrivate(stateDir());
     writeFileSync(marker, new Date().toISOString());
   } catch {
     /* ignore */

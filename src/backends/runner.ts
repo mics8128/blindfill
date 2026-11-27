@@ -15,9 +15,14 @@ export interface RunOpts {
 /** Injectable so backends can be contract-tested against recorded fixtures. */
 export type Runner = (bin: string, args: string[], opts?: RunOpts) => Promise<RunResult>;
 
+/** A configured Node script (.js/.mjs/.cjs) runs under this Node: Windows cannot exec a shebang file. */
+export function viaNode(bin: string, args: string[]): [string, string[]] {
+  return /\.[cm]?js$/i.test(bin) ? [process.execPath, [bin, ...args]] : [bin, args];
+}
+
 export const execRunner: Runner = (bin, args, opts = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn(bin, args, {
+    const child = spawn(...viaNode(bin, args), {
       env: { ...process.env, ...opts.env },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,

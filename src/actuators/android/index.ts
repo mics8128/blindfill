@@ -5,6 +5,7 @@ import { createServer, type Socket } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { BlindfillError } from '../../core/types.js';
 import { apkSigners } from './apk.js';
+import { viaNode } from '../../backends/runner.js';
 
 /** Companion APK (android/companion). The arm receiver only accepts broadcasts from holders of DUMP (adb shell). */
 export const COMPANION = 'io.github.mics8128.blindfill';
@@ -89,7 +90,7 @@ export class AndroidActuator {
 
   private adb(serial: string, args: string[], timeout = 20_000): Promise<string> {
     return new Promise((res, rej) =>
-      execFile(this.adbBin, ['-s', serial, ...args], { timeout }, (e, out, err) =>
+      execFile(...viaNode(this.adbBin, ['-s', serial, ...args]), { timeout }, (e, out, err) =>
         e
           ? rej(
               new BlindfillError(
@@ -132,8 +133,7 @@ export class AndroidActuator {
     if (verified.has(key)) return null;
     const apk = await new Promise<Buffer>((res, rej) =>
       execFile(
-        this.adbBin,
-        ['-s', serial, 'exec-out', 'cat', path],
+        ...viaNode(this.adbBin, ['-s', serial, 'exec-out', 'cat', path]),
         { encoding: 'buffer', maxBuffer: 256 << 20, timeout: 60_000 },
         (e, out) =>
           e ? rej(new BlindfillError('ACTUATOR', 'adb failed: could not read the companion APK')) : res(out),

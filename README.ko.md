@@ -47,6 +47,8 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 
 **브라우저 연결.** 아무것도 설정하지 않으면 `blindfill session start`가 자체 Chromium(빈 프로필)을 실행한다. 이미 실행 중인 브라우저를 쓰려면 `~/.config/blindfill/config.json`에 `web.endpoint`(`--remote-debugging-port`로 실행한 Chrome이면 `http://127.0.0.1:9222`) 또는 `web.endpointFile`(어떤 런처든 쓸 수 있는 JSON 파일 `{"endpoint": "ws://…"}`)을 설정하거나 환경 변수 `BLINDFILL_ENDPOINT` / `BLINDFILL_ENDPOINT_FILE`을 쓴다. 그 뒤 `blindfill session attach`는 인자 없이 실행된다. 브라우저별 제한(Chrome 기본 프로필, Firefox와 Camoufox는 Playwright 서버 필요, Ego Lite는 blindfill이 직접 실행하는 빈 인스턴스 또는 `ego-cli`): [docs/browsers.md](docs/browsers.md#connecting-a-browser).
 
+**플랫폼.** macOS와 Linux. Windows 10/11: 테스트 스위트(단위, 유출, 로컬 가짜 페이지 e2e, Chromium)가 Windows 11 한 대에서 통과했고, 매 릴리스 전 `windows-latest`에서도 실행. **Windows에서 실제 사이트는 아직 테스트하지 않음**. Windows에서는 상태·설정·프로필 디렉터리를 0700/0600 대신 ACL로 검사(SECURITY.md 참조). `bw`는 네이티브 `bw.exe`(scoop `bitwarden-cli` 또는 Bitwarden 공식 단독 다운로드)로 설치할 것. npm의 `bw.cmd`는 셸 없이 실행할 수 없음. `ego-cli` 제공자는 Windows에서 쓸 수 없음.
+
 브라우저 제공자와 그 계약: [docs/browsers.md](docs/browsers.md). 실패를 포함한 모든 테스트 기록: [docs/TESTED.md](docs/TESTED.md).
 
 ## 동작하는 것 (테스트 스위트로 검증됨)

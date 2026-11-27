@@ -1,4 +1,5 @@
-import { appendFileSync, mkdirSync, chmodSync } from 'node:fs';
+import { appendFileSync, chmodSync } from 'node:fs';
+import { mkdirPrivate } from './acl.js';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { globalScrubber } from './scrubber.js';
@@ -26,7 +27,7 @@ export function audit(entry: AuditEntry, path = auditPath()): void {
   const rec = { ts: new Date().toISOString(), pid: process.pid, ...entry };
   const line = globalScrubber.scrub(JSON.stringify(rec)) + '\n';
   try {
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    mkdirPrivate(dirname(path));
     appendFileSync(path, line, { flag: 'a', mode: 0o600 });
     try {
       chmodSync(path, 0o600);

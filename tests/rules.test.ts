@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright-core';
@@ -10,6 +10,8 @@ import { globalScrubber } from '../src/core/scrubber.js';
 import { createProfile, loadProfile, validateProfile } from '../src/profiles.js';
 import { validateRules } from '../src/rules.js';
 import { CANARY, CANARY_USER, startSites } from './helpers/sites.js';
+import { makePrivate, shareWithOthers } from './helpers/share.js';
+import { mkdirPrivate } from '../src/core/acl.js';
 
 const MOCK = resolve('tests/fixtures/mock-bw.mjs');
 let browser: Browser;
@@ -54,7 +56,7 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'bf-rules-'));
   process.env.BLINDFILL_AUDIT_FILE = join(dir, 'audit.jsonl');
   process.env.BLINDFILL_CONFIG_DIR = join(dir, 'cfg');
-  mkdirSync(join(dir, 'cfg'), { mode: 0o700 });
+  mkdirPrivate(join(dir, 'cfg'));
   const O = goodOrigin();
   const loginRule = {
     id: 'main',
@@ -118,7 +120,7 @@ beforeAll(async () => {
     ]),
   );
   process.env.BLINDFILL_MOCK_BW_ITEMS = join(dir, 'items.json');
-  mkdirSync(join(dir, 'cfg', 'rules'), { mode: 0o700 });
+  mkdirPrivate(join(dir, 'cfg', 'rules'));
   writeFileSync(
     join(dir, 'cfg', 'rules', 'localonly.json'),
     JSON.stringify({ version: 1, rules: [loginRule] }),
@@ -198,12 +200,12 @@ describe('explicit field rules', () => {
     const { eng } = await engine();
     const r = keep(await eng.fill({ item: 'localonly', url: good('/multi') }));
     expect(r.filled).toEqual(['username', 'password']);
-    chmodSync(join(dir, 'cfg', 'rules', 'localonly.json'), 0o644);
+    shareWithOthers(join(dir, 'cfg', 'rules', 'localonly.json'));
     const { eng: eng2 } = await engine();
     await expect(eng2.fill({ item: 'localonly', url: good('/multi') })).rejects.toMatchObject({
       code: 'POLICY',
     });
-    chmodSync(join(dir, 'cfg', 'rules', 'localonly.json'), 0o600);
+    makePrivate(join(dir, 'cfg', 'rules', 'localonly.json'));
   });
 
   it('rules never expand authorization: a rule for an origin the item does not bind is refused', async () => {
@@ -462,9 +464,9 @@ describe('profiles', () => {
 
   it('loader refuses group-readable files, symlinks and duplicate keys', () => {
     createProfile('p2', { version: 1, item: 'ruled', web: { origin: goodOrigin(), rule: 'main' } });
-    chmodSync(join(dirp(), 'p2.json'), 0o640);
+    shareWithOthers(join(dirp(), 'p2.json'));
     expect(() => loadProfile('p2')).toThrow(/private regular file/);
-    chmodSync(join(dirp(), 'p2.json'), 0o600);
+    makePrivate(join(dirp(), 'p2.json'));
     writeFileSync(join(dirp(), 'dup.json'), '{"version":1,"version":1,"item":"x","web":{}}', { mode: 0o600 });
     expect(() => loadProfile('dup')).toThrow(/duplicate/);
     expect(() => loadProfile('../etc')).toThrow();

@@ -144,3 +144,9 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
     one); `item generate` no longer writes the field and `--no-registration` is gone; items that still
     carry it are ignored. `item generate --no-password` makes a username-only item for passkey-only
     sites; password login, fill, `register` and `android fill` refuse it ("no password").
+11. Owner decision on Windows (Mics, 2026-11-28): support Windows. Windows tests do not run on every
+    push; the `test-windows` job in `release.yml` runs them before a release. ACL checks in place of mode bits
+    (`src/core/acl.ts`, SECURITY.md), Node-script backends run under `process.execPath` (Windows cannot
+    exec a shebang file), `ego-cli` refused on Windows. Full suite passed on mics-i7 (Windows 11,
+    Node 24). Not yet done: a real-site run on Windows (webauthn.io with `webauthn-io-interop`) waits
+    for Mics to put the agent `bw` API key on mics-i7; `bw` 2026.6.0 (scoop) is installed there.
