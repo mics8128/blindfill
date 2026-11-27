@@ -1,5 +1,18 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright-core';
@@ -30,16 +43,89 @@ export interface SessionFile {
 const file = () => join(stateDir(), 'session.json');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function loadSession(): SessionFile | null {
+/** The state dir holds the lock state: it must be a real directory owned by this user with mode 0700. */
+function assertPrivateDir(dir: string): void {
+  if (process.platform === 'win32') return; // shortcut: no POSIX owner/mode on Windows; add an ACL check if Windows is supported
+  const st = lstatSync(dir);
+  if (!st.isDirectory() || st.uid !== process.getuid?.() || (st.mode & 0o077) !== 0)
+    throw new BlindfillError(
+      'POLICY',
+      'the blindfill state directory must be a directory (not a symlink) owned by you with mode 0700',
+    );
+}
+
+function readSession(): SessionFile | null {
   try {
     return JSON.parse(readFileSync(file(), 'utf8')) as SessionFile;
   } catch {
     return null;
   }
 }
+
+export function loadSession(): SessionFile | null {
+  if (existsSync(stateDir())) assertPrivateDir(stateDir());
+  return readSession();
+}
+
+/** Exclusive lock file around read-merge-write; the critical section is a few milliseconds. */
+function withLock<T>(dir: string, fn: () => T): T {
+  const lock = join(dir, 'session.lock');
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    try {
+      closeSync(openSync(lock, 'wx', 0o600));
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      // shortcut: a lock older than 10 s is taken as left by a crashed process; use flock if that ever misfires
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > 10_000) rmSync(lock, { force: true });
+      } catch {
+        /* released meanwhile */
+      }
+      if (Date.now() > deadline)
+        throw new BlindfillError('ACTUATOR', 'session state is locked by another blindfill process');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}
+
+/**
+ * Atomic (temp file + rename, 0600) and locked. For the same browser endpoint, `locked` and `filled` only
+ * grow: a process holding a stale snapshot cannot clear another process's lock or one-shot record.
+ * Only `session stop` (which deletes the file) resets them.
+ */
 export function saveSession(s: SessionFile): void {
-  mkdirSync(stateDir(), { recursive: true, mode: 0o700 });
-  writeFileSync(file(), JSON.stringify(s), { mode: 0o600 });
+  const dir = stateDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  assertPrivateDir(dir);
+  withLock(dir, () => {
+    const cur = readSession();
+    const same =
+      cur &&
+      cur.cdp === s.cdp &&
+      cur.endpointFile === s.endpointFile &&
+      (cur.browser ?? 'chromium-cdp') === (s.browser ?? 'chromium-cdp');
+    const policy = same
+      ? {
+          ...s.policy,
+          locked: !!cur.policy?.locked || s.policy.locked,
+          filled: [...new Set([...(cur.policy?.filled ?? []), ...s.policy.filled])],
+        }
+      : s.policy;
+    const tmp = join(dir, `.session.${process.pid}.${randomBytes(6).toString('hex')}.tmp`);
+    try {
+      writeFileSync(tmp, JSON.stringify({ ...s, policy }), { mode: 0o600, flag: 'wx' });
+      renameSync(tmp, file());
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  });
 }
 
 /** Start a persistent Chromium (Playwright's bundled one) with a loopback-only debugging port. */

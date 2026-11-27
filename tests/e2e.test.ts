@@ -35,7 +35,7 @@ const item = (id: string, uris: string[], extra: any[] = []) => ({
   fields: extra,
 });
 
-async function engine(): Promise<{ eng: Engine; act: WebActuator }> {
+async function engine(hook?: () => Promise<unknown>): Promise<{ eng: Engine; act: WebActuator }> {
   let act: WebActuator;
   if (EGO) {
     act = await WebActuator.fromProvider('ego-cli', { endpoint: 'ego://new' });
@@ -45,7 +45,14 @@ async function engine(): Promise<{ eng: Engine; act: WebActuator }> {
     page = await (await browser.newContext()).newPage();
     act = WebActuator.fromPage(page);
   }
-  const backend = new BwBackend({ bin: MOCK, env: { ...process.env, BW_SESSION: 'mock-session-token' } });
+  /** `hook` runs after prepare, just before the secret is opened (to change the page in between). */
+  class Hooked extends BwBackend {
+    override async openSecret(...a: Parameters<BwBackend['openSecret']>) {
+      await hook?.();
+      return super.openSecret(...a);
+    }
+  }
+  const backend = new Hooked({ bin: MOCK, env: { ...process.env, BW_SESSION: 'mock-session-token' } });
   return { eng: new Engine(backend, act), act };
 }
 const audits = () => (existsSync(auditFile) ? readFileSync(auditFile, 'utf8') : '');
@@ -66,6 +73,29 @@ beforeAll(async () => {
       item('good', [good]),
       item('good-nosubmit', [good], [{ name: 'blindfill.submit', value: 'none', type: 0 }]),
       item('good-cdn', [good, cdn]),
+      item(
+        'good-cdn-rule',
+        [good, cdn],
+        [
+          {
+            name: 'blindfill.rules',
+            type: 0,
+            value: JSON.stringify({
+              version: 2,
+              rules: [
+                {
+                  id: 'framed',
+                  top_origin: good.slice(0, -1),
+                  frame: { selector: 'iframe', origin: cdn.slice(0, -1) },
+                  form: 'form',
+                  fields: { username: '#em', password: '#pw' },
+                  submit: { selector: 'button[type=submit]', kind: 'native' },
+                },
+              ],
+            }),
+          },
+        ],
+      ),
       item(
         'good-extra',
         [good],
@@ -228,29 +258,65 @@ describe('web actuator e2e (local fake sites)', () => {
     expect(sites.received).toHaveLength(0);
   });
 
-  it('cross-origin iframe: refused unless the item binds the frame origin', async () => {
-    const { eng, act } = await engine();
-    await expect(eng.fill({ item: 'good', url: good('/framed'), submit: true })).rejects.toMatchObject({
-      // ego-cli cannot see out-of-process frames at all, so it refuses for lack of a field
-      code: EGO ? 'AMBIGUOUS' : 'ORIGIN_MISMATCH',
-    });
+  it('frames: a rule-less fill never reaches a child frame, even a bound one; a frame rule does', async () => {
+    for (const [id, path] of [
+      ['good', '/framed'],
+      ['good-cdn', '/framed-bound'],
+    ]) {
+      const { eng, act } = await engine();
+      const err = await eng.fill({ item: id, url: good(path), submit: true }).catch((e) => e);
+      expect(err).toMatchObject({ code: 'AMBIGUOUS' });
+      expect(String(err.message)).toMatch(/blindfill\.rules rule/);
+      expect(act.policy.locked).toBe(false); // refused before any secret was read
+    }
     expect(sites.received).toHaveLength(0);
-    expect(act.policy.locked).toBe(false); // refused before any secret was read
     if (EGO) {
       // documented ego-cli limit: even a bound cross-origin frame is out of reach; refused, nothing typed
       const { eng: e2 } = await engine();
       await expect(
-        e2.fill({ item: 'good-cdn', url: good('/framed-bound'), submit: true }),
+        e2.fill({ item: 'good-cdn-rule', url: good('/framed-bound'), submit: true }),
       ).rejects.toBeTruthy();
       expect(sites.received).toHaveLength(0);
       return;
     }
     const { eng: e2 } = await engine();
-    const r = await e2.fill({ item: 'good-cdn', url: good('/framed-bound'), submit: true });
+    const r = await e2.fill({ item: 'good-cdn-rule', url: good('/framed-bound'), submit: true });
     expect(r.filled).toEqual(['username', 'password']);
     await expect.poll(() => sites.received.length).toBe(1);
     expect(sites.received[0]).toMatchObject({ host: 'cdn.localhost' });
     expect(sites.received[0].fields.password).toBe(CANARY);
+  });
+
+  describe('document identity: bound at prepare, never rebound', () => {
+    it('same-origin navigation between prepare and the secret write: refused, nothing typed', async () => {
+      const { eng } = await engine(() => page.goto(good('/simple')));
+      const err = await eng
+        .fill({ item: 'good', url: good('/simple'), fields: ['password'] })
+        .catch((e) => e);
+      expect(err).toMatchObject({ code: 'ACTUATOR' });
+      expect(String(err.message)).toMatch(/navigated/);
+      expect(String(err.message)).not.toContain(CANARY);
+      expect(await page.inputValue('input[type=password]')).toBe('');
+      expect(sites.received).toHaveLength(0);
+    });
+
+    it('rule frame replaced (same origin, same form) between prepare and the write: refused', async () => {
+      const { eng } = await engine(async () => {
+        const loaded = page.waitForEvent('framenavigated', (f) => f.url().includes('cdn.localhost'));
+        await page.evaluate(() => {
+          const f = document.querySelector('iframe') as HTMLIFrameElement;
+          f.replaceWith(f.cloneNode());
+        });
+        await (await loaded).waitForSelector('#pw');
+      });
+      const err = await eng
+        .fill({ item: 'good-cdn-rule', url: good('/framed-bound'), fields: ['password'] })
+        .catch((e) => e);
+      expect(err).toMatchObject({ code: 'ACTUATOR' });
+      expect(String(err.message)).toMatch(/frame was replaced/);
+      const frame = page.frames().find((f) => f.url().includes('cdn.localhost'))!;
+      expect(await frame.inputValue('#pw')).toBe('');
+    });
   });
 
   it('honeypot / hidden fields are never filled', async () => {
@@ -314,10 +380,12 @@ describe('web actuator e2e (local fake sites)', () => {
     const { act } = await engine();
     await act.navigate(good('/keys'));
     const any = () => true;
-    const r = await act.fillInto(() => act.locate({ role: 'password' }, any), 'x-not-a-real-secret', any);
+    await act.bindDocument([]);
+    const r = await act.fillInto(() => act.locate({ role: 'password' }), 'x-not-a-real-secret', any);
     expect(r.method).toBe('keys');
     await page.goto(good('/simple'));
-    const r2 = await act.fillInto(() => act.locate({ role: 'password' }, any), 'x-not-a-real-secret', any);
+    await act.bindDocument([]);
+    const r2 = await act.fillInto(() => act.locate({ role: 'password' }), 'x-not-a-real-secret', any);
     expect(r2.method).toBe('fill');
   });
 

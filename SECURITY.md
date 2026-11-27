@@ -18,7 +18,15 @@ blindfill defends against **the model and its logs**:
   secret, the whole output is withheld, so a scrubbed echo cannot confirm a guess.
 - Errors never echo caller input (rule ids, field and profile names), and evidence and rule
   selectors cannot probe values or input state (no `[value…]`, substring attribute matches,
-  text selectors or state pseudo-classes).
+  text selectors or state pseudo-classes). MCP schema-validation and unknown-tool errors return one
+  fixed code with no message.
+- A fill types only into the documents it was planned on: a navigation (same-origin included) or a
+  replaced frame between planning and a write fails the fill, and nothing is re-bound. Without a
+  rule, only the top document is searched; a field inside a frame needs a `blindfill.rules` rule.
+- Session state (`session.json`: post-fill lock and one-shot records) lives in a state directory
+  that must be owned by you with mode 0700 (otherwise refused). It is written atomically under a
+  lock file, and the lock and one-shot records only grow until `session stop`, so a CLI and an MCP
+  process running at once cannot clear each other's.
 - Changing secret values, origins, `blindfill.*` control fields or a password policy needs a
   person at a terminal. There is no command that reveals a stored secret.
 - Fill is one-shot: a Secret field is filled at most once per session and origin, and the
@@ -70,11 +78,11 @@ blindfill defends against **the model and its logs**:
     person does in the browser; it only refuses agent actions.
 14. **Outcome reporting is a small channel by design.** `verify` and `--expect-*` return
     booleans for caller-chosen structural selectors; they cannot select on values.
-15. **Rule-less fills are still looser than olliepm in two ways.** Without a rule, the form must be a
-    single login form and submit goes only through its one native POST button (see
-    [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)), but fields are still found in
-    any same-origin or item-bound frame and there is no document-identity binding between steps.
-    Use `blindfill.rules` for sites that matter, and for forms without a `<form>` element.
+15. **Rule-less fills are still looser than olliepm in one way.** Without a rule, the form must be a
+    single login form in the top document and submit goes only through its one native POST button
+    (see [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)), but olliepm's page-text
+    heuristics for newsletter and password-reset forms are not ported. Use `blindfill.rules` for
+    sites that matter, for forms without a `<form>` element and for fields inside frames.
 16. **Android companion trust.** Passwords pass through the companion's memory into the autofill
     framework and then the app, which receives them by design. The arm token travels as an `adb`
     argument (visible to the host user's processes for a moment). Any app on the phone can connect

@@ -1,4 +1,4 @@
-import type { ElementHandle, Frame, Page } from 'playwright-core';
+import type { ElementHandle, Frame, JSHandle, Page } from 'playwright-core';
 import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
@@ -24,7 +24,7 @@ import {
   type RuleScope,
 } from './rulescope.js';
 import type { Rule } from '../../rules.js';
-import { pick, pickNamed, scoreRole, type FieldDescriptor, type Pick, type Role } from './heuristics.js';
+import { pick, pickNamed, scoreRole, type FieldDescriptor, type Role } from './heuristics.js';
 import { getProvider } from './providers/registry.js';
 import type { ProviderCapabilities, ProviderConnection, ProviderOptions } from './providers/types.js';
 import { assertLoopbackEndpoint } from './providers/util.js';
@@ -107,6 +107,8 @@ export class WebActuator {
   policy: SessionPolicy;
   readonly capabilities: ProviderCapabilities;
   readonly providerId: string;
+  /** Documents bound by the last prepare (main frame + frames of located fields); fillInto never rebinds. */
+  private bound: Map<Frame, JSHandle> | null = null;
 
   private constructor(
     readonly page: Page,
@@ -192,25 +194,24 @@ export class WebActuator {
 
   // ---- detection ------------------------------------------------------------------------
 
+  /** Rule-less detection: main frame only. Fields in child frames are reachable only through a rule. */
   async detect(): Promise<Detected[]> {
     const out: Detected[] = [];
-    const top = this.page.mainFrame();
-    for (const frame of this.page.frames()) {
-      const frameUrl = frame.url();
-      if (!/^https?:\/\//i.test(frameUrl)) continue;
-      let handles: ElementHandle[];
+    const frame = this.page.mainFrame();
+    const frameUrl = frame.url();
+    if (!/^https?:\/\//i.test(frameUrl)) return out;
+    let handles: ElementHandle[];
+    try {
+      handles = (await frame.$$('input, textarea')).slice(0, 80);
+    } catch {
+      return out;
+    }
+    for (const handle of handles) {
       try {
-        handles = (await frame.$$('input, textarea')).slice(0, 80);
+        const desc = (await handle.evaluate(DESCRIBE_FIELD)) as FieldDescriptor;
+        out.push({ desc, handle, frame, inTop: true, frameUrl });
       } catch {
-        continue;
-      }
-      for (const handle of handles) {
-        try {
-          const desc = (await handle.evaluate(DESCRIBE_FIELD)) as FieldDescriptor;
-          out.push({ desc, handle, frame, inTop: frame === top, frameUrl });
-        } catch {
-          /* detached while scanning */
-        }
+        /* detached while scanning */
       }
     }
     return out;
@@ -281,74 +282,48 @@ export class WebActuator {
       title: globalScrubber.scrub(title),
       candidates: ds.map((d, i) => this.info(d, i)).filter((c) => c.usable || c.rejectedBecause.length),
       rejectedHidden: ds.filter((d) => d.desc.reasons.length > 0).length,
-      skippedFrames: this.page
-        .frames()
-        .filter((f) => !/^https?:/i.test(f.url()) && f !== this.page.mainFrame()).length,
+      skippedFrames: this.page.frames().length - 1,
     };
   }
 
-  /**
-   * Choose the field for a role/name. `isBound(url)` answers whether the vault item binds that URL.
-   * Fields in cross-origin frames the item does not bind are never chosen (refused loudly).
-   */
-  async locate(
-    what: { role: Role } | { name: string },
-    isBound: (url: string) => boolean,
-    ds?: Detected[],
-    _allowNames = true,
-  ): Promise<Detected> {
+  /** Choose the main-frame field for a role/name (rule-less path; child frames need a rule). */
+  async locate(what: { role: Role } | { name: string }, ds?: Detected[]): Promise<Detected> {
     const all = ds ?? (await this.detectStable());
-    const topOrigin = new URL(this.page.url()).origin;
-    const allowed = all.filter(
-      (d) => d.inTop || new URL(d.frameUrl).origin === topOrigin || isBound(d.frameUrl),
-    );
-    const run = (set: Detected[]): Pick<Detected> =>
-      'role' in what ? pick(set, what.role) : pickNamed(set, what.name);
-    const label = 'role' in what ? what.role : `"${what.name}"`;
-    const r = run(allowed);
+    const r = 'role' in what ? pick(all, what.role) : pickNamed(all, what.name);
     if (r.kind === 'ok') return r.item;
-    if (r.kind === 'none') {
-      const u = run(all);
-      if (u.kind === 'ok' && !allowed.includes(u.item))
-        throw new BlindfillError(
-          'ORIGIN_MISMATCH',
-          `the ${label} field is inside a cross-origin frame (${new URL(u.item.frameUrl).origin}) that the vault item does not bind: refused`,
-        );
-    }
+    const label = 'role' in what ? what.role : `"${what.name}"`;
     const names = this.policy.locked ? [] : all.map((d, i) => this.info(d, i)).filter((c) => c.usable);
+    const framed =
+      this.page.frames().length > 1
+        ? '; fields inside frames are filled only through a blindfill.rules rule'
+        : '';
     const msg =
       r.kind === 'ambiguous'
         ? `ambiguous ${label} field: ${r.items.length} similar candidates; not guessing`
-        : `no confident ${label} field (best score ${r.best} < threshold)`;
+        : `no confident ${label} field (best score ${r.best} < threshold)${framed}`;
     const e = new BlindfillError('AMBIGUOUS', msg) as BlindfillError & { candidates?: CandidateInfo[] };
     e.candidates = names;
     throw e;
   }
 
   /**
-   * Locate a field by an explicit CSS selector from the vault item's blindfill.rules.
-   * Only frames the item binds are searched; the selector must match exactly one usable element.
+   * Locate a field by a legacy (v1) CSS selector from the vault item's blindfill.rules. Main frame only:
+   * v1 selectors name no frame. The selector must match exactly one usable element.
    */
-  async locateBySelector(selector: string, isBound: (url: string) => boolean): Promise<Detected> {
-    const top = this.page.mainFrame();
-    const topOrigin = new URL(this.page.url()).origin;
+  async locateBySelector(selector: string): Promise<Detected> {
+    const frame = this.page.mainFrame();
+    const frameUrl = frame.url();
     const found: Detected[] = [];
-    for (const frame of this.page.frames()) {
-      const frameUrl = frame.url();
-      if (!/^https?:\/\//i.test(frameUrl)) continue;
-      const inTop = frame === top;
-      if (!inTop && new URL(frameUrl).origin !== topOrigin && !isBound(frameUrl)) continue;
-      let hs: ElementHandle[];
-      try {
-        hs = await frame.$$(selector);
-      } catch {
-        throw new BlindfillError('POLICY', 'blindfill.rules contains an invalid selector');
-      }
-      for (const handle of hs) {
-        const desc = (await handle.evaluate(DESCRIBE_FIELD)) as FieldDescriptor;
-        if (desc.reasons.length === 0 && !desc.disabled && !desc.readOnly)
-          found.push({ desc, handle, frame, inTop, frameUrl });
-      }
+    let hs: ElementHandle[];
+    try {
+      hs = await frame.$$(selector);
+    } catch {
+      throw new BlindfillError('POLICY', 'blindfill.rules contains an invalid selector');
+    }
+    for (const handle of hs) {
+      const desc = (await handle.evaluate(DESCRIBE_FIELD)) as FieldDescriptor;
+      if (desc.reasons.length === 0 && !desc.disabled && !desc.readOnly)
+        found.push({ desc, handle, frame, inTop: true, frameUrl });
     }
     if (found.length !== 1)
       throw new BlindfillError(
@@ -388,6 +363,37 @@ export class WebActuator {
     );
   }
 
+  /** Bind the current documents (main frame + `frames`) at the end of prepare. */
+  async bindDocument(frames: Frame[]): Promise<void> {
+    const old = this.bound;
+    const m = new Map<Frame, JSHandle>();
+    for (const f of new Set([this.page.mainFrame(), ...frames])) m.set(f, await f.evaluateHandle('document'));
+    this.bound = m;
+    for (const h of old?.values() ?? []) await h.dispose().catch(() => undefined);
+  }
+
+  /**
+   * The field must live in the document bound at prepare, and the main frame must still show its bound
+   * document. A cross-document navigation (same-origin included) or a replaced frame invalidates the
+   * handle's execution context, so the comparison throws and we refuse. pushState keeps the document.
+   */
+  private async assertBoundDocument(d: Detected): Promise<void> {
+    const top = this.page.mainFrame();
+    const topDoc = this.bound?.get(top);
+    const fieldDoc = this.bound?.get(d.frame);
+    const same =
+      !!topDoc &&
+      !!fieldDoc &&
+      !d.frame.isDetached() &&
+      (await top.evaluate((doc) => doc === document, topDoc).catch(() => false)) &&
+      (await d.handle.evaluate((el, doc) => el.ownerDocument === doc, fieldDoc).catch(() => false));
+    if (!same)
+      throw new BlindfillError(
+        'ACTUATOR',
+        'the page navigated or a frame was replaced after the fill was prepared; refusing to type',
+      );
+  }
+
   /**
    * Write a value into the field chosen by `relocate`, verifying exact content, surviving one SPA
    * re-render, and re-checking origin binding immediately before typing. Throws; never returns the value.
@@ -407,6 +413,7 @@ export class WebActuator {
           'ORIGIN_MISMATCH',
           'the page changed to an origin the item does not bind; refusing to type',
         );
+      await this.assertBoundDocument(d);
       try {
         const method = await this.fillOnce(d, str);
         await sleep(160); // SPA frameworks may re-render and wipe the value right after input

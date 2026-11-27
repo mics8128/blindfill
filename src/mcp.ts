@@ -11,7 +11,7 @@ import { audit } from './core/audit.js';
 import { attach, loadSession, stopSession } from './actuators/web/session.js';
 import { WebActuator } from './actuators/web/web.js';
 import { SessionPolicy } from './core/policy.js';
-import type { BlindfillError } from './core/types.js';
+import { BlindfillError } from './core/types.js';
 
 const CONTRACT =
   'Blindfill contract: secret-class fields (password, TOTP seed, hidden fields, card numbers, keys) are write-only. ' +
@@ -56,11 +56,13 @@ async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
   try {
     return reply(await fn());
   } catch (e) {
+    // only our own errors carry a message; anything else (Playwright, Node, backends) is a fixed code
+    if (!(e instanceof BlindfillError)) return reply({ ok: false, error: { code: 'INTERNAL' } }, true);
     const be = e as BlindfillError & { candidates?: unknown };
     return reply(
       {
         ok: false,
-        error: { code: be.code ?? 'ERROR', message: String(be.message) },
+        error: { code: be.code, message: String(be.message) },
         candidates: be.candidates,
       },
       true,
@@ -94,6 +96,11 @@ const expectShape = z
 
 export function buildServer(): McpServer {
   const server = new McpServer({ name: 'blindfill', version: '0.1.0-alpha.0' });
+  // Every error the SDK's tool dispatch catches (schema validation, unknown tool, a throwing handler) ends
+  // in createToolError(message); its messages can echo arguments, so they become one fixed code.
+  const sdk = server as unknown as { createToolError: (message: string) => ToolResult }; // private in the SDK typings
+  if (typeof sdk.createToolError !== 'function') throw new Error('MCP SDK changed: createToolError is gone');
+  sdk.createToolError = () => reply({ ok: false, error: { code: 'INVALID_REQUEST' } }, true);
 
   server.registerTool(
     'probe',
