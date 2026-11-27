@@ -63,6 +63,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
 2. Ollie's real-use test round, recorded in `docs/TESTED.md`; then align README x5, SECURITY.md,
    this file and the website with it.
 3. Remaining partial rows in docs/MIGRATING-FROM-OLLIEPM.md section 3 (MCP `profile_login`/`list_credentials`).
-4. Owner decisions still open: migrate ~15 olliepm items into the Vault, `agent-ollie` collection
-   permission (read-only suggested), default web match strictness (Host vs Base domain), where rules
-   live (custom field vs Notes).
+4. Owner decisions (2026-11-27): migrate the ~15 olliepm items only after Ollie's real-Vault test
+   round (ask Mics and Ollie before touching real data); `agent-ollie` collection is **writable** (the
+   agent may store accounts it registers; set in the Vault, not in this repo); default web match stays
+   Host; rules live in the custom field `blindfill.rules`.
