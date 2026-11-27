@@ -198,8 +198,12 @@ blindfill defends against **the model and its logs**:
 24. **`ego-cli` passes filled values through Ego Lite's Node runtime** (supported provider; owner
     decision 2026-11-28). Values travel as CDP `Input.insertText` parameters through Ego's own
     closed-source agent runtime, outside blindfill's control. Cross-origin (out-of-process) iframes
-    are invisible to it, so their fields are refused. After a submit, Ego's password manager runs
-    Google's password leak check, as for a password typed by hand. Checked once on Ego Lite 0.6.3.17
+    are reached by attaching to their targets from the page's session (since 2026-11-28); a value
+    for such a frame travels the same way, on that frame's own session, after the same in-Ego origin
+    and focus re-check. Passkeys are not supported: Ego accepts the WebAuthn commands, but in a
+    2026-11-28 probe the page's ceremony never reached the virtual authenticator. After a submit,
+    Ego's password manager runs Google's password leak check, as for a password typed by hand.
+    Checked once on Ego Lite 0.6.3.17
     (2026-11-28, about 3 minutes, fake login page and fake passwords): outbound traffic (net-export
     with raw bytes, per-process sockets) carried the value only to the page it was typed into; no
     Sentry or PostHog report was sent, also after forced errors; a renderer crash dump did not

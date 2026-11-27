@@ -131,16 +131,27 @@ Chromium-based (0.6.3.17, Chrome/156), checked on the owner's Mac on 2026-11-27.
   element has focus.
   Not available on Windows (refused): the socket protection relies on a 0700 unix-socket directory, and a named-pipe
   port has not been written. Ego Lite itself has a Windows beta.
+  - Cross-origin (out-of-process) iframes (since 2026-11-28): each iframe target whose parent frame is listed is attached
+    from the page's session (`Target.attachToTarget`, non-flat: `page.cdp` cannot route a flat session); its commands go
+    out as `Target.sendMessageToTarget` and the replies come back through `page.events()`. Each frame's operations, typing
+    and its origin/focus re-check run on that frame's own session, so frame rules and document binding work as in Chromium.
   - Use: `blindfill session attach --endpoint ego://new` (a new task space; `ego://` selects `ego-cli`) or
     `--endpoint ego://72/p1` (a space this agent controls). A space blindfill creates keeps its page afterwards
     (`BLINDFILL_EGO_KEEP=0` closes it).
-  - Limits: cross-origin (out-of-process) iframes are invisible, so their fields are refused even when the item binds that
-    origin, and a rule-less refusal cannot mention them; a rule submit of kind `js` is refused (no request interception);
-    no passkeys (no WebAuthn); each connect starts an `ego-browser` process (~1 s).
+  - Limits: a rule submit of kind `js` is refused (no request interception); no passkeys; each connect starts an
+    `ego-browser` process (~1 s).
+  - Passkeys probe (2026-11-28, owner's Mac, screen locked): Ego accepts `WebAuthn.enable`, `addVirtualAuthenticator` and
+    `getCredentials` on `page.cdp`, but the page's `navigator.credentials.create()` never reached the virtual
+    authenticator (no WebAuthn event, no credential). The owner's Ego profile has the Bitwarden extension, which replaces
+    `navigator.credentials.create/get` on every page (https: the call waits for its UI; `localhost`: `NotAllowedError`).
+    With those overrides removed and focus emulated, the native call still failed at once with `NotAllowedError`. A second
+    probe in a task space on an Ego profile with no extensions (owner-approved, local fake RP only, one tab, space closed
+    afterwards) failed the same way, with and without focus emulation. Both ran while the Mac was locked, so a lock-screen
+    refusal cannot be told apart from Ego blocking WebAuthn on agent pages. `ego-cli` does not support passkeys.
   - **Exception to the provider contract**: filled values pass through Ego's Node runtime (as CDP `Input.insertText`
     parameters). Everything below was checked for that reason.
   - Tested (`BLINDFILL_E2E_BROWSER=ego npx vitest run tests/e2e.test.ts`, owner's Mac, Ego Lite 0.6.3.17, 2026-11-28):
-    30 passed, 1 skipped (the replaced cross-origin rule frame); the frames test asserts the refusal above.
+    31 passed, including the cross-origin frame rule fill and the replaced cross-origin rule frame.
 - Disk leak test (2026-11-27, `ego-browser nodejs`, random fake password via `page.fill` and CDP `Input.insertText`): not
   found in `~/Library/Application Support/Citro Labs` (~1 GB), `~/Library/Caches` or `~/Library/Logs`, immediately and after 45 s.
 - **Outbound traffic check** (2026-11-28, owner's Mac, Ego Lite 0.6.3.17, `ego-cli` at `dbfe53f`; the provider has since

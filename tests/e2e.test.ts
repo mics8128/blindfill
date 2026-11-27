@@ -319,20 +319,10 @@ describe('web actuator e2e (local fake sites)', () => {
       const { eng, act } = await engine();
       const err = await eng.fill({ item: id, url: good(path), submit: true }).catch((e) => e);
       expect(err).toMatchObject({ code: 'AMBIGUOUS' });
-      // ego-cli does not see the cross-origin child frame at all, so its refusal lacks the frame hint
-      if (!EGO) expect(String(err.message)).toMatch(/blindfill\.rules rule/);
+      expect(String(err.message)).toMatch(/blindfill\.rules rule/);
       expect(act.policy.locked).toBe(false); // refused before any secret was read
     }
     expect(sites.received).toHaveLength(0);
-    if (EGO) {
-      // documented ego-cli limit: even a bound cross-origin frame is out of reach; refused, nothing typed
-      const { eng: e2 } = await engine();
-      await expect(
-        e2.fill({ item: 'good-cdn-rule', url: good('/framed-bound'), submit: true }),
-      ).rejects.toBeTruthy();
-      expect(sites.received).toHaveLength(0);
-      return;
-    }
     const { eng: e2 } = await engine();
     const r = await e2.fill({ item: 'good-cdn-rule', url: good('/framed-bound'), submit: true });
     expect(r.filled).toEqual(['username', 'password']);
@@ -354,27 +344,38 @@ describe('web actuator e2e (local fake sites)', () => {
       expect(sites.received).toHaveLength(0);
     });
 
-    // ego-cli cannot reach a cross-origin rule frame (documented limit; covered by the frames test above)
-    it.skipIf(EGO)(
-      'rule frame replaced (same origin, same form) between prepare and the write: refused',
-      async () => {
-        const { eng } = await engine(async () => {
-          const loaded = page.waitForEvent('framenavigated', (f) => f.url().includes('cdn.localhost'));
-          await page.evaluate(() => {
-            const f = document.querySelector('iframe') as HTMLIFrameElement;
-            f.replaceWith(f.cloneNode());
-          });
-          await (await loaded).waitForSelector('#pw');
+    it('rule frame replaced (same origin, same form) between prepare and the write: refused', async () => {
+      const cdnFrame = () => page.frames().find((f) => f.url().includes('cdn.localhost'));
+      const { eng } = await engine(async () => {
+        const before = cdnFrame();
+        await page.mainFrame().evaluate(() => {
+          const f = document.querySelector('iframe') as HTMLIFrameElement;
+          f.replaceWith(f.cloneNode());
         });
-        const err = await eng
-          .fill({ item: 'good-cdn-rule', url: good('/framed-bound'), fields: ['password'] })
-          .catch((e) => e);
-        expect(err).toMatchObject({ code: 'ACTUATOR' });
-        expect(String(err.message)).toMatch(/frame was replaced/);
-        const frame = page.frames().find((f) => f.url().includes('cdn.localhost'))!;
-        expect(await frame.inputValue('#pw')).toBe('');
-      },
-    );
+        // polled rather than page.waitForEvent('framenavigated'): the ego-cli page has no events
+        await expect
+          .poll(async () => {
+            const f = cdnFrame();
+            // laid out, not just present: a field with no box yet is refused as unusable before the identity check
+            return (
+              !!f &&
+              f !== before &&
+              (await f.evaluate(
+                () => (document.querySelector('#pw')?.getBoundingClientRect().width ?? 0) > 4,
+              ))
+            );
+          })
+          .toBe(true);
+      });
+      const err = await eng
+        .fill({ item: 'good-cdn-rule', url: good('/framed-bound'), fields: ['password'] })
+        .catch((e) => e);
+      expect(err).toMatchObject({ code: 'ACTUATOR' });
+      expect(String(err.message)).toMatch(/frame was replaced/);
+      expect(
+        await cdnFrame()!.evaluate(() => (document.querySelector('#pw') as HTMLInputElement).value),
+      ).toBe('');
+    });
   });
 
   it('honeypot / hidden fields are never filled', async () => {

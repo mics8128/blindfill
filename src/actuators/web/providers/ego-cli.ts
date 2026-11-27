@@ -12,11 +12,11 @@
  * Endpoint: `ego://new` (a fresh task space) or `ego://<space>/<page>` (a space this agent already
  * controls, e.g. `ego://72/p1`).
  *
- * Limits: only frames in the page's own renderer are visible (cross-origin out-of-process
- * iframes are not, so fields inside them are never filled); `page.url()`/`frames()` are served
+ * Cross-origin (out-of-process) iframes are reached by attaching to their targets from the page's
+ * session; each frame's operations run on its own session. `page.url()`/`frames()` are served
  * from a cache refreshed every 150 ms. To close that window, every text input re-checks inside
- * Ego, in the same call, that the target element's document still has the origin seen at scan
- * time and that the element holds focus.
+ * Ego, in the same call and on the element's own frame session, that the element's document still
+ * has the origin seen at scan time and that the element holds focus.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -60,16 +60,72 @@ if (CFG.space != null) {
 const page = CFG.page ? task.page(CFG.page) : (await task.pages())[0];
 if (!page) throw new Error("no page in the ego task space");
 const cdp = (m, p) => page.cdp(m, p);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const KEYS = {
   Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
   Backspace: { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 },
 };
+// CDP sessions: the page's own, and one per cross-origin iframe target. page.cdp cannot route a flat
+// session, so those are attached non-flat: commands go out as Target.sendMessageToTarget and replies come
+// back as page events. page.events() is read-and-clear and only drain() reads it.
+const top = { id: "page", cdp };
+const subs = new Map(); // sessionId -> session
+const byTarget = new Map(); // targetId -> Promise<session | null>
+let owner = new Map(); // frameId -> session, rebuilt by frames()
+const drain = async () => {
+  for (const e of await page.events()) {
+    if (e.method === "Target.receivedMessageFromTarget") {
+      const s = subs.get(e.params.sessionId);
+      const m = JSON.parse(e.params.message);
+      const p = s && s.pending.get(m.id);
+      if (!p) continue;
+      s.pending.delete(m.id);
+      if (m.error) p.rej(new Error(m.error.message));
+      else p.res(m.result);
+    } else if (e.method === "Target.detachedFromTarget") {
+      const s = subs.get(e.params.sessionId);
+      if (s) s.gone = true;
+    }
+  }
+};
+const subCdp = (s) => async (method, params = {}) => {
+  const id = ++s.seq;
+  const done = new Promise((res, rej) => s.pending.set(id, { res, rej }));
+  done.catch(() => {}); // may reject while polling; awaited below
+  await cdp("Target.sendMessageToTarget", { sessionId: s.id, message: JSON.stringify({ id, method, params }) });
+  const deadline = Date.now() + 20000;
+  while (s.pending.has(id)) {
+    if (s.gone || Date.now() > deadline) {
+      s.pending.delete(id);
+      throw new Error("frame session closed");
+    }
+    await drain();
+    if (s.pending.has(id)) await sleep(5);
+  }
+  return done;
+};
+const attach = (targetId) => {
+  if (!byTarget.has(targetId))
+    byTarget.set(targetId, cdp("Target.attachToTarget", { targetId, flatten: false }).then(
+      ({ sessionId }) => {
+        const s = { id: sessionId, seq: 0, pending: new Map(), gone: false };
+        s.cdp = subCdp(s);
+        subs.set(sessionId, s);
+        return s;
+      },
+      () => (byTarget.delete(targetId), null),
+    ));
+  return byTarget.get(targetId);
+};
+// A frame not (yet) listed runs on the page's session; a call for an unlisted cross-origin frame fails there.
+const sessOf = (frameId) => owner.get(frameId) ?? top;
 // One isolated world per frame document, so handles from separate calls can be compared and passed together.
 const worlds = new Map();
 const world = async (frameId) => {
-  if (!worlds.has(frameId))
-    worlds.set(frameId, (await cdp("Page.createIsolatedWorld", { frameId, worldName: "blindfill" })).executionContextId);
-  return worlds.get(frameId);
+  const s = sessOf(frameId), k = s.id + "/" + frameId;
+  if (!worlds.has(k))
+    worlds.set(k, (await s.cdp("Page.createIsolatedWorld", { frameId, worldName: "blindfill" })).executionContextId);
+  return worlds.get(k);
 };
 // Handles inside an argument arrive as {__h: i}; they are passed as extra CDP arguments and put back in place.
 const REVIVE = "const rv = (x) => x && typeof x === 'object' ? ('__h' in x ? hs[x.__h] : Array.isArray(x) ? x.map(rv) : Object.fromEntries(Object.entries(x).map(([k, v]) => [k, rv(v)]))) : x;";
@@ -82,23 +138,48 @@ const OPS = {
   url: () => page.url(),
   title: () => page.title(),
   goto: async (u) => { await page.goto(u, { timeout: 20000 }); },
+  // the page's frames, then each cross-origin iframe target whose parent frame is already listed
   frames: async () => {
-    const out = [];
-    const walk = (n, parentId) => {
+    const out = [], own = new Map();
+    const walk = (n, parentId, s) => {
+      if (own.has(n.frame.id)) return;
+      own.set(n.frame.id, s);
       out.push({ id: n.frame.id, url: n.frame.url + (n.frame.urlFragment || ""), parentId });
-      for (const c of n.childFrames || []) walk(c, n.frame.id);
+      for (const c of n.childFrames || []) walk(c, n.frame.id, s);
     };
-    walk((await cdp("Page.getFrameTree")).frameTree, null);
+    walk((await cdp("Page.getFrameTree")).frameTree, null, top);
+    const targets = (await task.cdp("Target.getTargets")).targetInfos.filter((t) => t.type === "iframe");
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const t of targets) {
+        if (own.has(t.targetId) || !own.has(t.parentFrameId)) continue;
+        const s = await attach(t.targetId);
+        const tree = s && !s.gone && (await s.cdp("Page.getFrameTree").catch(() => null));
+        if (!tree) continue;
+        walk(tree.frameTree, t.parentFrameId, s);
+        grew = true;
+      }
+    }
+    owner = own;
+    for (const [tid, p] of byTarget) {
+      const s = await p;
+      if (s && !s.gone && own.has(tid)) continue;
+      byTarget.delete(tid);
+      if (s) {
+        subs.delete(s.id);
+        if (!s.gone) await cdp("Target.detachFromTarget", { sessionId: s.id }).catch(() => {});
+      }
+    }
     return out;
   },
   // expression in the frame's world; a stale world (the frame navigated) is replaced once
   evalIn: async (frameId, expr, byValue) => {
     for (let i = 0; ; i++) {
       try {
-        return result(await cdp("Runtime.evaluate", { expression: expr, contextId: await world(frameId), returnByValue: byValue }), byValue);
+        return result(await sessOf(frameId).cdp("Runtime.evaluate", { expression: expr, contextId: await world(frameId), returnByValue: byValue }), byValue);
       } catch (e) {
         if (i || e.message === "EVAL") throw e;
-        worlds.delete(frameId);
+        worlds.delete(sessOf(frameId).id + "/" + frameId);
       }
     }
   },
@@ -108,7 +189,7 @@ const OPS = {
     const self = thisId != null;
     for (let i = 0; ; i++) {
       try {
-        const r = await cdp("Runtime.callFunctionOn", {
+        const r = await sessOf(frameId).cdp("Runtime.callFunctionOn", {
           ...(self ? { objectId: thisId } : { executionContextId: await world(frameId) }),
           functionDeclaration: "function (spec, ...hs) { " + REVIVE + " return (" + src + ")(" + (self ? "this, " : "") + "rv(spec)); }",
           arguments: [{ value: spec }, ...hs.map((objectId) => ({ objectId }))],
@@ -118,33 +199,35 @@ const OPS = {
         return result(r, byValue);
       } catch (e) {
         if (i || self || hs.length || e.message === "EVAL") throw e;
-        worlds.delete(frameId);
+        worlds.delete(sessOf(frameId).id + "/" + frameId);
       }
     }
   },
-  release: async (oid) => { await cdp("Runtime.releaseObject", { objectId: oid }); },
-  // the frame id an <iframe> element shows
-  contentFrame: async (oid) => (await cdp("DOM.describeNode", { objectId: oid })).node.frameId ?? null,
+  release: async (frameId, oid) => { await sessOf(frameId).cdp("Runtime.releaseObject", { objectId: oid }); },
+  // the frame id an <iframe> element shows (a cross-origin iframe's frame id is its target id)
+  contentFrame: async (frameId, oid) => (await sessOf(frameId).cdp("DOM.describeNode", { objectId: oid })).node.frameId ?? null,
   queryAll: async (frameId, sel, limit) => {
     const expr = "Array.from(document.querySelectorAll(" + JSON.stringify(sel) + ")).slice(0, " + Number(limit) + ")";
     const r = await OPS.evalIn(frameId, expr, false).catch(() => { throw new Error("SELECTOR"); });
-    const p = await cdp("Runtime.getProperties", { objectId: r.h, ownProperties: true });
+    const p = await sessOf(frameId).cdp("Runtime.getProperties", { objectId: r.h, ownProperties: true });
     return p.result.filter((x) => /^\d+$/.test(x.name)).sort((a, b) => a.name - b.name).map((x) => x.value.objectId);
   },
-  focus: async (oid) => { await cdp("DOM.focus", { objectId: oid }); },
-  // Types only if the element's document still has the scanned origin and the element has focus.
-  typeInto: async (oid, origin, text, keys) => {
-    const ok = await cdp("Runtime.callFunctionOn", {
+  focus: async (frameId, oid) => { await sessOf(frameId).cdp("DOM.focus", { objectId: oid }); },
+  // Types only if the element's document still has the scanned origin and the element has focus. Input
+  // goes to the element's own frame session, so a cross-origin frame's text reaches that frame.
+  typeInto: async (frameId, oid, origin, text, keys) => {
+    const c = sessOf(frameId).cdp;
+    const ok = await c("Runtime.callFunctionOn", {
       objectId: oid,
       functionDeclaration: "function (o) { const r = this.getRootNode(); return this.ownerDocument.location.origin === o && (r.activeElement || this.ownerDocument.activeElement) === this; }",
       arguments: [{ value: origin }],
       returnByValue: true,
     });
     if (ok.result.value !== true) throw new Error("GUARD");
-    if (!keys) return void (await cdp("Input.insertText", { text }));
+    if (!keys) return void (await c("Input.insertText", { text }));
     for (const ch of text) {
-      await cdp("Input.dispatchKeyEvent", { type: "keyDown", text: ch, key: ch });
-      await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
+      await c("Input.dispatchKeyEvent", { type: "keyDown", text: ch, key: ch });
+      await c("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
     }
   },
   key: async (name) => {
@@ -159,13 +242,15 @@ const OPS = {
     await cdp("Input.dispatchKeyEvent", { type: k.text ? "keyDown" : "rawKeyDown", ...k });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: k.key, code: k.code, windowsVirtualKeyCode: k.windowsVirtualKeyCode });
   },
-  click: async (oid) => {
-    await cdp("Runtime.callFunctionOn", { objectId: oid, functionDeclaration: "function () { this.scrollIntoView({ block: 'center' }); }" });
-    const q = (await cdp("DOM.getBoxModel", { objectId: oid })).model.content;
+  // box and mouse events in the element's own frame session, i.e. in that frame's coordinates
+  click: async (frameId, oid) => {
+    const c = sessOf(frameId).cdp;
+    await c("Runtime.callFunctionOn", { objectId: oid, functionDeclaration: "function () { this.scrollIntoView({ block: 'center' }); }" });
+    const q = (await c("DOM.getBoxModel", { objectId: oid })).model.content;
     const x = (q[0] + q[2] + q[4] + q[6]) / 4, y = (q[1] + q[3] + q[5] + q[7]) / 4;
-    await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-    await cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
-    await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+    await c("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+    await c("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+    await c("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
   },
   screenshot: async () => (await cdp("Page.captureScreenshot", { format: "png" })).data,
 };
@@ -384,10 +469,10 @@ class EgoHandle {
     return this.oid === null ? this.value : this.evaluate('(o) => o');
   }
   async dispose(): Promise<void> {
-    if (this.oid !== null) await this.b.call('release', this.oid);
+    if (this.oid !== null) await this.b.call('release', this.frame.id, this.oid);
   }
   async contentFrame(): Promise<EgoFrame | null> {
-    const id = this.oid && (await this.b.call<string | null>('contentFrame', this.oid));
+    const id = this.oid && (await this.b.call<string | null>('contentFrame', this.frame.id, this.oid));
     return id ? this.frame.owner.frameById(id) : null;
   }
   async waitForElementState(_state: 'enabled', opts: { timeout: number }): Promise<void> {
@@ -401,7 +486,7 @@ class EgoHandle {
     await this.evaluate(SCROLL);
   }
   async focus(): Promise<void> {
-    await this.b.call('focus', this.oid);
+    await this.b.call('focus', this.frame.id, this.oid);
     this.frame.owner.state.focused = this;
   }
   /** Like Playwright's fill: focus, select the current content, replace it. */
@@ -412,10 +497,10 @@ class EgoHandle {
     else await this.type(value, false);
   }
   type(text: string, keys: boolean): Promise<void> {
-    return this.b.call('typeInto', this.oid, this.origin, text, keys);
+    return this.b.call('typeInto', this.frame.id, this.oid, this.origin, text, keys);
   }
   async click(): Promise<void> {
-    await this.b.call('click', this.oid);
+    await this.b.call('click', this.frame.id, this.oid);
   }
   async press(key: string): Promise<void> {
     await this.focus();
