@@ -606,14 +606,16 @@
                 <li>
                   <span class="pill warn" data-i18n="p_pk">limited</span>
                   <span data-i18n="sup_pk"
-                    ><b>Passkeys</b>: web sign-in only, Chromium only (CDP virtual authenticator), tested
-                    against a fake relying party. No counter write-back, no registration.</span
+                    ><b>Passkeys</b>: web sign-in on Chromium (CDP virtual authenticator) and Android app
+                    sign-in (signed on the host), tested against fake relying parties. No counter write-back,
+                    no registration.</span
                   >
                 </li>
                 <li>
                   <span class="pill gray" data-i18n="p_plan">not supported</span>
                   <span data-i18n="sup_plan"
-                    ><b>WebKit/Safari</b>: not supported. <b>Android</b>: not implemented (a stub).</span
+                    ><b>WebKit/Safari</b>: not supported. <b>Android</b>: companion APK (Android 14+), tested
+                    on one phone with a fake app; build it yourself.</span
                   >
                 </li>
               </ul>
@@ -629,7 +631,10 @@
             <article class="card plain">
               <h3 data-i18n="lim_ah">Not built yet</h3>
               <ul>
-                <li data-i18n="lim_a1">Web only. No Android actuator (it's a stub that throws).</li>
+                <li data-i18n="lim_a1">
+                  Android works only through the companion APK you build yourself, tested on one phone with a
+                  fake app; no WebView logins, no saving new logins.
+                </li>
                 <li data-i18n="lim_a2">
                   Passkeys: web sign-in on Chromium only. No counter write-back, no registration.
                 </li>
@@ -715,8 +720,10 @@
           <details>
             <summary data-i18n="q5">What about phones and passkeys?</summary>
             <p data-i18n="a5">
-              Android isn't implemented (the actuator is a stub). Passkeys work for web sign-in on Chromium
-              only, tested against a fake relying party: no counter write-back and no registration.
+              Android works through a companion APK (Android 14+): autofill for passwords and a credential
+              provider for passkeys, with the signature made on the host. Tested on one phone (Android 17)
+              with a fake app, not with real apps. Web passkeys work on Chromium only. Both were tested
+              against fake relying parties: no counter write-back and no registration.
             </p>
           </details>
           <details>
