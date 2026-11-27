@@ -144,7 +144,12 @@ export function buildServer(): McpServer {
         check: z.boolean().optional().describe('Plan only: no secret read, no field touched.'),
         diagnose: z.boolean().optional().describe('Value-free structural diagnosis of the recipe page.'),
         submit: z.boolean().optional().describe('Submit once after filling (default false).'),
-        page: z.number().int().min(0).optional().describe('Page index (list_pages) when several pages match.'),
+        page: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Page index (list_pages) when several pages match.'),
         revision: z
           .string()
           .optional()

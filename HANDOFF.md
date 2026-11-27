@@ -4,7 +4,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## State
 
-- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 221 passed, 11 skipped
+- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 228 passed, 11 skipped
   (opt-in Firefox, live-vault and Android-device tests).
 - Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
   `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
@@ -62,8 +62,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    ollie-ubuntu), including `item create|generate`.
 2. Ollie's real-use test round, recorded in `docs/TESTED.md`; then align README x5, SECURITY.md,
    this file and the website with it.
-3. Remaining partial rows in docs/MIGRATING-FROM-OLLIEPM.md section 3 (MCP `profile_login`/`list_credentials`).
-4. Owner decisions (2026-11-27): migrate the ~15 olliepm items only after Ollie's real-Vault test
+3. Owner decisions (2026-11-27): migrate the ~15 olliepm items only after Ollie's real-Vault test
    round (ask Mics and Ollie before touching real data); `agent-ollie` collection is **writable** (the
    agent may store accounts it registers; set in the Vault, not in this repo); default web match stays
    Host; rules live in the custom field `blindfill.rules`.
