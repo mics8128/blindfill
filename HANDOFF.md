@@ -4,7 +4,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## State
 
-- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 251 passed, 11 skipped
+- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 252 passed, 13 skipped
   (opt-in Firefox, live-vault and Android-device tests).
 - Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
   `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
