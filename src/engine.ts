@@ -1266,7 +1266,7 @@ export class Engine {
   }
 
   /**
-   * Passkey sign-in (web, Chromium with CDP). Checks the item binding and the passkey's rpId against
+   * Passkey sign-in (web: Chromium over CDP, Firefox/Camoufox over Marionette). Checks the item binding and the passkey's rpId against
    * the page before the key is read, then lets the page's own WebAuthn request use it once, then
    * writes the reported counter back to the vault.
    */
@@ -1299,11 +1299,20 @@ export class Engine {
         'rpId mismatch',
         new BlindfillError('ORIGIN_MISMATCH', 'the passkey rpId does not cover this page'),
       );
+    // Firefox cannot set BE; an RP that checks it against registration would reject a Bitwarden-made passkey
+    if (act.passkeyRoute === 'marionette' && meta.control.passkeyBe)
+      refuse(
+        'backup-eligible passkey in Firefox',
+        new BlindfillError(
+          'POLICY',
+          'this passkey was created backup-eligible (BE=1, as Bitwarden clients do) and Firefox can only sign with BE=0, which relying parties may reject: use Chromium, or a passkey registered through Firefox (blindfill.passkey_be=0)',
+        ),
+      );
     act.policy.assertFirstSecretFill(target.origin, 'passkey');
     act.policy.recordSecretFill(target.origin, 'passkey');
     this.persist();
     const h = await this.backend.openSecret(ref, 'passkey');
-    const r = await act.passkeyAssert(h, { click: req.click });
+    const r = await act.passkeyAssert(h, { click: req.click, backupEligible: meta.control.passkeyBe });
     const ev = r.asserted && req.expect ? await act.evidence(req.expect) : undefined;
     audit({
       event: 'passkey',
@@ -1325,7 +1334,7 @@ export class Engine {
   }
 
   /**
-   * Passkey registration (web, Chromium with CDP), add only (owner decision 2026-11-27, no terminal):
+   * Passkey registration (web: Chromium or Firefox/Camoufox), add only (owner decision 2026-11-27, no terminal):
    * the item must bind the page, have opted in (blindfill.registration=allow) and hold no passkey.
    * The page's own navigator.credentials.create() is answered once by an empty virtual authenticator;
    * the new key goes from the browser into the vault (one `bw edit`), never to the caller.
@@ -1408,6 +1417,7 @@ export class Engine {
         userHandle: c.userHandle,
         userName: meta.username,
         counter: c.signCount,
+        backupEligible: c.backupEligible,
         key: c.key,
       });
     } catch (e) {
@@ -1508,10 +1518,10 @@ export class Engine {
           signed = { credentialId: c.credentialId ?? '', count: stored === 0 ? 0 : stored + 1 };
           const count = Buffer.alloc(4);
           count.writeUInt32BE(signed.count);
-          // rpIdHash | flags UP+UV+BE+BS (as Bitwarden clients sign) | signCount
+          // rpIdHash | flags UP+UV, plus BE+BS unless created without (as Bitwarden clients sign) | signCount
           const authData = Buffer.concat([
             createHash('sha256').update(rpId!).digest(),
-            Buffer.from([0x1d]),
+            Buffer.from([meta.control.passkeyBe ? 0x1d : 0x05]),
             count,
           ]);
           const key = createPrivateKey({

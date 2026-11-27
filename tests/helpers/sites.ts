@@ -22,6 +22,8 @@ export async function startSites(): Promise<{
   const received: Received[] = [];
   const requested: string[] = [];
   const passkeyCounters = new Map<string, number>();
+  /** BE flag seen at registration; credentials put in the vault by a test count as Bitwarden-made (BE=1) */
+  const passkeyBe = new Map<string, boolean>();
   const page = (title: string, body: string, script = '') =>
     `<!doctype html><html><head><meta charset=utf-8><title>${title}</title></head><body>${body}<script>${script}</script></body></html>`;
 
@@ -75,7 +77,11 @@ export async function startSites(): Promise<{
           const ad = Buffer.from(fields.authenticatorData ?? '', 'base64url');
           const count = ad.length >= 37 ? ad.readUInt32BE(33) : -1;
           const stored = passkeyCounters.get(fields.id) ?? 0;
-          const ok = count >= 0 && !((count > 0 || stored > 0) && count <= stored) && (ad[32] & 0x08) !== 0;
+          const be = (ad[32] & 0x08) !== 0;
+          const ok =
+            count >= 0 &&
+            !((count > 0 || stored > 0) && count <= stored) &&
+            be === (passkeyBe.get(fields.id) ?? true);
           if (ok) passkeyCounters.set(fields.id, count);
           fields.verdict = ok ? 'accepted' : 'rejected';
           res.writeHead(ok ? 200 : 400).end();
@@ -84,7 +90,10 @@ export async function startSites(): Promise<{
         if (u.pathname === '/passkey-register') {
           // the RP keeps the registration counter; the test keeps the public key (fields.publicKey)
           const ad = Buffer.from(fields.authenticatorData ?? '', 'base64url');
-          if (ad.length >= 37) passkeyCounters.set(fields.id, ad.readUInt32BE(33));
+          if (ad.length >= 37) {
+            passkeyCounters.set(fields.id, ad.readUInt32BE(33));
+            passkeyBe.set(fields.id, (ad[32] & 0x08) !== 0);
+          }
           res.writeHead(200).end();
           return;
         }

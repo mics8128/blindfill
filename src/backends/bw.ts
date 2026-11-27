@@ -186,6 +186,11 @@ export class BwBackend extends RawItemBackend {
           },
         ],
       };
+      // a stale flag on a passkey-less item must not describe the new passkey
+      raw.fields = [
+        ...(raw.fields ?? []).filter((f) => f.name?.toLowerCase() !== 'blindfill.passkey_be'),
+        ...(p.backupEligible ? [] : [{ name: 'blindfill.passkey_be', value: '0', type: 0 }]),
+      ];
     });
   }
 

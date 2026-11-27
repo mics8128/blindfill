@@ -59,6 +59,9 @@ export const firefoxConnect: BrowserProvider = {
   async connect(opts) {
     const endpoint = resolveEndpoint(opts);
     assertLoopbackEndpoint(endpoint);
+    // shortcut: endpoint comes from options or env, not the session file; persist it there if users ask
+    const marionette = opts.marionette ?? process.env.BLINDFILL_MARIONETTE;
+    if (marionette) assertLoopbackEndpoint(`http://${marionette}`);
     const errors: string[] = [];
     let browser: Browser | null = null;
     for (const c of await candidates(opts)) {
@@ -89,6 +92,7 @@ export const firefoxConnect: BrowserProvider = {
       context,
       browser: b,
       capabilities: firefoxConnect.capabilities,
+      marionette,
       close: () => b.close().catch(() => undefined), // connected browser: disconnects, server keeps running
     };
   },

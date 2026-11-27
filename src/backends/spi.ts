@@ -38,6 +38,8 @@ export interface NewPasskey {
   userHandle: string;
   userName?: string;
   counter: number;
+  /** false when created through Firefox (BE=0); stored as blindfill.passkey_be=0 */
+  backupEligible: boolean;
   key: SecretHandle;
 }
 
@@ -86,6 +88,7 @@ export const DEFAULT_CONTROL: ControlFields = {
   signers: [],
   notesReadable: false,
   registration: false,
+  passkeyBe: true,
 };
 
 /** Parse blindfill.* control fields given as name -> value. Shared by backends. */
@@ -102,6 +105,7 @@ export function parseControl(fields: Record<string, string>): ControlFields {
         .filter(Boolean);
     else if (key === 'blindfill.notes') c.notesReadable = v.trim().toLowerCase() === 'readable';
     else if (key === 'blindfill.registration') c.registration = v.trim().toLowerCase() === 'allow';
+    else if (key === 'blindfill.passkey_be') c.passkeyBe = v.trim() !== '0';
     else if (key === 'blindfill.password_policy') {
       try {
         c.passwordPolicy = JSON.parse(v);

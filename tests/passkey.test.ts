@@ -101,6 +101,10 @@ beforeAll(async () => {
       regItem('pk-reg', [OPT_IN]),
       regItem('pk-reg2', [OPT_IN]),
       regItem('pk-noopt', []),
+      {
+        ...passkeyItem('pk-be0', 'good.localhost'),
+        fields: [{ name: 'blindfill.passkey_be', value: '0', type: 0 }],
+      },
     ]),
   );
   process.env.BLINDFILL_MOCK_BW_ITEMS = itemsFile;
@@ -176,6 +180,25 @@ describe('passkey sign-in (Chromium virtual authenticator)', () => {
     const r = await (await engine()).passkey({ item: 'pk-five', url: `${O()}/passkey`, click: '#pk' });
     expect(r).toMatchObject({ status: 'asserted', sign_count: 6, counter_written_back: true });
     expect(vaultCounter('pk-five')).toBe('6');
+  }, 60_000);
+
+  it('signs a Firefox-made passkey (blindfill.passkey_be=0) with BE=BS=0; the strict RP accepts it', async () => {
+    // the RP saw this credential registered with BE=0 (flags UP+UV+AT), counter 0
+    const raw = vaultCreds('pk-be0')[0].credentialId.replace(/-/g, '');
+    const authData = Buffer.concat([Buffer.alloc(32), Buffer.from([0x45]), Buffer.alloc(4)]);
+    await fetch(`${O()}/passkey-register`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        id: Buffer.from(raw, 'hex').toString('base64url'),
+        authenticatorData: authData.toString('base64url'),
+      }),
+    });
+    sites.received.length = 0;
+    const r = await (await engine()).passkey({ item: 'pk-be0', url: `${O()}/passkey`, click: '#pk' });
+    const a = sites.received.find((x) => x.path === '/passkey')!.fields;
+    expect(Buffer.from(a.authenticatorData, 'base64url')[32] & 0x18).toBe(0);
+    expect(a.verdict).toBe('accepted');
+    expect(r).toMatchObject({ status: 'asserted', sign_count: 1 });
   }, 60_000);
 
   it('refuses before reading the key: lookalike origin, rpId that does not cover the host, no CDP', async () => {

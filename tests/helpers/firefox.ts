@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,14 +10,22 @@ import { join } from 'node:path';
  */
 export interface FirefoxServer {
   endpoint: string;
+  /** Marionette host:port of the same browser (for passkeys) */
+  marionette: string;
   kind: string;
   stop: () => Promise<void>;
 }
 
+// Started like Ollie's shared Camoufox: -marionette and the WebAuthn softtoken prefs. Port 0 (Firefox
+// writes the port it took to MarionetteActivePort in the profile) so it never collides with a running 2828.
 const SERVE_PY = `
 import sys
 from camoufox.server import launch_server
-launch_server(headless=True)
+launch_server(headless=True, args=['-marionette'], firefox_user_prefs={
+  'marionette.port': 0,
+  'security.webauth.webauthn_enable_softtoken': True,
+  'security.webauth.webauthn_enable_usbtoken': False,
+})
 `;
 
 function pythonCandidates(): string[] {
@@ -44,7 +52,13 @@ export async function startCamoufoxServer(): Promise<FirefoxServer> {
       ? join(homedir(), '.local/share/camoufox-data')
       : undefined);
   const child: ChildProcess = spawn(py, ['-c', SERVE_PY], {
-    env: { ...process.env, HOME: home, XDG_RUNTIME_DIR: run, ...(cache ? { XDG_CACHE_HOME: cache } : {}) },
+    env: {
+      ...process.env,
+      HOME: home,
+      TMPDIR: root, // the temp profile (and its MarionetteActivePort) lands under root
+      XDG_RUNTIME_DIR: run,
+      ...(cache ? { XDG_CACHE_HOME: cache } : {}),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   });
@@ -66,9 +80,22 @@ export async function startCamoufoxServer(): Promise<FirefoxServer> {
     child.stderr!.on('data', on);
     child.on('exit', () => reject(new Error('camoufox server exited: ' + out.slice(-300))));
   });
+  let marionette = '';
+  for (let i = 0; i < 100 && !marionette; i++) {
+    for (const d of readdirSync(root)) {
+      const f = join(root, d, 'MarionetteActivePort');
+      if (existsSync(f)) marionette = `127.0.0.1:${readFileSync(f, 'utf8').trim()}`;
+    }
+    if (!marionette) await new Promise((r) => setTimeout(r, 100));
+  }
+  if (!marionette) {
+    process.kill(-child.pid!, 'SIGKILL');
+    throw new Error('camoufox started without Marionette');
+  }
   return {
     endpoint,
-    kind: 'camoufox (python launch_server, headless, temp profile)',
+    marionette,
+    kind: 'camoufox (python launch_server, headless, temp profile, -marionette + softtoken prefs)',
     stop: async () => {
       try {
         process.kill(-child.pid!, 'SIGTERM');
