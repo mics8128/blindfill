@@ -4,7 +4,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## State
 
-- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 252 passed, 13 skipped
+- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 263 passed, 14 skipped
   (opt-in Firefox, live-vault and Android-device tests).
 - Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
   `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
@@ -26,7 +26,9 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   websites. Passkey data shape was checked by hand with `bw` (create and read back of a fake item,
   since deleted); real-client-created passkeys unverified.
 - Passkeys: web sign-in through a Chromium virtual authenticator and Android host signing, with the
-  counter written back to the vault (no terminal) and BE=BS=1 like Bitwarden clients; web
+  counter written back to the vault (no terminal) and BE=BS=1 like Bitwarden clients; Android app
+  registration through the companion (`android passkey-register --rp-id`, add only; fake app on the
+  emulator and the Xperia, create then sign in); web
   registration in Chromium (`passkey register`, add only, opted-in items); Firefox/Camoufox sign-in and
   registration over Marionette (`BLINDFILL_MARIONETTE`, BE=0 recorded as `blindfill.passkey_be=0`,
   Bitwarden-made passkeys refused there). Tested against a strict fake relying party (Firefox: opt-in

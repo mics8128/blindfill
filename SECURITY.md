@@ -75,7 +75,7 @@ blindfill defends against **the model and its logs**:
 6. **Shadow DOM, closed iframes and canvas inputs** are not supported by the field detector;
    blindfill stops (fail closed) rather than guessing.
 7. **Passkeys** are web sign-in and registration in Chromium and Firefox/Camoufox, and Android app
-   sign-in. Assertions set the user-verified flag without a biometric: the vault unlock and the item
+   sign-in and registration. Assertions set the user-verified flag without a biometric: the vault unlock and the item
    binding stand in for it. Chromium and Android set backup-eligible and backed-up as Bitwarden clients
    do, unless the item says `blindfill.passkey_be=0`. Firefox cannot set that flag: its passkeys are
    BE=0 and Bitwarden-made ones are refused there. Firefox needs its Marionette port (`-marionette`),
@@ -143,7 +143,10 @@ blindfill defends against **the model and its logs**:
     only; the new private key goes from the browser into the vault in one `bw edit` and the agent
     gets the rpId and credential id. If the vault write fails (`vault_write_failed`) or the key is
     unusable (`not_stored`), the relying party may keep a passkey the vault does not have; a person
-    must delete it there.
+    must delete it there. On Android (`android passkey-register --rp-id`) the item must also bind the
+    app (`androidapp://` + `blindfill.signers`) and `https://<rpId>`, which stands in for the Digital
+    Asset Links check a credential provider owes native apps; the host makes the key and stores it
+    before the phone gets the attestation, so a failed vault write leaves no passkey at the app.
 20. **An agent can rewrite an item's rules** (`item edit --set blindfill.rules=…` without a terminal,
     owner decision 2026-11-27). Rules still parse strictly and a rule naming an origin the item does
     not bind is refused at fill time, but

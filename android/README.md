@@ -20,7 +20,7 @@ blindfill android install --serial <adb serial> --set-services  # also make it t
 `uninstall` is printed too. The install command is CLI-only on purpose (no MCP tool): installing
 an app and switching a phone's autofill provider is a device-level change a person should start.
 
-Before every `android fill|passkey` the host reads the installed APK back from the phone
+Before every `android fill|passkey|passkey-register` the host reads the installed APK back from the phone
 (`pm path` + `adb exec-out cat`), parses its APK Signing Block and refuses (`status: refused`,
 nothing armed, no secret read) unless its only signer is the release certificate:
 

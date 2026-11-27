@@ -1,7 +1,8 @@
 # Passkey registration and sign-in in every browser: feasibility
 
 Status: research (2026-11-27). Since built: Phase 1 (counter write-back, BE/BS), Phase 2 (Chromium
-registration, add only) and Phase 3 (Firefox/Camoufox over Marionette); see ARCHITECTURE §3.8. Claims marked **[observed]** come from the
+registration, add only), Phase 3 (Firefox/Camoufox over Marionette) and Phase 4 (Android registration);
+see ARCHITECTURE §3.8 and §3.2. Claims marked **[observed]** come from the
 local experiments in §8; **[source]** from the cited specification or source code; **[inference]** were
 not verified.
 

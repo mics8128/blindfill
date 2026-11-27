@@ -142,6 +142,11 @@ interface Actuator {
   `new` hints) and multi-signer apps are refused. Passkeys: the companion builds clientDataJSON
   for the calling app (`android:apk-key-hash:` origin) and sends only its hash; the host signs
   `authData || hash` (flags UP+UV, counter 0), so the private key never reaches the phone.
+  Registration: `android passkey-register --rp-id` arms kind `passkey-create`; the provider offers a
+  create entry only for that rpId, `PasskeyCreateActivity` sends rp, user id, algorithms and the
+  `webauthn.create` client data hash; the host (item bound to the app, `https://<rpId>`, opted in,
+  no passkey; ES256 offered) makes a P-256 key, stores it, and returns a `none` attestation
+  (`src/core/webauthn.ts`, flags `0x5D`, zero AAGUID).
   The host only arms a companion whose installed APK (read back with `pm path` +
   `adb exec-out cat`, APK Signing Block v2/v3/v3.1 parsed in `apk.ts`) has exactly one signer
   with the pinned release certificate (`COMPANION_SIGNER`; cached per install path +
@@ -262,7 +267,9 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
 - Interop: the Bitwarden browser extension signed in on webauthn.io with a blindfill-made passkey, and
   blindfill then signed in after it (counter accepted). Open: credentials created by Bitwarden clients
   used by blindfill.
-- Android: Credential Manager prompts need biometric/device unlock; not promised.
+- Android: Credential Manager prompts need biometric/device unlock; not promised. Registration
+  through the companion (add only, section 3.2) is tested with the fake app on the emulator and the
+  Xperia: create, then sign in.
 
 ## 4. Threat model (short)
 
