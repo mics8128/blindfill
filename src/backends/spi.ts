@@ -29,6 +29,17 @@ export interface ItemPatch {
   uris?: string[];
   fields?: Record<string, string | null>;
 }
+/** A passkey just created by a browser authenticator. The private key (PKCS#8 DER) stays in `key`. */
+export interface NewPasskey {
+  /** raw credential id, base64url */
+  credentialId: string;
+  rpId: string;
+  /** user.id from the RP, base64url */
+  userHandle: string;
+  userName?: string;
+  counter: number;
+  key: SecretHandle;
+}
 
 /** ARCHITECTURE 3.1. Every backend must pass src/backends/_contract. */
 export interface Backend {
@@ -63,6 +74,11 @@ export interface Backend {
    * Never lowers it and changes nothing else, so it needs no person at a terminal (owner decision 2026-11-27).
    */
   raisePasskeyCounter?(ref: ItemRef, credentialId: string, counter: number): Promise<void>;
+  /**
+   * Optional (WRITE). Store a newly created passkey on an item that has none. Add only: an item that
+   * already holds a passkey is refused (replacing or deleting one needs a person at a terminal).
+   */
+  addPasskey?(ref: ItemRef, passkey: NewPasskey): Promise<void>;
 }
 
 export const DEFAULT_CONTROL: ControlFields = {

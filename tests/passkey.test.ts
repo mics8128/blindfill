@@ -67,6 +67,23 @@ async function engine() {
   const backend = new BwBackend({ bin: MOCK, env: { ...process.env, BW_SESSION: 'mock-session-token' } });
   return new Engine(backend, act);
 }
+const OPT_IN = { name: 'blindfill.registration', value: 'allow', type: 0 };
+/** an opted-in login item without a passkey (what `item generate` leaves behind) */
+const regItem = (id: string, fields: object[]) => ({
+  id,
+  type: 1,
+  name: `Reg ${id}`,
+  login: { username: 'pk-user', password: null, uris: [{ uri: `${O()}/`, match: 1 }] },
+  fields,
+});
+type VaultCred = Record<string, string>;
+const vaultCreds = (id: string): VaultCred[] =>
+  (
+    JSON.parse(readFileSync(itemsFile, 'utf8')) as {
+      id: string;
+      login: { fido2Credentials?: VaultCred[] };
+    }[]
+  ).find((x) => x.id === id)!.login.fido2Credentials ?? [];
 
 beforeAll(async () => {
   sites = await startSites();
@@ -80,6 +97,10 @@ beforeAll(async () => {
       passkeyItem('pk-other', 'other.localhost'),
       passkeyItem('pk-strict', 'good.localhost'),
       passkeyItem('pk-five', 'good.localhost', '5'),
+      { ...passkeyItem('pk-has', 'good.localhost'), fields: [OPT_IN] },
+      regItem('pk-reg', [OPT_IN]),
+      regItem('pk-reg2', [OPT_IN]),
+      regItem('pk-noopt', []),
     ]),
   );
   process.env.BLINDFILL_MOCK_BW_ITEMS = itemsFile;
@@ -201,4 +222,100 @@ describe('passkey sign-in (Chromium virtual authenticator)', () => {
     ).rejects.toMatchObject({ code: 'SECRET_ACCESS' });
     expect(sites.received).toHaveLength(0);
   });
+});
+
+describe('passkey registration (Chromium virtual authenticator, add only)', () => {
+  it('stores a Bitwarden-format passkey; a fresh session then signs in with it; no key in any output', async () => {
+    const eng = await engine();
+    sites.received.length = 0;
+    const r = await eng.passkeyRegister({
+      item: 'pk-reg',
+      url: `${O()}/passkey-register`,
+      click: '#reg',
+      expect: { urlIncludes: '/home' },
+    });
+    const reg = sites.received.find((x) => x.path === '/passkey-register')!.fields;
+    const [c] = vaultCreds('pk-reg');
+    const idBytes = Buffer.from(c.credentialId.slice(4), 'base64url');
+    expect(c).toMatchObject({
+      keyType: 'public-key',
+      keyAlgorithm: 'ECDSA',
+      keyCurve: 'P-256',
+      rpId: 'good.localhost',
+      discoverable: 'true',
+      counter: String(Buffer.from(reg.authenticatorData, 'base64url').readUInt32BE(33)),
+    });
+    expect(c.credentialId.startsWith('b64.') && idBytes.toString('base64url') === reg.id).toBe(true);
+    expect(c.userHandle).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(r).toMatchObject({
+      status: 'registered',
+      rp_id: 'good.localhost',
+      credential_id: c.credentialId,
+      item: { id: 'pk-reg' },
+      outcome: 'success',
+    });
+    const key = c.keyValue;
+    const keyForms = [key, Buffer.from(key, 'base64url').toString('base64')].map((k) => k.slice(10, 50));
+    const audit = readFileSync(join(dir, 'audit.jsonl'), 'utf8');
+    for (const o of [JSON.stringify(r), audit]) for (const k of keyForms) expect(o).not.toContain(k);
+
+    // one registration per session and origin; the item now holds a passkey anyway
+    await expect(
+      eng.passkeyRegister({ item: 'pk-reg2', url: `${O()}/passkey-register`, click: '#reg' }),
+    ).rejects.toThrow(/one-shot/);
+
+    sites.received.length = 0;
+    const s = await (await engine()).passkey({ item: 'pk-reg', url: `${O()}/passkey`, click: '#pk' });
+    expect(s).toMatchObject({ status: 'asserted', counter_written_back: true });
+    const a = sites.received.find((x) => x.path === '/passkey')!.fields;
+    expect(a.verdict).toBe('accepted');
+    const authData = Buffer.from(a.authenticatorData, 'base64url');
+    const signed = Buffer.concat([
+      authData,
+      createHash('sha256').update(Buffer.from(a.clientDataJSON, 'base64url')).digest(),
+    ]);
+    const pub = createPublicKey({
+      key: Buffer.from(reg.publicKey, 'base64url'),
+      format: 'der',
+      type: 'spki',
+    });
+    expect(verify('sha256', signed, pub, Buffer.from(a.signature, 'base64url'))).toBe(true);
+  }, 90_000);
+
+  it('refuses before the ceremony: no opt-in, an existing passkey, an unbound page', async () => {
+    const eng = await engine();
+    sites.received.length = 0;
+    const url = `${O()}/passkey-register`;
+    await expect(eng.passkeyRegister({ item: 'pk-noopt', url, click: '#reg' })).rejects.toMatchObject({
+      code: 'POLICY',
+    });
+    await expect(eng.passkeyRegister({ item: 'pk-has', url, click: '#reg' })).rejects.toMatchObject({
+      code: 'POLICY',
+    });
+    await expect(
+      eng.passkeyRegister({
+        item: 'pk-reg2',
+        url: `http://evil.localhost:${sites.port}/passkey-register`,
+        click: '#reg',
+      }),
+    ).rejects.toMatchObject({ code: 'ORIGIN_MISMATCH' });
+    expect(sites.received).toHaveLength(0);
+    expect(vaultCreds('pk-noopt')).toHaveLength(0);
+    expect(vaultCreds('pk-reg2')).toHaveLength(0);
+    expect(vaultCreds('pk-has')).toHaveLength(1);
+  }, 60_000);
+
+  it('an rpId outside the page is refused by the browser; nothing is written', async () => {
+    const eng = await engine();
+    sites.received.length = 0;
+    const r = await eng.passkeyRegister({
+      item: 'pk-reg2',
+      url: `${O()}/passkey-register?rp=evil.localhost`,
+      click: '#reg',
+      timeoutMs: 3000,
+    });
+    expect(r).toMatchObject({ status: 'not_used' });
+    expect(sites.received).toHaveLength(0);
+    expect(vaultCreds('pk-reg2')).toHaveLength(0);
+  }, 60_000);
 });

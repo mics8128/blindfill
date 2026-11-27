@@ -39,6 +39,9 @@ Commands:
   item create [name]          create an item; username/password are read from the terminal (hidden)
   item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy
   passkey --click <css>       sign in with the item's passkey: Chromium only; the page's WebAuthn request is answered once
+  passkey register --click <css>
+                              create a passkey for the page and store it in the item (Chromium, bw; the item must
+                              bind the page, have blindfill.registration=allow and no passkey yet); key never printed
   android fill|passkey        arm the companion APK on --serial <adb serial> for one fill of --item (app must be bound
                               by androidapp:// + blindfill.signers); waits --timeout seconds (default 60)
   android install             install the packaged companion APK on --serial (adb install -r); --set-services also
@@ -439,17 +442,18 @@ async function main(): Promise<number> {
       return 0;
     }
     case 'passkey': {
+      if (sub !== undefined && sub !== 'register')
+        throw new BlindfillError('POLICY', 'usage: blindfill passkey [register] --item <id> --click <css>');
       const e = await engineFor(true);
       try {
-        out(
-          await e.passkey({
-            item: values.item as string | undefined,
-            query: values.query as string | undefined,
-            url: values.url as string | undefined,
-            click: values.click as string | undefined,
-            expect: expectSpec(),
-          }),
-        );
+        const req = {
+          item: values.item as string | undefined,
+          query: values.query as string | undefined,
+          url: values.url as string | undefined,
+          click: values.click as string | undefined,
+          expect: expectSpec(),
+        };
+        out(await (sub === 'register' ? e.passkeyRegister(req) : e.passkey(req)));
       } finally {
         await disconnect(e);
       }

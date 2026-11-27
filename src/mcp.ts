@@ -300,6 +300,22 @@ export function buildServer(): McpServer {
     (a) => run(async () => (await getEngine()).passkey(a)),
   );
   server.registerTool(
+    'passkey_register',
+    {
+      description: `Create a passkey for this page and store it in the item (Chromium, bw only). Add only: the item must bind the page, have opted in (blindfill.registration=allow) and hold no passkey yet. The page's own WebAuthn create request is answered once by a temporary browser authenticator; the private key goes straight into the vault and is never returned. Returns rp_id and credential_id. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        url: urlArg,
+        click: z
+          .string()
+          .optional()
+          .describe('Button that starts the page passkey creation (structural CSS).'),
+        expect: expectShape,
+      },
+    },
+    (a) => run(async () => (await getEngine()).passkeyRegister(a)),
+  );
+  server.registerTool(
     'android_offer',
     {
       description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion; kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind both (androidapp:// URI + blindfill.signers) or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,

@@ -81,6 +81,13 @@ export async function startSites(): Promise<{
           res.writeHead(ok ? 200 : 400).end();
           return;
         }
+        if (u.pathname === '/passkey-register') {
+          // the RP keeps the registration counter; the test keeps the public key (fields.publicKey)
+          const ad = Buffer.from(fields.authenticatorData ?? '', 'base64url');
+          if (ad.length >= 37) passkeyCounters.set(fields.id, ad.readUInt32BE(33));
+          res.writeHead(200).end();
+          return;
+        }
         if (fields.password === CANARY || fields.a2 === CANARY) {
           res.writeHead(302, { location: '/home' });
           res.end();
@@ -109,6 +116,30 @@ export async function startSites(): Promise<{
                 clientDataJSON: b(r.clientDataJSON), signature: b(r.signature), userHandle: r.userHandle ? b(r.userHandle) : '' });
               const res = await fetch('/passkey', { method: 'POST', body });
               location.href = res.ok ? '/home' : '/passkey?fail=1';
+            };`,
+          ),
+        );
+      case '/passkey-register':
+        // relying party sign-up: creates a discoverable ES256 passkey for ?rp= (default: this host)
+        return html(
+          page(
+            'Create a passkey',
+            '<h1>Create a passkey</h1><button id="reg" type="button">Create a passkey</button>',
+            `const b = (x) => btoa(String.fromCharCode(...new Uint8Array(x))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+            document.getElementById('reg').onclick = async () => {
+              const rp = new URLSearchParams(location.search).get('rp') || location.hostname;
+              try {
+                const c = await navigator.credentials.create({ publicKey: {
+                  challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { id: rp, name: 'Fake RP' },
+                  user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'pk-user', displayName: 'PK User' },
+                  pubKeyCredParams: [{ type: 'public-key', alg: -7 }], attestation: 'none',
+                  authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' } } });
+                const r = c.response;
+                const body = new URLSearchParams({ id: c.id, publicKey: b(r.getPublicKey()),
+                  authenticatorData: b(r.getAuthenticatorData()), clientDataJSON: b(r.clientDataJSON) });
+                const res = await fetch('/passkey-register', { method: 'POST', body });
+                location.href = res.ok ? '/home' : '/passkey-register?fail=1';
+              } catch (e) { document.body.dataset.error = e.name; }
             };`,
           ),
         );

@@ -1,10 +1,10 @@
 import { BlindfillError, type ItemRef } from '../core/types.js';
-import type { Cap, FindQuery, ItemPatch, NewItemSpec } from './spi.js';
+import type { Cap, FindQuery, ItemPatch, NewItemSpec, NewPasskey } from './spi.js';
 import { classifyBwFieldType } from '../core/fields.js';
 import { globalScrubber } from '../core/scrubber.js';
 import { execRunner, parseJson, safeErr, type Runner } from './runner.js';
 import { RawItemBackend } from './rawitem.js';
-import { type BwRawItem } from './bwmap.js';
+import { bwCredentialId, type BwRawItem } from './bwmap.js';
 
 export { mapBwItem, type BwRawItem } from './bwmap.js';
 
@@ -148,6 +148,44 @@ export class BwBackend extends RawItemBackend {
         throw new BlindfillError('NOT_FOUND', 'the item no longer holds that passkey');
       if ((Number(c.counter ?? 0) || 0) >= counter) return false;
       c.counter = String(counter); // Bitwarden keeps the counter as a string
+    });
+  }
+
+  async addPasskey(ref: ItemRef, p: NewPasskey): Promise<void> {
+    let keyValue = '';
+    await p.key.into((der) => {
+      keyValue = der.toString('base64url');
+      globalScrubber.register(keyValue);
+      globalScrubber.register(der.toString('base64'));
+    });
+    await this.#edit(ref, (raw) => {
+      if (raw.login?.fido2Credentials?.length)
+        throw new BlindfillError(
+          'POLICY',
+          'the item already holds a passkey; replacing one needs a person at a terminal',
+        );
+      // the shape Bitwarden's own authenticator writes (fido2-authenticator.service.ts createKeyView)
+      const name = p.userName ?? raw.login?.username ?? null;
+      raw.login = {
+        ...(raw.login ?? {}),
+        fido2Credentials: [
+          {
+            credentialId: bwCredentialId(Buffer.from(p.credentialId, 'base64url')),
+            keyType: 'public-key',
+            keyAlgorithm: 'ECDSA',
+            keyCurve: 'P-256',
+            keyValue,
+            rpId: p.rpId,
+            rpName: p.rpId,
+            userHandle: p.userHandle,
+            userName: name,
+            userDisplayName: name,
+            counter: String(p.counter),
+            discoverable: 'true',
+            creationDate: new Date().toISOString(),
+          },
+        ],
+      };
     });
   }
 

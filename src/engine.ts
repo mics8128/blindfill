@@ -1,6 +1,6 @@
 import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { AndroidActuator } from './actuators/android/index.js';
-import { credentialIdBase64, type BwFido2Credential } from './backends/bwmap.js';
+import { bwCredentialId, credentialIdBase64, type BwFido2Credential } from './backends/bwmap.js';
 import type { Backend, ItemPatch } from './backends/spi.js';
 import { audit } from './core/audit.js';
 import { androidPackages, checkAndroidBinding, checkWebBinding, SubmitGuard } from './core/policy.js';
@@ -1319,6 +1319,110 @@ export class Engine {
         : { counter_written_back: false }),
       outcome: ev?.outcome ?? 'unknown',
     };
+  }
+
+  /**
+   * Passkey registration (web, Chromium with CDP), add only (owner decision 2026-11-27, no terminal):
+   * the item must bind the page, have opted in (blindfill.registration=allow) and hold no passkey.
+   * The page's own navigator.credentials.create() is answered once by an empty virtual authenticator;
+   * the new key goes from the browser into the vault (one `bw edit`), never to the caller.
+   */
+  async passkeyRegister(
+    req: ItemSelector & { url?: string; click?: string; expect?: Expect; timeoutMs?: number },
+  ): Promise<Record<string, unknown>> {
+    const act = this.actuator();
+    if (req.url) await act.navigate(req.url);
+    const { target, url } = act.identify();
+    const tname = formatTarget(target);
+    const ref = await this.resolveItem(req, target);
+    const meta = await this.backend.meta(ref);
+    const refuse = (reason: string, err: BlindfillError): never => {
+      audit({ event: 'refused', backend: this.backend.id, item: ref.id, target: tname, reason });
+      throw err;
+    };
+    const bind = checkWebBinding(url, meta);
+    if (!bind.ok)
+      refuse(
+        bind.reason,
+        new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`),
+      );
+    if (!meta.control.registration)
+      refuse(
+        'registration not allowed',
+        new BlindfillError(
+          'POLICY',
+          'this item has not opted in to registration (custom field blindfill.registration=allow)',
+        ),
+      );
+    if (meta.secretFields.includes('passkey'))
+      refuse(
+        'passkey exists',
+        new BlindfillError(
+          'POLICY',
+          'the item already holds a passkey; replacing one needs a person at a terminal',
+        ),
+      );
+    if (!this.backend.addPasskey)
+      throw new BlindfillError('UNSUPPORTED', `${this.backend.id} cannot store passkeys`);
+    act.policy.assertFirstSecretFill(target.origin, 'passkey-register');
+    act.policy.recordSecretFill(target.origin, 'passkey-register');
+    this.persist();
+    const base = { origin: target.origin, item: { id: ref.id, name: meta.name } };
+    const c = await act.passkeyCreate({ click: req.click, timeoutMs: req.timeoutMs });
+    if (!c) {
+      audit({
+        event: 'passkey',
+        backend: this.backend.id,
+        item: ref.id,
+        target: tname,
+        outcome: 'not_created',
+      });
+      return { status: 'not_used', ...base, outcome: 'unknown' };
+    }
+    const created = {
+      ...base,
+      rp_id: c.rpId,
+      credential_id: bwCredentialId(Buffer.from(c.credentialId, 'base64url')),
+    };
+    const orphan = 'the relying party may now hold a passkey the vault does not: delete it there';
+    const host = new URL(url).hostname;
+    // the browser already enforces this for WebAuthn; checked again before anything is stored
+    const why =
+      c.rpId !== host && !host.endsWith(`.${c.rpId}`)
+        ? 'the created passkey rpId does not cover this page'
+        : !c.es256
+          ? 'only ES256 (P-256) passkeys can be stored'
+          : undefined;
+    if (why) {
+      c.key.destroy();
+      audit({ event: 'refused', backend: this.backend.id, item: ref.id, target: tname, reason: why });
+      return { status: 'not_stored', ...created, reason: why, note: orphan };
+    }
+    try {
+      await this.backend.addPasskey(ref, {
+        credentialId: c.credentialId,
+        rpId: c.rpId,
+        userHandle: c.userHandle,
+        userName: meta.username,
+        counter: c.signCount,
+        key: c.key,
+      });
+    } catch (e) {
+      c.key.destroy();
+      const code = e instanceof BlindfillError ? e.code : 'BACKEND';
+      audit({
+        event: 'passkey',
+        backend: this.backend.id,
+        item: ref.id,
+        target: tname,
+        outcome: 'vault_write_failed',
+        reason: code,
+      });
+      return { status: 'vault_write_failed', ...created, error: code, note: orphan };
+    }
+    audit({ event: 'passkey', backend: this.backend.id, item: ref.id, target: tname, outcome: 'registered' });
+    const ev = req.expect ? await act.evidence(req.expect) : undefined;
+    return { status: 'registered', ...created, counter: c.signCount, outcome: ev?.outcome ?? 'unknown' };
   }
 
   /**

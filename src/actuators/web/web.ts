@@ -2,7 +2,8 @@ import type { ElementHandle, Frame, JSHandle, Page } from 'playwright-core';
 import { globalScrubber } from '../../core/scrubber.js';
 import { SessionPolicy } from '../../core/policy.js';
 import { BlindfillError, type WebTarget } from '../../core/types.js';
-import type { SecretHandle } from '../../core/secret.js';
+import { SecretHandle } from '../../core/secret.js';
+import { createPrivateKey } from 'node:crypto';
 import { credentialIdBase64, type BwFido2Credential } from '../../backends/bwmap.js';
 import {
   DESCRIBE_FIELD,
@@ -30,6 +31,31 @@ import type { ProviderCapabilities, ProviderConnection, ProviderOptions } from '
 import { assertLoopbackEndpoint } from './providers/util.js';
 
 export { assertLoopbackEndpoint };
+
+/** Per-page Chromium authenticator; BE=BS=1 because Bitwarden signs that way and RPs may reject a change of BE. */
+const VIRTUAL_AUTHENTICATOR = {
+  protocol: 'ctap2',
+  ctap2Version: 'ctap2_1',
+  transport: 'internal',
+  hasResidentKey: true,
+  hasUserVerification: true,
+  isUserVerified: true,
+  automaticPresenceSimulation: true,
+  defaultBackupEligibility: true,
+  defaultBackupState: true,
+} as const;
+
+/** A passkey a page just created. Everything but `key` is public data the RP already has. */
+export interface CreatedPasskey {
+  credentialId: string; // base64url
+  rpId: string;
+  userHandle: string; // base64url
+  signCount: number;
+  /** P-256 key: the only kind Bitwarden stores */
+  es256: boolean;
+  /** PKCS#8 DER */
+  key: SecretHandle;
+}
 
 export interface Detected {
   desc: FieldDescriptor;
@@ -698,18 +724,7 @@ export class WebActuator {
     try {
       await cdp.send('WebAuthn.enable', { enableUI: false });
       ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-        options: {
-          protocol: 'ctap2',
-          ctap2Version: 'ctap2_1',
-          transport: 'internal',
-          hasResidentKey: true,
-          hasUserVerification: true,
-          isUserVerified: true,
-          automaticPresenceSimulation: true,
-          // Bitwarden signs with backup eligible + backed up; RPs may reject a change of BE
-          defaultBackupEligibility: true,
-          defaultBackupState: true,
-        },
+        options: VIRTUAL_AUTHENTICATOR,
       }));
       const asserted = new Promise<number>((res) =>
         cdp.on('WebAuthn.credentialAsserted', (e) => res(e.credential.signCount)),
@@ -735,6 +750,51 @@ export class WebActuator {
       if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
       const n = await Promise.race([asserted, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
       return { asserted: n !== null, signCount: n, credentialId };
+    } catch (e) {
+      throw wrap(e, 'passkey');
+    } finally {
+      if (authenticatorId)
+        await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId }).catch(() => undefined);
+      await cdp.detach().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Passkey registration (ARCHITECTURE 3.8): an empty per-page virtual authenticator answers the page's
+   * own navigator.credentials.create() once and is removed. The new private key comes back from
+   * Chromium only inside the returned handle (registered with the scrubber first); the caller and
+   * the page never receive it.
+   */
+  async passkeyCreate(opts: { click?: string; timeoutMs?: number } = {}): Promise<CreatedPasskey | null> {
+    if (!this.capabilities.cdp)
+      throw new BlindfillError('UNSUPPORTED', 'passkeys need a Chromium provider with CDP');
+    if (opts.click) assertSafeEvidenceSelector(opts.click);
+    const cdp = await this.page.context().newCDPSession(this.page);
+    let authenticatorId: string | undefined;
+    try {
+      await cdp.send('WebAuthn.enable', { enableUI: false });
+      ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: VIRTUAL_AUTHENTICATOR,
+      }));
+      const added = new Promise<CreatedPasskey>((res) =>
+        cdp.on('WebAuthn.credentialAdded', ({ credential: c }) => {
+          globalScrubber.register(c.privateKey);
+          const der = Buffer.from(c.privateKey, 'base64');
+          globalScrubber.register(der.toString('base64url'));
+          const k = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
+          res({
+            credentialId: Buffer.from(c.credentialId, 'base64').toString('base64url'),
+            rpId: c.rpId ?? '',
+            userHandle: Buffer.from(c.userHandle ?? '', 'base64').toString('base64url'),
+            signCount: c.signCount,
+            es256: k.asymmetricKeyType === 'ec' && k.asymmetricKeyDetails?.namedCurve === 'prime256v1',
+            key: new SecretHandle(der, 'passkey'),
+          });
+          der.fill(0);
+        }),
+      );
+      if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
+      return await Promise.race([added, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
     } catch (e) {
       throw wrap(e, 'passkey');
     } finally {
