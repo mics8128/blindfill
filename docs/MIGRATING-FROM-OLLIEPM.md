@@ -58,7 +58,7 @@ scripted secret export (by design, nothing in blindfill returns a secret).
 | rule with `mode: registration`        | the same rule, plus custom field `blindfill.registration` = `allow` on the item                                                                                                                                                                                                         |
 | `password_policy`                     | custom field `blindfill.password_policy` (same JSON schema, version 1)                                                                                                                                                                                                                  |
 | submit behaviour                      | `blindfill.submit` = `once` (default) or `none`                                                                                                                                                                                                                                         |
-| mobile target `package`               | extra URI `androidapp://<package>` (used by `blindfill android fill                                                                                                                                                                                                                     | passkey`) |
+| mobile target `package`               | extra URI `androidapp://<package>` (used by `blindfill android fill` and `blindfill android passkey`)                                                                                                                                                                                   |
 | mobile target `signers` (64 hex)      | custom field `blindfill.signers`, comma-separated SHA-256                                                                                                                                                                                                                               |
 | profile file `profiles/<name>.json`   | `blindfill profile init <name> ...`. Re-create or edit: `item` is now the **backend item id** (optional `item_name` guards against a swapped item); `default_target` and `phone` are dropped; the `revision` hash is recomputed, so re-run `profile validate` and use the new revision. |
 | handoff grants `handoffs/<name>.json` | no equivalent (see section 4)                                                                                                                                                                                                                                                           |
@@ -137,7 +137,7 @@ Legend: **ported** (same or stricter, covered by tests unless noted), **partial*
 
 ## 5. Cut-over checklist
 
-1. Read SECURITY.md. Close the partial rows above that matter to you (at least 1, 2, 3, 6) or keep rule-based fills only.
+1. Read SECURITY.md. Close the partial rows in section 3 that matter to you (rows 4, 5 and 7 bear on fills) or keep rule-based fills only.
 2. For each olliepm item: create the vault item (section 2); put it in a collection the agent may read; set match type Host.
 3. Move rules and policies into `blindfill.rules` / `blindfill.password_policy`; set `blindfill.registration=allow` only where needed.
 4. `blindfill item show --item <id>` (readable view) and `page discover` on the real page; no secret is read.
