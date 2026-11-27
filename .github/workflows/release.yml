@@ -20,6 +20,10 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
       - name: Tag must match package.json version
         run: |
           PKG="v$(node -p "require('./package.json').version")"
@@ -30,8 +34,20 @@ jobs:
       - run: npm ci
       - run: npx playwright-core install --with-deps chromium
       - run: npm run build
+      # after the build (tsup cleans dist/): the signed companion ships as dist/android/blindfill-companion.apk
+      - name: Signed companion APK (checked against the pinned certificate)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          BLINDFILL_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          export BLINDFILL_KEYSTORE="$RUNNER_TEMP/release.p12"
+          (umask 077; base64 -d <<<"$KEYSTORE_B64" > "$BLINDFILL_KEYSTORE")
+          android/release-apk.sh
+          rm -f "$BLINDFILL_KEYSTORE"
       - run: npm run lint
       - run: npm test
+      - name: Package must contain the companion APK
+        run: npm pack --dry-run --json | jq -e '.[0].files | map(.path) | index("dist/android/blindfill-companion.apk")'
       # Trusted Publishing needs npm >= 11.5.1
       - run: npm install -g npm@latest
       - name: Publish (Trusted Publishing / OIDC)

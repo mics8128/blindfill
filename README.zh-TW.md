@@ -4,6 +4,8 @@
 
 **讓 AI 代理登入網站，卻永遠看不到密碼。**
 
+**[網站：mics8128.github.io/blindfill](https://mics8128.github.io/blindfill/)**
+
 [![CI](https://github.com/mics8128/blindfill/actions/workflows/ci.yml/badge.svg)](https://github.com/mics8128/blindfill/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node >=20](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](package.json)
@@ -34,14 +36,14 @@
 | Bitwarden / Vaultwarden（`bw`）                                                                     | 已驗證（模擬 CLI + 測試資料） | 項目 JSON 格式另以人工對照過真實 Vaultwarden。blindfill 對真實 Vault 的端到端測試：尚未。   |
 | 1Password（`op`）、rbw、pass、gopass、KeePassXC（`keepassxc-cli`）、Secret Service（`secret-tool`） | 盲寫、未驗證                  | 僅在測試資料上通過共用契約測試。歡迎執行 `blindfill backend selftest <id>` 並提交後端回報。 |
 
-| 瀏覽器                                                                            | 狀態                                                                                                                    |
-| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Chromium：Playwright 內建、任何 Chromium 組建（`--executable`），或本機回環 CDP   | 支援，已測試                                                                                                            |
-| Firefox / Camoufox，透過本機回環 Playwright 伺服器（`--browser firefox-connect`） | 已測試（選用測試套件），版本為 Camoufox 158.0.1-beta.41 與 159.0-beta.43；長時間執行的實例未測試                        |
-| Ego Lite                                                                          | 僅限獨立、空白設定檔的實例（`--executable`）；不支援連接執行中的應用程式                                                |
-| WebKit / Safari                                                                   | 不支援                                                                                                                  |
-| Android（14 以上）                                                                | 輔助 APK：密碼走自動填入服務，passkey 走憑證提供者（在主機端簽署）；已在一支手機（Android 17）用假 app 測試；需自行編譯 |
-| Passkey                                                                           | 網頁登入，僅 Chromium（以假 relying party 測試）；不回寫計數器、不支援註冊                                              |
+| 瀏覽器                                                                            | 狀態                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chromium：Playwright 內建、任何 Chromium 組建（`--executable`），或本機回環 CDP   | 支援，已測試                                                                                                                                                                                                                                                                                  |
+| Firefox / Camoufox，透過本機回環 Playwright 伺服器（`--browser firefox-connect`） | 已測試（選用測試套件），版本為 Camoufox 158.0.1-beta.41 與 159.0-beta.43；長時間執行的實例未測試                                                                                                                                                                                              |
+| Ego Lite                                                                          | 僅限獨立、空白設定檔的實例（`--executable`）；不支援連接執行中的應用程式                                                                                                                                                                                                                      |
+| WebKit / Safari                                                                   | 不支援                                                                                                                                                                                                                                                                                        |
+| Android（14 以上）                                                                | 輔助 APK：密碼走自動填入服務，passkey 走憑證提供者（在主機端簽署）；正式簽章，每次填入前主機都會核對手機上 APK 的簽章；以 `blindfill android install --serial <s>` 安裝（[android/README.md](android/README.md)）；已用假 app 在一支手機（Xperia 5 II，Android 17）與模擬器（Android 16）測試 |
+| Passkey                                                                           | 網頁登入，僅 Chromium（以假 relying party 測試）；不回寫計數器、不支援註冊                                                                                                                                                                                                                    |
 
 瀏覽器提供者及其契約：[docs/browsers.md](docs/browsers.md)。
 
@@ -58,7 +60,7 @@
 
 ## 尚未完成
 
-- Android：儲存新登入、WebView 登入、正式簽署的 APK。Passkey 計數器回寫與註冊。WebKit。
+- Android：儲存新登入、WebView 登入。Passkey 計數器回寫與註冊。WebKit。
 - `bw` 對真實密碼庫的端到端測試。其餘六個後端為盲寫且未驗證。
 - 尚未發布到 npm（`latest` 為空的佔位版本）。
 - 從 olliepm 遷移：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。

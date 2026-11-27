@@ -145,4 +145,13 @@ describe('passkey sign-in (Chromium virtual authenticator)', () => {
     expect(s).toContain('good.localhost');
     expect(s).not.toContain(KEY.slice(8, 40));
   });
+
+  it('never types the private key into a field', async () => {
+    const eng = await engine();
+    sites.received.length = 0;
+    await expect(
+      eng.fill({ item: 'pk-good', url: `${O()}/simple`, fields: ['passkey'] }),
+    ).rejects.toMatchObject({ code: 'SECRET_ACCESS' });
+    expect(sites.received).toHaveLength(0);
+  });
 });

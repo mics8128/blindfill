@@ -53,9 +53,15 @@ Item 7 is not done:
   party that verifies the signature. No counter write-back, no registration, no Firefox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
 - Android: companion APK (`android/`), passwords via autofill and passkeys via the credential
-  provider, signed on the host. Tested on the Xperia 5 II (Android 17) on ollie-ubuntu with a fake
-  app (`BLINDFILL_TEST_ANDROID_SERIAL=QV720B4852 BLINDFILL_APKSIGNER=/usr/bin/apksigner npx vitest run
-tests/android-device.test.ts` after `cd android && ./gradlew assembleDebug`); not with real apps.
+  provider, signed on the host. Release-signed (certificate SHA-256
+  `C7EDE55AB64522DC9BC142F8F20B9BAABE5341D828210183D991157FE0EC45C8`; key custody in SECURITY.md
+  item 16); the host checks the installed APK's signer before every arm; `blindfill android
+install --serial <s> [--set-services]`. CI job `android` builds and checks the signed APK;
+  `release.yml` ships it in the npm package. Tested with the release APK and a fake app on the
+  Xperia 5 II (Android 17) on ollie-ubuntu and on a headless arm64 emulator on the owner's Mac
+  (Android 16, API 36): `BLINDFILL_TEST_ANDROID_SERIAL=<serial>
+BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.ts` after
+  `cd android && ./gradlew assembleDebug` (android/README.md); not with real apps.
 - Not supported: passkey registration, WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
@@ -63,9 +69,10 @@ tests/android-device.test.ts` after `cd android && ./gradlew assembleDebug`); no
 ## Rules to keep
 
 - Passwords only go straight from the backend into the target field. Never print, log, return,
-  screenshot, write to files, or put them in messages. Only Secret-class fields (password, TOTP
-  seed, Hidden custom fields, card number, private keys, passkey private keys) are fill-only.
-  TOTP codes are readable like text. Notes are unreadable by default.
+  screenshot, write to files, or put them in messages. Secret-class fields (password, Hidden custom
+  fields, card number) are fill-only. Keys (TOTP seed, SSH and passkey private keys) are never read
+  and never filled: the seed only yields codes, a passkey only signs. TOTP codes are readable like
+  text. Notes are unreadable by default.
 - README and website claims must match the code. Do not claim unverified support.
 - Do not build an attach provider for the running Ego Lite until an outbound-traffic capture and an
   operation-log check show filled values do not leak. Even then, never label it "supported".
@@ -80,6 +87,9 @@ tests/android-device.test.ts` after `cd android && ./gradlew assembleDebug`); no
    production data), including `item create|generate`.
 4. Passkey `sign` for web (ARCHITECTURE.md section 3.8), then the Android actuator.
 5. Review and fix the website on `site/landing`, then ask the owner before deploying.
-6. Owner decisions still open: migrate ~15 olliepm items into the Vault, `agent-ollie` collection
-   permission (read-only suggested), default web match strictness (Host vs Base domain), where
-   rules live (custom field vs Notes), accept the `blindfill` GitHub org admin invitation.
+6. Owner decisions (2026-11-27): the name stays **blindfill**; the repo stays at `mics8128/blindfill`
+   (the `blindfill` GitHub org and npm name are held only against impersonation). Direction: own use
+   first (Ollie, real Vault), built to public-product standards; public launch later.
+   Still open: migrate ~15 olliepm items into the Vault, `agent-ollie` collection permission
+   (read-only suggested), default web match strictness (Host vs Base domain), where rules live
+   (custom field vs Notes).

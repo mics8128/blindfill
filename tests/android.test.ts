@@ -12,6 +12,7 @@ import {
 } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AndroidActuator } from '../src/actuators/android/index.js';
+import { apkSigners } from '../src/actuators/android/apk.js';
 import { BwBackend } from '../src/backends/bw.js';
 import { Engine } from '../src/engine.js';
 
@@ -29,6 +30,38 @@ const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256
 const KEY = privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64url');
 let dir: string;
 let log: string;
+let goodApk: string;
+
+const u32 = (n: number) => Buffer.from(new Uint32Array([n]).buffer);
+const u64 = (n: number) => Buffer.from(new BigUint64Array([BigInt(n)]).buffer);
+const lp = (...parts: Buffer[]) => {
+  const c = Buffer.concat(parts);
+  return Buffer.concat([u32(c.length), c]);
+};
+/** Minimal APK: entries | APK Signing Block (one signer per scheme) | central directory | EOCD. */
+function fakeApk(...signers: [scheme: number, cert: Buffer][]): Buffer {
+  const pairs = signers.map(([scheme, cert]) => {
+    const signedData = Buffer.concat([lp(), lp(lp(cert)), lp()]); // digests, certificates, attributes
+    const value = lp(lp(lp(signedData), lp(), lp(Buffer.alloc(8)))); // signers: [signed data, signatures, key]
+    return Buffer.concat([u64(4 + value.length), u32(scheme), value]);
+  });
+  const size = pairs.reduce((n, p) => n + p.length, 0) + 24;
+  const block = Buffer.concat([u64(size), ...pairs, u64(size), Buffer.from('APK Sig Block 42')]);
+  const entries = Buffer.from('PK\x03\x04 entries');
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt32LE(entries.length + block.length, 16);
+  return Buffer.concat([entries, block, eocd]);
+}
+const V2 = 0x7109871a;
+const V3 = 0xf05368c0;
+const CERT = Buffer.from('companion cert');
+const COMPANION_SHA = createHash('sha256').update(CERT).digest('hex').toUpperCase();
+function writeApk(name: string, apk: Buffer): string {
+  const f = join(dir, `${name}.apk`);
+  writeFileSync(f, apk);
+  return f;
+}
 
 const item = (id: string, extra: Record<string, unknown> = {}, signers = SIGNER) => ({
   id,
@@ -79,6 +112,8 @@ beforeAll(() => {
   chmodSync(ADB, 0o755);
   dir = mkdtempSync(join(tmpdir(), 'bf-android-'));
   process.env.BLINDFILL_AUDIT_FILE = join(dir, 'audit.jsonl');
+  process.env.BLINDFILL_COMPANION_SIGNER = COMPANION_SHA;
+  goodApk = writeApk('good', fakeApk([V2, CERT], [V3, CERT]));
   const f = join(dir, 'items.json');
   writeFileSync(f, JSON.stringify([item('app'), item('nopin', {}, '')]));
   process.env.BLINDFILL_MOCK_BW_ITEMS = f;
@@ -86,8 +121,13 @@ beforeAll(() => {
 beforeEach(() => {
   log = join(dir, `adb-${randomBytes(4).toString('hex')}.log`);
   process.env.FAKE_ADB_LOG = log;
+  process.env.FAKE_ADB_APK = goodApk;
 });
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.BLINDFILL_COMPANION_SIGNER;
+  delete process.env.FAKE_ADB_APK;
+});
 
 const base = { pkg: PKG, signer: SIGNER, web: false };
 
@@ -177,5 +217,41 @@ describe('android companion, host side', () => {
     });
     expect(reply).toEqual({ ok: false });
     expect(await guarded).toMatchObject({ code: 'ORIGIN_MISMATCH' });
+  });
+
+  it.each([
+    ['signed by another key', () => writeApk('impostor', fakeApk([V2, Buffer.from('impostor cert')]))],
+    ['with a second signer', () => writeApk('two', fakeApk([V2, CERT], [V3, Buffer.from('other')]))],
+    ['unsigned', () => writeApk('unsigned', Buffer.from('PK\x03\x04 not signed'))],
+    ['not installed', () => undefined],
+  ])('refuses a companion %s before arming it', async (_n, apk) => {
+    const f = apk();
+    if (f) process.env.FAKE_ADB_APK = f;
+    else delete process.env.FAKE_ADB_APK;
+    const r = await engine().androidOffer({ item: 'app', serial: 'S1', kind: 'password' }, android());
+    expect(r).toMatchObject({ status: 'refused' });
+    expect(String(r.reason)).toMatch(/companion/);
+    const calls = readFileSync(log, 'utf8');
+    expect(calls).not.toContain('broadcast');
+    expect(calls).not.toContain(PW);
+    expect(readFileSync(process.env.BLINDFILL_AUDIT_FILE!, 'utf8')).toContain(String(r.reason));
+  });
+
+  it('a reinstalled impostor is caught even after the real companion was verified', async () => {
+    const ok = engine().androidOffer(
+      { item: 'app', serial: 'S1', kind: 'password', timeoutMs: 200 },
+      android(),
+    );
+    expect(await ok).toMatchObject({ status: 'expired' });
+    process.env.FAKE_ADB_APK = writeApk('later-impostor', fakeApk([V2, Buffer.from('impostor')]));
+    const r = await engine().androidOffer({ item: 'app', serial: 'S1', kind: 'password' }, android());
+    expect(r).toMatchObject({ status: 'refused' });
+  });
+
+  it('apkSigners reads every scheme and rejects files without a signing block', () => {
+    expect(apkSigners(fakeApk([V2, CERT], [V3, CERT]))).toEqual([COMPANION_SHA]);
+    expect(apkSigners(fakeApk([V2, CERT], [V3, Buffer.from('x')]))).toHaveLength(2);
+    expect(() => apkSigners(Buffer.from('PK\x03\x04 not signed'))).toThrow(/not a signed APK/);
+    expect(() => apkSigners(Buffer.alloc(30))).toThrow(/not a signed APK/);
   });
 });

@@ -14,6 +14,7 @@ import { redactEndpoint, resolveEndpoint } from './actuators/web/providers/util.
 import type { Expect } from './actuators/web/web.js';
 import { strictJson } from './rules.js';
 import { createProfile, loadProfile, type ProfileDoc } from './profiles.js';
+import { AndroidActuator, COMPANION, COMPANION_SERVICES } from './actuators/android/index.js';
 
 const VERSION = (() => {
   try {
@@ -40,6 +41,8 @@ Commands:
   passkey --click <css>       sign in with the item's passkey: Chromium only; the page's WebAuthn request is answered once
   android fill|passkey        arm the companion APK on --serial <adb serial> for one fill of --item (app must be bound
                               by androidapp:// + blindfill.signers); waits --timeout seconds (default 60)
+  android install             install the packaged companion APK on --serial (adb install -r); --set-services also
+                              makes it the autofill and credential provider (prints the previous values to restore)
   totp [--fill]               print the current TOTP code, or fill it into the page
   probe                       describe the current page's form fields (structure only)
   candidates [--role r]       list field candidates (names only)
@@ -112,6 +115,7 @@ const { values, positionals } = parseArgs({
     fill: { type: 'boolean' },
     headless: { type: 'boolean' },
     headed: { type: 'boolean' },
+    'set-services': { type: 'boolean' },
     fixture: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
     version: { type: 'boolean', short: 'v' },
@@ -391,14 +395,33 @@ async function main(): Promise<number> {
       return 0;
     }
     case 'android': {
-      if (sub !== 'fill' && sub !== 'passkey')
+      if (sub !== 'fill' && sub !== 'passkey' && sub !== 'install')
         throw new BlindfillError(
           'POLICY',
-          'usage: blindfill android fill|passkey --item <id> --serial <adb serial>',
+          'usage: blindfill android fill|passkey --item <id> --serial <adb serial> | android install --serial <adb serial> [--set-services]',
         );
       const serial = (values.serial as string | undefined) ?? process.env.ANDROID_SERIAL;
       if (!serial)
         throw new BlindfillError('POLICY', 'usage: pass --serial <adb serial> (or ANDROID_SERIAL)');
+      if (sub === 'install') {
+        const setServices = Boolean(values['set-services']);
+        const r = await new AndroidActuator().install(serial, setServices);
+        const restore = Object.entries(r.previous).map(([k, v]) =>
+          v === 'null'
+            ? `adb -s ${serial} shell settings delete secure ${k}`
+            : `adb -s ${serial} shell settings put secure ${k} ${v === '' ? '\'""\'' : v}`,
+        );
+        out({
+          status: 'installed',
+          package: COMPANION,
+          apk: r.apk,
+          services: setServices ? COMPANION_SERVICES : 'unchanged (pass --set-services to switch them)',
+          previous: r.previous,
+          restore: setServices ? restore : undefined,
+          uninstall: `adb -s ${serial} uninstall ${COMPANION}`,
+        });
+        return 0;
+      }
       const e = await engineFor(false);
       out(
         await e.androidOffer({
