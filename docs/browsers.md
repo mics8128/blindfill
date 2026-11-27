@@ -42,6 +42,19 @@ client playwright-core 1.62.0 via `playwright-core-compat`. 6 tests pass: connec
 post-fill lock, lookalike origin refused, honeypot and SPA forms, `withPage`, CLI `session attach --endpoint-file`.
 The test skips cleanly when the flag or the Camoufox runtime is missing. Not tested: the owner's own long-running Camoufox.
 
+**Passkeys** (Phase 3): Juggler has no WebAuthn, so blindfill uses the browser's Marionette port next to it.
+Start the browser with `-marionette` and the prefs `security.webauth.webauthn_enable_softtoken=true`,
+`security.webauth.webauthn_enable_usbtoken=false` (real USB security keys stop working in that browser), then
+give blindfill the port: `BLINDFILL_MARIONETTE=127.0.0.1:2828` (loopback only; library: `ProviderOptions.marionette`).
+Each ceremony opens the single Marionette session, adds one authenticator, and ends both; it fails if another client
+holds the session. The Firefox authenticator is browser-wide, not per tab. Firefox serves WebAuthn only to the
+focused document, so blindfill brings the page to the front; in spike 2 a page in another context did not get a
+signature while armed (it was not focused), which is a side effect of focus, not a boundary. Firefox cannot set the
+backup-eligible flag: passkeys it registers are BE=0 and the item gets `blindfill.passkey_be=0`; Bitwarden-made
+(BE=1) passkeys are refused in Firefox (Chromium and the Android host sign with the item's flag). Tested by the
+same opt-in suite with Camoufox started with `-marionette`, the two prefs and `marionette.port=0`, on the owner's
+Mac and on ollie-ubuntu (Linux); the shared Camoufox was not used.
+
 ## Ego Lite
 
 Chromium-based (0.6.3.17, Chrome/156), checked on the owner's Mac on 2026-11-27.

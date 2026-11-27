@@ -218,7 +218,7 @@ flow.
 - Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
   creates a digest (as olliepm does) the engine checks at fill time.
 
-### 3.8 Passkeys (web sign-in and registration built; Chromium only)
+### 3.8 Passkeys (web sign-in and registration built; Chromium, and Firefox/Camoufox over Marionette)
 
 Checked against a live Vaultwarden on 2026-11-27: `bw` returns `login.fido2Credentials`
 (`credentialId`, `rpId`, `keyAlgorithm` ECDSA, `keyCurve` P-256, `keyValue` PKCS8 base64url,
@@ -233,8 +233,16 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
   authenticator. The page runs its own `navigator.credentials.get`; Chromium signs. Tested
   against a fake relying party that verifies the signature (`tests/passkey.test.ts`).
 - Why CDP and not page-script interception: the key stays in the browser process, never in page
-  JS. Cost: Chromium providers only (`capabilities.cdp`); Firefox/Camoufox and borrowed pages get
-  `UNSUPPORTED`.
+  JS. Firefox/Camoufox (Juggler has no WebAuthn) use Marionette instead (`firefox-connect` with a
+  loopback `marionette` endpoint, env `BLINDFILL_MARIONETTE`; `src/actuators/web/marionette.ts`): one
+  session and one browser-wide authenticator per ceremony, polled with `WebAuthn:GetCredentials` (no
+  events) until the counter moves or a credential appears, then removed. Firefox signs with the stored
+  count and then counts up, so blindfill adds stored + 1 (0 stays 0). The page is brought to the front
+  first: Firefox serves WebAuthn only to the focused document. Borrowed pages and Firefox without
+  Marionette get `UNSUPPORTED`.
+- BE flag: `blindfill.passkey_be` (readable, default 1). Firefox cannot set BE, so Firefox
+  registrations store `0`, and Firefox refuses BE=1 (Bitwarden-made) passkeys before reading the key;
+  Chromium (`backupEligibility`) and the Android host (flags 0x1D or 0x05) sign with the item's flag.
 - While armed (up to 15 s), any frame of that page whose origin WebAuthn accepts for the rpId could
   request the assertion; blindfill does not see which frame asked.
 - Counter (owner decision 2026-11-27, no terminal): after a signature the engine raises the vault
@@ -251,7 +259,9 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
   is P-256, then `Backend.addPasskey` (bw: Bitwarden's shape, `b64.`/GUID id, counter after creation;
   refuses an item that already has one). Statuses: `registered`, `not_used`, `not_stored`,
   `vault_write_failed` (the last two tell a person to delete the orphan at the relying party).
-- Open: credentials created by real Bitwarden clients (and blindfill-made ones in the extension).
+- Interop: the Bitwarden browser extension signed in on webauthn.io with a blindfill-made passkey, and
+  blindfill then signed in after it (counter accepted). Open: credentials created by Bitwarden clients
+  used by blindfill.
 - Android: Credential Manager prompts need biometric/device unlock; not promised.
 
 ## 4. Threat model (short)

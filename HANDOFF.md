@@ -15,8 +15,9 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## Verified vs not
 
-- Verified: unit, contract, leak and e2e tests on local fake sites with Chromium. Firefox: 6/6 passed
-  once against a real Camoufox build (opt-in: `BLINDFILL_TEST_FIREFOX=1`); the owner's running
+- Verified: unit, contract, leak and e2e tests on local fake sites with Chromium. Firefox: 8/8 passed
+  against a real Camoufox build started with `-marionette` and the softtoken prefs (opt-in:
+  `BLINDFILL_TEST_FIREFOX=1`), on the owner's Mac and on ollie-ubuntu; the owner's running
   Camoufox and its contexts were not tested.
 - `bw` backend: mock `bw` and fixtures in CI. `tests/live-bw.test.ts` (`BLINDFILL_TEST_LIVE_BW=1`
   plus an unlocked `BW_SESSION`) passed on 2026-11-27 against the live Vault
@@ -26,11 +27,13 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   since deleted); real-client-created passkeys unverified.
 - Passkeys: web sign-in through a Chromium virtual authenticator and Android host signing, with the
   counter written back to the vault (no terminal) and BE=BS=1 like Bitwarden clients; web
-  registration in Chromium (`passkey register`, add only, opted-in items). Tested against a strict
-  fake relying party (counter, BE, registration then sign-in) and, with the live Vault, on webauthn.io:
-  three sign-ins in a row, and one registration then a sign-in (item `webauthn-io-interop`, kept for
-  Mics to try in the Bitwarden extension). No Firefox; passkeys made by real Bitwarden clients still
-  unverified (needs a person in the Bitwarden extension).
+  registration in Chromium (`passkey register`, add only, opted-in items); Firefox/Camoufox sign-in and
+  registration over Marionette (`BLINDFILL_MARIONETTE`, BE=0 recorded as `blindfill.passkey_be=0`,
+  Bitwarden-made passkeys refused there). Tested against a strict fake relying party (Firefox: opt-in
+  suite) and, with the live Vault in Chromium, on webauthn.io: three sign-ins in a row, a registration
+  then a sign-in (item `webauthn-io-interop`, kept), Mics's Bitwarden extension signed in with it, and
+  blindfill signed in again after the extension (counter accepted). Not tested: passkeys made by
+  Bitwarden clients used by blindfill; Firefox passkeys on a real site or in the shared Camoufox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
 - Android: companion APK (`android/`), passwords via autofill and passkeys via the credential
   provider, signed on the host. Release-signed (certificate SHA-256
@@ -44,7 +47,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
   `cd android && ./gradlew assembleDebug` (android/README.md). Real apps on the same Xperia with a
   live `bw` item and the companion debug build (2026-11-27): Threads sign-in succeeded; Instagram
   partial (suggestion filled and login tapped, result not checked). Rows in `docs/TESTED.md`.
-- Not supported: passkeys in Firefox/Camoufox, WebKit, Firefox on an already-running browser,
+- Not supported: WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
 

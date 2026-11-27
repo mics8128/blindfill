@@ -74,9 +74,15 @@ blindfill defends against **the model and its logs**:
    not scrubbed.
 6. **Shadow DOM, closed iframes and canvas inputs** are not supported by the field detector;
    blindfill stops (fail closed) rather than guessing.
-7. **Passkeys** are web sign-in and registration in Chromium and Android app sign-in. Assertions set
-   the user-verified flag without a biometric: the vault unlock and the item binding stand in for it.
-   They also set backup-eligible and backed-up, as Bitwarden clients do.
+7. **Passkeys** are web sign-in and registration in Chromium and Firefox/Camoufox, and Android app
+   sign-in. Assertions set the user-verified flag without a biometric: the vault unlock and the item
+   binding stand in for it. Chromium and Android set backup-eligible and backed-up as Bitwarden clients
+   do, unless the item says `blindfill.passkey_be=0`. Firefox cannot set that flag: its passkeys are
+   BE=0 and Bitwarden-made ones are refused there. Firefox needs its Marionette port (`-marionette`),
+   an unauthenticated loopback control port that any local process can use to drive the browser, and
+   the softtoken pref, which turns real USB security keys off in that browser. Its authenticator is
+   browser-wide while armed (up to 15 s): any focused page of that browser that WebAuthn allows for
+   the rpId could get the signature, not only blindfill's page.
    After a signature the sign counter is raised in the vault without a person at a terminal (owner
    decision): that write changes only the counter and never lowers it. A stored counter of 0 stays 0
    on Android; Chromium always counts up. A failed write is reported (`counter_written_back: false`,
