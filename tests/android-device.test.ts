@@ -118,9 +118,10 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
   }, 120_000);
 
   afterAll(() => {
+    // restore exactly: "null" = was unset, "" = was set to empty (quoted for the device shell)
     for (const [k, v] of Object.entries(saved))
-      if (v === 'null' || v === '') adb('shell', 'settings', 'delete', 'secure', k);
-      else adb('shell', 'settings', 'put', 'secure', k, v);
+      if (v === 'null') adb('shell', 'settings', 'delete', 'secure', k);
+      else adb('shell', 'settings', 'put', 'secure', k, v === '' ? '""' : v);
     if (process.env.BLINDFILL_ANDROID_KEEP !== '1') {
       adb('uninstall', RP_PKG);
       adb('uninstall', COMPANION);
