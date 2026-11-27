@@ -56,8 +56,8 @@ BLINDFILL_KEYSTORE_PASSWORD="$(cat ~/.config/blindfill/android-release.pass)" \
 ```
 
 Without `BLINDFILL_KEYSTORE`, `assembleRelease` produces an unsigned APK and debug builds are
-unaffected. CI (`.github/workflows/ci.yml`, job `android`) builds and checks the signed APK on
-every push and uploads it as the `blindfill-companion-apk` artifact; `release.yml` puts it into
+unaffected. CI (`.github/workflows/android.yml`, runs only when `android/**` changes) builds and
+checks the signed APK and uploads it as the `blindfill-companion-apk` artifact; `release.yml` puts it into
 the npm package. Key custody: `SECURITY.md` item 16.
 
 ## Device test

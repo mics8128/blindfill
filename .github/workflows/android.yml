@@ -1,0 +1,47 @@
+# Builds the signed companion APK only when the Android sources (or this workflow) change.
+name: android
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    # repository secrets are not passed to pull requests from forks
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - name: Signed companion APK (checked against the pinned certificate)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          BLINDFILL_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          export BLINDFILL_KEYSTORE="$RUNNER_TEMP/release.p12"
+          (umask 077; base64 -d <<<"$KEYSTORE_B64" > "$BLINDFILL_KEYSTORE")
+          android/release-apk.sh
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/release.p12"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blindfill-companion-apk
+          path: dist/android/blindfill-companion.apk
+          if-no-files-found: error

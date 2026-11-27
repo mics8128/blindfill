@@ -1,18 +1,72 @@
-# Release: runs ONLY when a tag like v0.1.0 is pushed. Nothing else can publish.
+# Release: runs only when a push to main changes package.json, and publishes only when its version is
+# not on npm yet. Nothing else can publish; do not tag or `npm publish` by hand.
 # Publishing uses npm Trusted Publishing (OIDC): no long-lived token is stored in the repo.
 name: Release
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches: [main]
+    paths:
+      - 'package.json'
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  id-token: write # required for npm Trusted Publishing and --provenance
 
 jobs:
-  publish:
+  version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Did this push change package.json's version, and is it new on npm?
+        id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          V="$(node -p "require('./package.json').version")"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          git fetch --quiet --depth=1 origin "$BEFORE"
+          OLD="$(git show "$BEFORE:package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).version")"
+          if [ "$OLD" = "$V" ]; then
+            echo "version unchanged ($V); nothing to do"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          # empty output (exit 0) when the package exists but this version does not
+          elif [ -n "$(npm view "blindfill@$V" version 2>/dev/null)" ]; then
+            echo "blindfill@$V is already published; nothing to do"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "version $OLD -> $V; publishing"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test-windows:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install chromium
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+
+  publish:
+    needs: [version, test-windows]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for npm Trusted Publishing and --provenance
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,13 +78,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Tag must match package.json version
-        run: |
-          PKG="v$(node -p "require('./package.json').version")"
-          if [ "$GITHUB_REF_NAME" != "$PKG" ]; then
-            echo "tag $GITHUB_REF_NAME does not match package.json version $PKG" >&2
-            exit 1
-          fi
       - run: npm ci
       - run: npx playwright-core install --with-deps chromium
       - run: npm run build
@@ -52,8 +99,10 @@ jobs:
       - run: npm install -g npm@latest
       - name: Publish (Trusted Publishing / OIDC)
         # npm refuses prereleases without --tag; they go to `next` so they never become `latest`.
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          case "$GITHUB_REF_NAME" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
+          case "$VERSION" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
           npm publish --provenance --access public --tag "$DIST_TAG"
         # FALLBACK, only if Trusted Publishing is unavailable for your package/registry:
         #   1. create a granular, publish-only npm token scoped to this package,
@@ -61,3 +110,18 @@ jobs:
         #   3. uncomment the env block below.
         # env:
         #   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  github-release:
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the GitHub Release
+    steps:
+      - name: Tag v<version> and create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          case "$VERSION" in *-*) PRE=--prerelease ;; *) PRE= ;; esac
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "v$VERSION" --generate-notes $PRE

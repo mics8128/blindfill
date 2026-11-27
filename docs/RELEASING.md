@@ -1,9 +1,10 @@
 # Releasing
 
-Publishing is done **only** by `.github/workflows/release.yml`, triggered by pushing a tag
-`vX.Y.Z` (or a pre-release tag such as `v0.1.0-alpha.0`). No token is stored in the repository.
-Maintainers do not run `npm publish` by hand. Anyone with push access to the repo may push a
-release tag.
+Publishing is done **only** by `.github/workflows/release.yml`. It runs when a push to `main`
+changes `package.json`, and publishes only if that push changed the `version` field to a version
+not yet on npm. No token is stored in the repository. Maintainers do not run `npm publish` or
+push release tags by hand: the workflow creates the tag `v<version>` and the GitHub Release after
+a successful publish.
 
 ## One-time owner setup (npm Trusted Publishing) — done
 
@@ -19,21 +20,18 @@ store it as the repository secret `NPM_TOKEN`, and uncomment the `env: NODE_AUTH
 ## Cutting a release
 
 ```bash
-# 1. bump the version (also creates the commit and the tag)
-npm version 0.1.0 -m "release: %s"        # or: npm version prerelease --preid alpha
-# 2. review, then push the commit and the tag
+# bump the version without a local tag, then push it to main (directly or through a merged PR)
+npm version 0.1.0 --no-git-tag-version   # or: npm version prerelease --preid alpha --no-git-tag-version
+git commit -am "release: 0.1.0"
 git push origin main
-git push origin v0.1.0
 ```
 
-If `package.json` already holds the version to release (e.g. the first release
-`0.1.0-alpha.0`), just tag it: `git tag v0.1.0-alpha.0 && git push origin v0.1.0-alpha.0`.
-
-The workflow fails if the tag does not equal `v` + the `package.json` version, then runs
-`npm ci`, build, the signed Android companion (`android/release-apk.sh` with the
-`ANDROID_KEYSTORE_*` secrets; fails unless `apksigner` shows the pinned certificate), lint and
-tests, checks that the tarball contains `dist/android/blindfill-companion.apk`, and finally
-`npm publish --provenance --access public`.
+The workflow then runs the full test suite on Windows (`test-windows`) and, on Linux, `npm ci`,
+build, the signed Android companion (`android/release-apk.sh` with the `ANDROID_KEYSTORE_*`
+secrets; fails unless `apksigner` shows the pinned certificate), lint and tests, checks that the
+tarball contains `dist/android/blindfill-companion.apk`, runs
+`npm publish --provenance --access public`, and finally tags `v<version>` and creates the GitHub
+Release with generated notes (marked pre-release for `-alpha`/`-rc` versions).
 Versions with a pre-release suffix (`-alpha.0`, `-rc.1`, …) are published under the `next`
 dist-tag (`npm i blindfill@next`); plain `X.Y.Z` versions become `latest`.
 

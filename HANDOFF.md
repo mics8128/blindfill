@@ -6,9 +6,10 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 - Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 278 passed, 20 skipped
   (opt-in Firefox, live-vault and Android-device tests).
-- Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
-  `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
-  The owner authorises tags and npm publishing. Do not tag.
+- Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases run only when a push to
+  `main` changes the `package.json` version (`.github/workflows/release.yml`, see
+  `docs/RELEASING.md`; it tags and creates the GitHub Release itself; pre-releases go to `next`).
+  The owner authorises version bumps. Do not tag or publish by hand.
 - Website: https://mics8128.github.io/blindfill/, built from `site/` on branch `site/landing`
   (`git subtree split --prefix site site/landing` → `gh-pages`, normal push).
 - `ego-cli` (Ego Lite attach) is merged and supported (owner decision 2026-11-28); a real-site sign-in
