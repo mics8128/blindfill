@@ -16,74 +16,56 @@
 
 </div>
 
-AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 로그인할 수 있게 합니다. blindfill은 비밀번호 관리자에서 자격 증명을 읽어 페이지의 오리진(origin)에 바인딩되어 있는지 확인한 뒤, 실제 폼에 입력하고 페이지 구조와 결과만 반환합니다. 비밀 값은 쓰기 전용(`SecretHandle.into(sink)`)이며 출력에서 제거(scrub)되고, 입력이 끝나면 세션이 잠깁니다.
+blindfill은 비밀번호 관리자에서 로그인 정보를 읽어, 그것이 페이지의 사이트에 속하는지 확인한 뒤 실제 폼에 입력하고 에이전트에게는 결과만 알려 줍니다. 비밀번호는 모델의 컨텍스트에 들어가지 않습니다.
 
-> **상태: alpha (0.1.0).** 먼저 [SECURITY.md](SECURITY.md)에서 위협 모델과 알려진 한계를 읽어 보세요.
+> **상태: alpha (0.1.0).** 아직 독립적인 보안 검토를 받지 않았습니다. 중요한 계정에 쓰기 전에 [SECURITY.md](SECURITY.md)를 읽어 보세요.
 
-## 예시: 비밀번호는 LLM을 거치지 않습니다
+## 빠른 시작
 
-아래 출력은 예시이며 필드 이름은 조금 다를 수 있습니다.
-
-1. **로그인.** 에이전트가 항목 ID와 로그인 URL로 `fill`을 호출합니다. blindfill은 `bw`에서 비밀번호를 꺼내 폼에 직접 입력하고 `{"ok": true, "url": ".../home"}`만 반환합니다. 모델은 결과만 볼 뿐 비밀번호는 볼 수 없습니다.
-2. **피싱과 프롬프트 인젝션.** 비슷하게 만든 도메인(`examp1e.com`)이나 교차 출처 iframe은 **비밀 값을 읽기 전에** 거부됩니다. 악성 페이지가 에이전트를 속여 다른 곳에 비밀번호를 입력하게 만들 수 없습니다.
-3. **일회용 코드.** `totp_code`는 현재 6자리 코드를 반환합니다(텍스트처럼 읽기와 입력이 모두 가능). TOTP 시드는 백엔드 밖으로 나가지 않습니다.
-4. **입력 후 잠금.** 입력 후 세션은 페이지 텍스트, DOM, 스크린샷 제공을 거부합니다. 페이지가 비밀번호를 되돌려 보여 줘도 모델로 유출되지 않습니다.
-
-## 지원 백엔드와 브라우저
-
-| 백엔드                                                                                        | 등급                                                | 비고                                                                                                                                                                                                                                                                                                                                                                               |
-| --------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bitwarden / Vaultwarden(`bw`)                                                                 | 검증됨(모의 CLI + 픽스처, 실제 Vault로 실제 사이트) | 2026-11-27: `tests/live-bw.test.ts`가 실제 Vaultwarden(Bitwarden CLI 2026.11.1)에서 통과. 일회용 항목과 로컬 가짜 페이지 사용(비밀번호 + TOTP 채우기, 생성 + 가입). 2026-11-27/28: 실제 사이트(Walmart, eccang, Amazon Seller Central, iCHEF, QuickBooks Online, Wayfair, Fastmail, Google, Instagram, GitHub)에서 사용. 실패와 부분 완료 기록은 [docs/TESTED.md](docs/TESTED.md). |
-| 1Password(`op`), rbw, pass, gopass, KeePassXC(`keepassxc-cli`), Secret Service(`secret-tool`) | 블라인드 작성, 미검증                               | 픽스처에서 공통 계약 테스트만 통과했습니다. `blindfill backend selftest <id>`를 실행하고 백엔드 리포트를 남겨 주세요.                                                                                                                                                                                                                                                              |
-
-| 브라우저                                                                         | 상태                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Chromium: Playwright 번들, 임의의 Chromium 빌드(`--executable`), 또는 루프백 CDP | 지원, 테스트됨                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Firefox / Camoufox (루프백 Playwright 서버 경유, `--browser firefox-connect`)    | 테스트됨(옵트인 스위트): Camoufox 158.0.1-beta.41 및 159.0-beta.43. 영구 프로필이 있는 서버(예: 공유 Camoufox)는 그대로 재사용: 그 쿠키와 로그인 상태를 쓰고, `--url`은 자체 탭을 열며, 기존 탭은 이동하거나 닫지 않음([docs/browsers.md](docs/browsers.md)). 장시간 실행 중인 인스턴스에서 읽기 전용 확인                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Ego Lite                                                                         | 지원: 실행 중인 앱은 `ego-cli`(`--endpoint ego://new`)로, 또는 별도의 빈 프로필 인스턴스(`--executable`). `ego-cli`에서는 입력값이 Ego의 Node runtime을 거침. 크로스 오리진 iframe은 Chromium과 같이 동작(frame 규칙, 같은 확인). passkey 미지원(Ego는 WebAuthn 명령을 받지만 페이지의 요청이 가상 인증기에 도달하지 않음). 제출 후 Ego의 비밀번호 관리자가 Google 비밀번호 유출 검사를 실행함. 외부 트래픽과 crash dump는 2026-11-28에 한 번만 확인(약 3분, 가짜 로그인 페이지)했고 유출 없음. 더 긴 트래픽과 Ego UI 작업 기록은 미확인이며 소유자가 수용함. 가짜 사이트에서 e2e 완료, 실제 사이트 로그인은 미테스트([docs/browsers.md](docs/browsers.md#ego-lite))                                                                                                                                                                                                                                         |
-| WebKit / Safari                                                                  | 미지원                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Android(14 이상)                                                                 | 컴패니언 APK: 비밀번호는 자동 완성 서비스(로그인, 그리고 `item generate`로 만든 비밀번호로 가입 양식), 비밀번호와 passkey는 Credential Manager(로그인, 그리고 앱에 바인딩되고 passkey가 없는 항목에 추가만 하는 passkey 등록; 키는 호스트에서 생성·사용). 앱은 Bitwarden처럼 패키지 이름으로 연결하고, 항목에 `blindfill.signers`가 있으면 서명도 확인. WebView는 https 도메인만으로 연결(SECURITY.md 21–23). 정식 서명되며 호스트가 매번 채우기 전에 기기의 컴패니언 APK 서명을 확인. `blindfill android install --serial <s>`로 설치([android/README.md](android/README.md)). 가짜 앱으로 기기 1대(Xperia 5 II, Android 17)와 에뮬레이터(Android 16)에서 테스트: 비밀번호, 가입 양식, WebView 로그인과 가입, Credential Manager 비밀번호, passkey 등록 후 로그인. 같은 기기와 실제 `bw` Vault로 실제 앱 테스트(2026-11-27): Threads 로그인 성공, Instagram 부분 완료(제안은 채워졌으나 로그인 결과 미확인) |
-| Passkey                                                                          | 웹 로그인과 등록(추가만: 페이지에 바인딩되고 아직 passkey가 없는 모든 항목): Chromium, 그리고 Marionette를 통한 Firefox/Camoufox(`BLINDFILL_MARIONETTE`; Firefox는 BE=0으로 서명하므로 BE를 확인하는 사이트는 Bitwarden이 만든 passkey를 거부할 수 있음. 그때는 Chromium 사용). 엄격한 가짜 relying party로 테스트(Firefox: opt-in 테스트, Mac과 Linux의 Camoufox). 2026-11-27 `bw` Vault로 webauthn.io(Chromium)에서 연속 로그인 3회, 등록 1회 후 로그인, Bitwarden 확장 프로그램도 그 blindfill 제작 passkey로 로그인. 카운터는 Vault에 기록. github.com(일회용 계정, 2026-11-28, Linux의 Chromium): 설정에서 passkey 추가 후 새 세션에서 passkey 로그인 2회, Bitwarden 확장 프로그램으로도 로그인한 뒤 blindfill로 다시 로그인                                                                                                                                                                            |
-
-**브라우저 연결.** 아무것도 설정하지 않으면 `blindfill session start`가 자체 Chromium(빈 프로필)을 실행한다. 이미 실행 중인 브라우저를 쓰려면 `~/.config/blindfill/config.json`에 `web.endpoint`(`--remote-debugging-port`로 실행한 Chrome이면 `http://127.0.0.1:9222`) 또는 `web.endpointFile`(어떤 런처든 쓸 수 있는 JSON 파일 `{"endpoint": "ws://…"}`)을 설정하거나 환경 변수 `BLINDFILL_ENDPOINT` / `BLINDFILL_ENDPOINT_FILE`을 쓴다. 그 뒤 `blindfill session attach`는 인자 없이 실행된다. 브라우저별 제한(Chrome 기본 프로필, Firefox와 Camoufox는 Playwright 서버 필요, Ego Lite는 blindfill이 직접 실행하는 빈 인스턴스 또는 `ego-cli`): [docs/browsers.md](docs/browsers.md#connecting-a-browser).
-
-**플랫폼.** macOS와 Linux. Windows 10/11: 테스트 스위트(단위, 유출, 로컬 가짜 페이지 e2e, Chromium)가 Windows 11 한 대에서 통과했고, 매 릴리스 전 `windows-latest`에서도 실행. **Windows에서 실제 사이트는 아직 테스트하지 않음**. Windows에서는 상태·설정·프로필 디렉터리를 0700/0600 대신 ACL로 검사(SECURITY.md 참조). `bw`는 네이티브 `bw.exe`(scoop `bitwarden-cli` 또는 Bitwarden 공식 단독 다운로드)로 설치할 것. npm의 `bw.cmd`는 셸 없이 실행할 수 없음. `ego-cli` 제공자는 Windows에서 쓸 수 없음.
-
-브라우저 제공자와 그 계약: [docs/browsers.md](docs/browsers.md). 실패를 포함한 모든 테스트 기록: [docs/TESTED.md](docs/TESTED.md).
-
-## 동작하는 것 (테스트 스위트로 검증됨)
-
-- **웹 입력**: 보관함 항목에 따른 오리진 바인딩, iframe 안의 필드는 명시적 규칙으로만 입력, 계획 후 페이지가 이동하면 입력 거부, 허니팟 건너뛰기, SPA 대기, 1회 제출, 입력 후 잠금.
-- **필드 규칙과 로그인 프로필**: 휴리스틱이 읽지 못하는 폼을 위해 사이트별 정확한 셀렉터를 항목(`blindfill.rules`) 또는 로컬 프로필에 지정. 규칙 셀렉터는 값이나 상태 탐색이 없는 순수 CSS.
-- **페이지 도구**: `page discover|diagnose|verify|list`는 구조와 불리언만 보고하며 값은 절대 반환하지 않음. 세션이 잠긴 동안은 거부됨.
-- **등록**: `item generate`는 표시되지 않는 CSPRNG 비밀번호가 담긴 항목을 생성. `register`는 이를 바인딩된 오리진의 가입 폼(비밀번호와 확인란)에 입력. `item generate --no-password`는 사용자 이름만 있고 비밀번호가 없는 항목을 생성(passkey 전용 사이트용). 비밀번호 로그인, `fill`, `register`, `android fill`은 빈칸을 채우지 않고 "비밀번호 없음"으로 거부.
-- **인증 앱 설정**: `totp enroll --item <id> --selector <css>`는 바인딩된 페이지의 단일 요소에서 설정 키(또는 `otpauth://totp` URI)를 읽어 TOTP 시드가 없는 항목에 저장. 키는 표시되지 않으며 기존 시드는 절대 덮어쓰지 않음. 이후 `totp --fill`로 코드를 입력.
-- **항목 관리**: `item list|status|rename|edit`. 비밀 값, 오리진, `blindfill.*` 필드는 터미널에서만 변경 가능. 단, `blindfill.rules`는 에이전트도 변경 가능(SECURITY.md 참조). `item reveal`은 없음.
-- **사람에게 인계**: `handoff pause|resume`으로 CAPTCHA, 동의, MFA를 위해 브라우저를 사람에게 넘김. 그동안 에이전트 동작은 거부되고, 재개 후에도 잠금은 유지됨.
-- **인터페이스**: CLI, MCP 서버(stdio), 라이브러리 API(`withPage(page, …)`).
-- **유출 테스트**: 입력, 규칙, 프로필, 페이지 도구, 등록, 항목 관리, 인계를 CLI와 MCP로 canary 비밀번호와 생성된 비밀번호를 사용해 실행. 모든 출력, 오류, `DEBUG=pw:api` 로그, 상태 파일을 원문, URL, Base64, 16진수 형태로 검색.
-
-## 미완료
-
-- Android: 직접 입력한 로그인 저장, 실제 앱에서의 가입 양식·WebView·Credential Manager 비밀번호, 실제 앱에서의 passkey 등록. WebKit. 실제 사이트나 상시 실행 Camoufox에서의 Firefox passkey.
-- 일부 실제 사이트는 아직 사람이나 사이트 규칙이 필요(Walmart의 Press & Hold 같은 봇 확인, 일부 MFA 설정; [docs/TESTED.md](docs/TESTED.md) 참고). 나머지 여섯 백엔드는 맹목적으로 작성되어 미검증.
-
-## 사용해 보기
+Node 20 이상과 기본 백엔드인 Bitwarden CLI(`bw`)가 필요합니다.
 
 ```bash
-npm ci && npm run build && npx playwright-core install chromium
-export BW_SESSION="$(bw unlock --raw)"        # env only
-mkdir -p ~/.config/blindfill && echo '{"backend":"bw"}' > ~/.config/blindfill/config.json
-node dist/cli.js backend list
-node dist/cli.js session start --headless
-node dist/cli.js fill --item <id> --url https://example.com/login --submit --expect-url /home
-node dist/cli.js mcp                           # MCP server on stdio, see examples/mcp-config.json
+export BW_SESSION="$(bw unlock --raw)"     # 보관함 잠금 해제(환경 변수에만)
+npx -y blindfill session start             # 자체 헤드리스 Chromium 실행
+npx blindfill fill --item <id> --url https://example.com/login --submit
 ```
+
+`<id>`는 보관함 항목의 ID입니다(`npx blindfill item list`). `session start`가 Chromium을 찾을 수 없다고 하면
+`npx playwright-core install chromium`을 한 번 실행하거나, `--executable <경로>`로 가지고 있는 Chromium을 지정하세요.
+
+에이전트에서 쓰려면 MCP 서버를 실행합니다: `npx -y blindfill mcp`([설정 예시](examples/mcp-config.json)). 매일 쓴다면
+`npm i -g blindfill` 후 `npx`를 빼고 실행하세요.
+
+## 보장하는 것
+
+- **비밀은 입력 전용.** 비밀번호, TOTP 시드, 개인 키를 반환하는 명령, MCP 도구, 라이브러리 함수는 없습니다.
+- **올바른 사이트에 바인딩.** 비밀을 어디에 입력할지는 보관함 항목이 정합니다. 유사 도메인이나 교차 출처 iframe은 비밀을 읽기 전에 거부됩니다.
+- **입력 후 잠금.** 이후 페이지 텍스트, DOM, 스크린샷은 거부되고 모든 출력은 제거 처리됩니다.
+- **추측하지 않고 멈춤.** 모호한 필드나 알 수 없는 결과는 보고만 하고 재시도하지 않습니다.
+
+## 지원
+
+Bitwarden / Vaultwarden(실제 사이트에서 테스트됨, 나머지 6개 백엔드는 미검증) · Chromium, Firefox / Camoufox, Ego Lite ·
+패스키 · TOTP 코드 · Android 14+ 컴패니언 앱(실험적) · macOS와 Linux(Windows는 테스트 스위트만).
+구성 요소별 상태와 모든 테스트 기록: [docs/TESTED.md](docs/TESTED.md).
+
+## 문서
+
+| 주제                    | 문서                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| 위협 모델과 알려진 한계 | [SECURITY.md](SECURITY.md)                                                                            |
+| 지원 상태와 테스트 기록 | [docs/TESTED.md](docs/TESTED.md)                                                                      |
+| 내 브라우저에 연결하기  | [docs/browsers.md](docs/browsers.md)                                                                  |
+| 비밀번호 관리자 설정    | [Bitwarden](docs/backends/bitwarden.md), [기타](docs/backends/other.md)                               |
+| Android 컴패니언 앱     | [android/README.md](android/README.md)                                                                |
+| 다른 방식과 비교        | [docs/COMPARISON.md](docs/COMPARISON.md)                                                              |
+| 아키텍처, 릴리스, 기여  | [ARCHITECTURE](docs/ARCHITECTURE.md), [RELEASING](docs/RELEASING.md), [CONTRIBUTING](CONTRIBUTING.md) |
+
+문서는 영어로 작성되어 있습니다.
 
 ## 개발
 
-`npm run lint && npm test && npm run build`. 아키텍처: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-릴리스(main의 `package.json` 버전 변경 시 트리거, npm Trusted Publishing): [docs/RELEASING.md](docs/RELEASING.md). MIT 라이선스.
+`npm ci && npm run lint && npm test && npm run build`, 그다음 `node dist/cli.js …`. MIT 라이선스.
 
 ## 번역
 
