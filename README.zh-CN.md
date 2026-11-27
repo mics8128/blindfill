@@ -84,7 +84,7 @@ node dist/cli.js mcp                           # MCP server on stdio, see exampl
 ## 开发
 
 `npm run lint && npm test && npm run build`。架构说明：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-发布流程（由 tag 触发，使用 npm Trusted Publishing）：[docs/RELEASING.md](docs/RELEASING.md)。MIT 许可。
+发布流程（main 上的 `package.json` 版本变更时触发，使用 npm Trusted Publishing）：[docs/RELEASING.md](docs/RELEASING.md)。MIT 许可。
 
 ## 翻译
 

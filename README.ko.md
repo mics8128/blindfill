@@ -84,7 +84,7 @@ node dist/cli.js mcp                           # MCP server on stdio, see exampl
 ## 개발
 
 `npm run lint && npm test && npm run build`. 아키텍처: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-릴리스(태그 트리거, npm Trusted Publishing): [docs/RELEASING.md](docs/RELEASING.md). MIT 라이선스.
+릴리스(main의 `package.json` 버전 변경 시 트리거, npm Trusted Publishing): [docs/RELEASING.md](docs/RELEASING.md). MIT 라이선스.
 
 ## 번역
 

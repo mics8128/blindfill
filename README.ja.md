@@ -84,7 +84,7 @@ node dist/cli.js mcp                           # MCP server on stdio, see exampl
 ## 開発
 
 `npm run lint && npm test && npm run build`。アーキテクチャ: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-リリース手順（タグ起動、npm Trusted Publishing）: [docs/RELEASING.md](docs/RELEASING.md)。MIT ライセンス。
+リリース手順（main の `package.json` のバージョン変更で起動、npm Trusted Publishing）: [docs/RELEASING.md](docs/RELEASING.md)。MIT ライセンス。
 
 ## 翻訳
 

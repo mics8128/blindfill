@@ -108,7 +108,7 @@ node dist/cli.js mcp                           # MCP server on stdio, see exampl
 ## Develop
 
 `npm run lint && npm test && npm run build`. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-Releasing (tag-triggered, npm Trusted Publishing): [docs/RELEASING.md](docs/RELEASING.md). MIT licensed.
+Releasing (a `package.json` version bump on `main`, npm Trusted Publishing): [docs/RELEASING.md](docs/RELEASING.md). MIT licensed.
 
 ## Translations
 
