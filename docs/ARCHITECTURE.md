@@ -204,8 +204,9 @@ flow.
   `blindfill totp [--fill]`, `blindfill probe`,
   `blindfill backend list|selftest`, `blindfill session stop`. JSON on stdout, prompts on
   stderr.
-- MCP server (stdio only): `probe`, `candidates`, `item_show` (readable fields), `totp_code`,
-  `fill`, `fill_totp`, `session_stop`. No tool returns Secret-class values. Tool descriptions state the no-read contract so agents plan for it.
+- MCP server (stdio only): `probe`, `candidates`, `item_show` (readable fields), `list_credentials`
+  (names, origins, field names), `totp_code`, `fill`, `fill_totp`, `profile_login`, `session_stop` and
+  more (see `src/mcp.ts`). No tool returns Secret-class values. Tool descriptions state the no-read contract so agents plan for it.
 - TypeScript library for in-process Playwright owners.
 
 ### 3.7 Audit and grants

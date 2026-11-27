@@ -12,6 +12,7 @@ import { attach, loadSession, stopSession } from './actuators/web/session.js';
 import { WebActuator } from './actuators/web/web.js';
 import { SessionPolicy } from './core/policy.js';
 import { BlindfillError } from './core/types.js';
+import { assertRevision, loadProfile } from './profiles.js';
 
 const CONTRACT =
   'Blindfill contract: secret-class fields (password, TOTP seed, hidden fields, card numbers, keys) are write-only. ' +
@@ -125,6 +126,43 @@ export function buildServer(): McpServer {
       inputSchema: itemSel,
     },
     ({ item, query }) => run(async () => (await getEngine()).itemShow({ item, query })),
+  );
+  server.registerTool(
+    'list_credentials',
+    {
+      description: `List vault items (at most 100): id, name, bound origins, field NAMES and whether the item has rules. No value of any field, no notes, no TOTP code. Same output as the CLI "item list". ${CONTRACT}`,
+      inputSchema: { query: z.string().optional().describe('Search text; without it every item is listed.') },
+    },
+    ({ query }) => run(async () => (await getEngine()).itemList(query ?? '')),
+  );
+  server.registerTool(
+    'profile_login',
+    {
+      description: `Run a local login recipe (profile) on the one already-open page whose origin matches it; no navigation. Profiles are private local files a person creates with "blindfill profile init"; this tool cannot create or change them, and the recipe grants no authority beyond the item's own URIs. check=true plans only, diagnose=true returns value-free diagnostics. Submits only with submit=true (default false), at most once, never retried. ${CONTRACT}`,
+      inputSchema: {
+        name: z.string().describe('Profile name.'),
+        check: z.boolean().optional().describe('Plan only: no secret read, no field touched.'),
+        diagnose: z.boolean().optional().describe('Value-free structural diagnosis of the recipe page.'),
+        submit: z.boolean().optional().describe('Submit once after filling (default false).'),
+        page: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Page index (list_pages) when several pages match.'),
+        revision: z
+          .string()
+          .optional()
+          .describe('Reviewed profile revision; refused if the recipe changed since.'),
+        expect: expectShape,
+      },
+    },
+    ({ name, revision, submit, ...opts }) =>
+      run(async () => {
+        const p = loadProfile(name);
+        assertRevision(p, revision);
+        return (await getEngine()).runProfile(p, { ...opts, submit: submit ?? false });
+      }),
   );
   server.registerTool(
     'totp_code',

@@ -98,6 +98,10 @@ blindfill defends against **the model and its logs**:
     (PKCS12, RSA 4096) lives in the owner's `~/.config/blindfill/` (0600), in the GitHub Actions
     secrets `ANDROID_KEYSTORE_B64`/`ANDROID_KEYSTORE_PASSWORD`, and as an age-encrypted backup; it is
     never committed. CI and the release workflow check the built APK's signer with `apksigner`.
+17. **A key stored in a Hidden custom field is treated as a password.** blindfill recognises keys
+    only in their dedicated places (the item's TOTP field, SSH-key items, passkeys). A private key,
+    seed or recovery code pasted into a Hidden custom field is an ordinary Secret: it cannot be read,
+    but it can be filled into a page the item binds. Keep keys in their dedicated fields.
 
 ## Reporting a vulnerability
 

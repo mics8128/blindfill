@@ -271,9 +271,11 @@ describe('leak test: canary password never appears anywhere', () => {
       'fill_totp',
       'human_handoff',
       'item_show',
+      'list_credentials',
       'list_pages',
       'passkey_sign',
       'probe',
+      'profile_login',
       'register_credentials',
       'session_stop',
       'totp_code',
@@ -295,6 +297,9 @@ describe('leak test: canary password never appears anywhere', () => {
     const s = await call('item_show', { item: 'leak-item' });
     expect(s.content[0].text).toContain('"pin"');
     await call('totp_code', { item: 'leak-item' });
+    const lc = await call('list_credentials');
+    expect(lc.content[0].text).toContain('"leak-item"');
+    expect((await call('profile_login', { name: 'no-such-profile' })).isError).toBe(true);
     const lp = await call('list_pages');
     expect(lp.isError).toBeFalsy();
     const dsc = await call('discover_fields', { item: 'leak-rule', url: good('/multi'), rule: 'main' });
@@ -339,6 +344,7 @@ describe('leak test: canary password never appears anywhere', () => {
     expect(vl.content[0].text).toContain('identity_verified');
     expect((await call('fill_totp', { item: 'leak-item' })).isError).toBe(true);
     expect((await call('passkey_sign', { item: 'leak-item', click: '#pk' })).isError).toBe(true);
+    expect((await call('list_credentials')).isError).toBeFalsy();
     expect(
       (await call('android_offer', { item: 'leak-item', serial: 'NOPE', kind: 'password' })).isError,
     ).toBe(true);

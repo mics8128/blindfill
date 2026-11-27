@@ -13,7 +13,7 @@ import { attach, attachSession, loadSession, startSession, stopSession } from '.
 import { redactEndpoint, resolveEndpoint } from './actuators/web/providers/util.js';
 import type { Expect } from './actuators/web/web.js';
 import { strictJson } from './rules.js';
-import { createProfile, loadProfile, type ProfileDoc } from './profiles.js';
+import { assertRevision, createProfile, loadProfile, type ProfileDoc } from './profiles.js';
 import { AndroidActuator, COMPANION, COMPANION_SERVICES } from './actuators/android/index.js';
 
 const VERSION = (() => {
@@ -594,11 +594,7 @@ async function main(): Promise<number> {
       }
       if (sub === 'login') {
         const p = loadProfile(name);
-        if (values.revision && values.revision !== p.revision)
-          throw new BlindfillError(
-            'POLICY',
-            'profile_revision_mismatch: the recipe changed since it was reviewed; re-validate it',
-          );
+        assertRevision(p, values.revision as string | undefined);
         const e = await engineFor(true);
         try {
           out(

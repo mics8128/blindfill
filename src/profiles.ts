@@ -133,6 +133,15 @@ export function loadProfile(name: string, dir = profilesDir()): Profile {
   return validateProfile(strictJson(text), name);
 }
 
+/** A reviewed revision pins the recipe: any change since review is refused (CLI and MCP). */
+export function assertRevision(p: Profile, revision: string | undefined): void {
+  if (revision !== undefined && revision !== p.revision)
+    throw new BlindfillError(
+      'POLICY',
+      'profile_revision_mismatch: the recipe changed since it was reviewed; re-validate it',
+    );
+}
+
 /** One-time creation. Never overwrites; mode 0600; no vault access. */
 export function createProfile(
   name: string,
