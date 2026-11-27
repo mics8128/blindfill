@@ -149,6 +149,8 @@ export async function startSession(
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-extensions',
+    // throwaway profile; without this macOS Chromium blocks on the login keychain (Playwright passes it too)
+    '--use-mock-keychain',
     ...((opts.headless ?? true) ? ['--headless=new'] : []),
     ...(process.env.BLINDFILL_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
     'about:blank',
