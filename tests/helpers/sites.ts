@@ -21,6 +21,7 @@ export async function startSites(): Promise<{
 }> {
   const received: Received[] = [];
   const requested: string[] = [];
+  const passkeyCounters = new Map<string, number>();
   const page = (title: string, body: string, script = '') =>
     `<!doctype html><html><head><meta charset=utf-8><title>${title}</title></head><body>${body}<script>${script}</script></body></html>`;
 
@@ -68,7 +69,16 @@ export async function startSites(): Promise<{
           return;
         }
         if (u.pathname === '/passkey') {
-          res.writeHead(200).end(); // the test verifies the assertion itself
+          // strict relying party (SimpleWebAuthn rules): the signature counter must grow unless both it and
+          // the stored one are 0, and the backup-eligible flag must match registration (Bitwarden: BE=1).
+          // The test verifies the signature itself.
+          const ad = Buffer.from(fields.authenticatorData ?? '', 'base64url');
+          const count = ad.length >= 37 ? ad.readUInt32BE(33) : -1;
+          const stored = passkeyCounters.get(fields.id) ?? 0;
+          const ok = count >= 0 && !((count > 0 || stored > 0) && count <= stored) && (ad[32] & 0x08) !== 0;
+          if (ok) passkeyCounters.set(fields.id, count);
+          fields.verdict = ok ? 'accepted' : 'rejected';
+          res.writeHead(ok ? 200 : 400).end();
           return;
         }
         if (fields.password === CANARY || fields.a2 === CANARY) {

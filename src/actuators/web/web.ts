@@ -660,12 +660,13 @@ export class WebActuator {
   async passkeyAssert(
     handle: SecretHandle,
     opts: { click?: string; timeoutMs?: number } = {},
-  ): Promise<{ asserted: boolean; signCount: number | null }> {
+  ): Promise<{ asserted: boolean; signCount: number | null; credentialId: string }> {
     if (!this.capabilities.cdp)
       throw new BlindfillError('UNSUPPORTED', 'passkeys need a Chromium provider with CDP');
     if (opts.click) assertSafeEvidenceSelector(opts.click);
     const cdp = await this.page.context().newCDPSession(this.page);
     let authenticatorId: string | undefined;
+    let credentialId = '';
     try {
       await cdp.send('WebAuthn.enable', { enableUI: false });
       ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -677,6 +678,9 @@ export class WebActuator {
           hasUserVerification: true,
           isUserVerified: true,
           automaticPresenceSimulation: true,
+          // Bitwarden signs with backup eligible + backed up; RPs may reject a change of BE
+          defaultBackupEligibility: true,
+          defaultBackupState: true,
         },
       }));
       const asserted = new Promise<number>((res) =>
@@ -684,21 +688,25 @@ export class WebActuator {
       );
       await handle.into(async (buf) => {
         const c = JSON.parse(buf.toString('utf8')) as BwFido2Credential;
+        credentialId = c.credentialId ?? '';
         await cdp.send('WebAuthn.addCredential', {
           authenticatorId: authenticatorId!,
           credential: {
-            credentialId: credentialIdBase64(c.credentialId ?? ''),
+            credentialId: credentialIdBase64(credentialId),
             isResidentCredential: true,
             rpId: c.rpId ?? '',
             privateKey: Buffer.from(c.keyValue ?? '', 'base64url').toString('base64'),
             userHandle: c.userHandle ? Buffer.from(c.userHandle, 'base64url').toString('base64') : undefined,
+            // Chromium reports signCount + 1 (never 0); the engine writes that back
             signCount: Number(c.counter ?? 0) || 0,
+            backupEligibility: true,
+            backupState: true,
           },
         });
       });
       if (opts.click) await this.page.locator(opts.click).click({ timeout: 5000 });
       const n = await Promise.race([asserted, sleep(opts.timeoutMs ?? 15_000).then(() => null)]);
-      return { asserted: n !== null, signCount: n };
+      return { asserted: n !== null, signCount: n, credentialId };
     } catch (e) {
       throw wrap(e, 'passkey');
     } finally {

@@ -1148,9 +1148,33 @@ export class Engine {
   }
 
   /**
+   * Raise the vault's passkey counter after a signature (owner decision 2026-11-27: no terminal needed).
+   * Never retried: a failure is audited and reported, and the next sign-in repeats the counter.
+   */
+  private async writeCounter(ref: ItemRef, credentialId: string, counter: number, target: string) {
+    if (counter === 0) return { counter_written_back: false }; // Bitwarden semantics: 0 stays 0
+    try {
+      if (!this.backend.raisePasskeyCounter) throw new BlindfillError('UNSUPPORTED', 'no counter write');
+      await this.backend.raisePasskeyCounter(ref, credentialId, counter);
+      return { counter_written_back: true };
+    } catch (e) {
+      const code = e instanceof BlindfillError ? e.code : 'BACKEND';
+      audit({
+        event: 'passkey',
+        backend: this.backend.id,
+        item: ref.id,
+        target,
+        outcome: 'counter_write_failed',
+        reason: code,
+      });
+      return { counter_written_back: false, counter_error: code };
+    }
+  }
+
+  /**
    * Passkey sign-in (web, Chromium with CDP). Checks the item binding and the passkey's rpId against
-   * the page before the key is read, then lets the page's own WebAuthn request use it once.
-   * The counter is not written back to the vault (ARCHITECTURE 3.8, open point).
+   * the page before the key is read, then lets the page's own WebAuthn request use it once, then
+   * writes the reported counter back to the vault.
    */
   async passkey(
     req: ItemSelector & { url?: string; click?: string; expect?: Expect },
@@ -1199,7 +1223,9 @@ export class Engine {
       origin: target.origin,
       item: { id: ref.id, name: meta.name },
       sign_count: r.signCount,
-      counter_written_back: false,
+      ...(r.asserted && r.signCount !== null
+        ? await this.writeCounter(ref, r.credentialId, r.signCount, tname)
+        : { counter_written_back: false }),
       outcome: ev?.outcome ?? 'unknown',
     };
   }
@@ -1236,6 +1262,7 @@ export class Engine {
       });
       throw new BlindfillError('ORIGIN_MISMATCH', `refused: ${reason}`);
     };
+    let signed: { credentialId: string; count: number } | undefined;
     const r = await android.serve(
       {
         serial: req.serial,
@@ -1278,10 +1305,16 @@ export class Engine {
           await this.backend.openSecret(ref, 'passkey')
         ).into((b) => {
           const c = JSON.parse(b.toString('utf8')) as BwFido2Credential;
-          // rpIdHash | flags UP+UV | signCount 0 (not tracked, see ARCHITECTURE 3.8)
+          // counter rule (Bitwarden): a stored 0 stays 0, otherwise stored + 1, written back after
+          const stored = Number(c.counter ?? 0) || 0;
+          signed = { credentialId: c.credentialId ?? '', count: stored === 0 ? 0 : stored + 1 };
+          const count = Buffer.alloc(4);
+          count.writeUInt32BE(signed.count);
+          // rpIdHash | flags UP+UV+BE+BS (as Bitwarden clients sign) | signCount
           const authData = Buffer.concat([
             createHash('sha256').update(rpId!).digest(),
-            Buffer.from([0x05, 0, 0, 0, 0]),
+            Buffer.from([0x1d]),
+            count,
           ]);
           const key = createPrivateKey({
             key: Buffer.from(c.keyValue ?? '', 'base64url'),
@@ -1309,13 +1342,20 @@ export class Engine {
         target: target || 'android',
         reason: r.reason,
       });
+    const answered = r.status === 'answered';
     return {
-      status: r.status === 'answered' ? (req.kind === 'passkey' ? 'signed' : 'offered') : r.status,
+      status: answered ? (req.kind === 'passkey' ? 'signed' : 'offered') : r.status,
       ...(r.status === 'refused' ? { reason: r.reason } : {}),
       target: target || null,
       item: { id: ref.id, name: meta.name },
+      ...(answered && signed
+        ? {
+            sign_count: signed.count,
+            ...(await this.writeCounter(ref, signed.credentialId, signed.count, target)),
+          }
+        : {}),
       note:
-        r.status === 'answered' && req.kind === 'password'
+        answered && req.kind === 'password'
           ? 'the phone shows a "blindfill: <item>" autofill suggestion; selecting it fills the fields'
           : undefined,
     };

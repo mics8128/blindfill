@@ -82,6 +82,13 @@ const item = (id: string, extra: Record<string, unknown> = {}, signers = SIGNER)
 const engine = () =>
   new Engine(new BwBackend({ bin: MOCK, env: { ...process.env, BW_SESSION: 'mock-session-token' } }));
 const android = () => new AndroidActuator(ADB);
+const vaultCounter = (id: string): string =>
+  (
+    JSON.parse(readFileSync(process.env.BLINDFILL_MOCK_BW_ITEMS!, 'utf8')) as {
+      id: string;
+      login: { fido2Credentials: { counter: string }[] };
+    }[]
+  ).find((x) => x.id === id)!.login.fido2Credentials[0].counter;
 
 /** Wait for the arm broadcast, then send one request as the phone would; returns the host's reply. */
 async function phone(req: Record<string, unknown>, tokenOverride?: string): Promise<Record<string, unknown>> {
@@ -115,7 +122,18 @@ beforeAll(() => {
   process.env.BLINDFILL_COMPANION_SIGNER = COMPANION_SHA;
   goodApk = writeApk('good', fakeApk([V2, CERT], [V3, CERT]));
   const f = join(dir, 'items.json');
-  writeFileSync(f, JSON.stringify([item('app'), item('nopin', {}, '')]));
+  writeFileSync(
+    f,
+    JSON.stringify([
+      item('app'),
+      item('nopin', {}, ''),
+      item('app-ctr', {
+        fido2Credentials: [
+          { credentialId: randomUUID(), rpId: RP, keyValue: KEY, userHandle: 'dXNlcg', counter: '3' },
+        ],
+      }),
+    ]),
+  );
   process.env.BLINDFILL_MOCK_BW_ITEMS = f;
 });
 beforeEach(() => {
@@ -192,6 +210,8 @@ describe('android companion, host side', () => {
     });
     expect(reply.ok).toBe(true);
     const authData = Buffer.from(String(reply.authenticatorData), 'base64url');
+    // Bitwarden semantics: a stored counter of 0 stays 0; flags UP, UV, BE, BS like Bitwarden clients
+    expect([authData[32], authData.readUInt32BE(33)]).toEqual([0x1d, 0]);
     expect(authData.subarray(0, 32)).toEqual(createHash('sha256').update(RP).digest());
     const pub = createPublicKey(publicKey.export({ type: 'spki', format: 'pem' }));
     expect(
@@ -203,7 +223,27 @@ describe('android companion, host side', () => {
       ),
     ).toBe(true);
     expect(JSON.stringify(reply)).not.toContain(KEY.slice(10, 40));
-    expect(await run).toMatchObject({ status: 'signed' });
+    expect(await run).toMatchObject({ status: 'signed', sign_count: 0, counter_written_back: false });
+    expect(vaultCounter('app')).toBe('0');
+  });
+
+  it('passkey: a non-zero counter grows by one per sign-in and is written back (three in a row)', async () => {
+    for (const want of [4, 5, 6]) {
+      log = join(dir, `adb-${randomBytes(4).toString('hex')}.log`);
+      process.env.FAKE_ADB_LOG = log;
+      const run = engine().androidOffer({ item: 'app-ctr', serial: 'S1', kind: 'passkey' }, android());
+      const reply = await phone({
+        ...base,
+        kind: 'passkey',
+        rpId: RP,
+        clientDataHash: Buffer.alloc(32).toString('base64url'),
+      });
+      const authData = Buffer.from(String(reply.authenticatorData), 'base64url');
+      expect([authData[32], authData.readUInt32BE(33)]).toEqual([0x1d, want]);
+      expect(await run).toMatchObject({ status: 'signed', sign_count: want, counter_written_back: true });
+      expect(vaultCounter('app-ctr')).toBe(String(want));
+    }
+    expect(readFileSync(process.env.BLINDFILL_AUDIT_FILE!, 'utf8')).not.toContain(KEY.slice(10, 40));
   });
 
   it('passkey: refuses another rpId', async () => {

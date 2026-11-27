@@ -122,15 +122,33 @@ export class BwBackend extends RawItemBackend {
     return { backend: this.id, id: made.id, name: spec.name };
   }
 
-  async #edit(ref: ItemRef, mutate: (raw: BwRawItem) => void): Promise<void> {
+  /** `mutate` returns false when nothing needs writing. */
+  async #edit(ref: ItemRef, mutate: (raw: BwRawItem) => void | false): Promise<void> {
     const raw = await this.getRaw(ref);
     // the whole item goes back to bw by stdin: know every secret in it in case bw echoes the body
-    for (const v of [raw.login?.password, raw.login?.totp, raw.card?.number, raw.card?.code])
+    for (const v of [
+      raw.login?.password,
+      raw.login?.totp,
+      raw.card?.number,
+      raw.card?.code,
+      raw.sshKey?.privateKey,
+      ...(raw.login?.fido2Credentials ?? []).map((c) => c.keyValue),
+    ])
       if (v) globalScrubber.register(v);
     for (const f of raw.fields ?? [])
       if (f.value && classifyBwFieldType(f.type) === 'secret') globalScrubber.register(f.value);
-    mutate(raw);
+    if (mutate(raw) === false) return;
     await this.#bw(['edit', 'item', ref.id], this.#encode(raw));
+  }
+
+  async raisePasskeyCounter(ref: ItemRef, credentialId: string, counter: number): Promise<void> {
+    await this.#edit(ref, (raw) => {
+      const c = raw.login?.fido2Credentials?.[0];
+      if (!c || c.credentialId !== credentialId)
+        throw new BlindfillError('NOT_FOUND', 'the item no longer holds that passkey');
+      if ((Number(c.counter ?? 0) || 0) >= counter) return false;
+      c.counter = String(counter); // Bitwarden keeps the counter as a string
+    });
   }
 
   async updateSecret(ref: ItemRef, field: string, value: string): Promise<void> {

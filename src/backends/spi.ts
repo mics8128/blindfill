@@ -55,6 +55,11 @@ export interface Backend {
   updateSecret?(ref: ItemRef, field: string, value: string): Promise<void>;
   /** Optional (WRITE). Change only non-secret properties. */
   updateItem?(ref: ItemRef, patch: ItemPatch): Promise<void>;
+  /**
+   * Optional (WRITE). Raise the sign counter of the item's passkey with this credential id to `counter`.
+   * Never lowers it and changes nothing else, so it needs no person at a terminal (owner decision 2026-11-27).
+   */
+  raisePasskeyCounter?(ref: ItemRef, credentialId: string, counter: number): Promise<void>;
 }
 
 export const DEFAULT_CONTROL: ControlFields = {

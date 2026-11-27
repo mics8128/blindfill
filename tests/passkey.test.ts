@@ -27,12 +27,20 @@ const KEY = privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64
 const USER_HANDLE = randomBytes(16).toString('base64url');
 let sites: Awaited<ReturnType<typeof startSites>>;
 let dir: string;
+let itemsFile: string;
+const vaultCounter = (id: string): string =>
+  (
+    JSON.parse(readFileSync(itemsFile, 'utf8')) as {
+      id: string;
+      login: { fido2Credentials: { counter: string }[] };
+    }[]
+  ).find((x) => x.id === id)!.login.fido2Credentials[0].counter;
 let browser: Browser;
 const opened: WebActuator[] = [];
 const outputs: string[] = [];
 
 const O = () => `http://good.localhost:${sites.port}`;
-const passkeyItem = (id: string, rpId: string) => ({
+const passkeyItem = (id: string, rpId: string, counter = '0') => ({
   id,
   type: 1,
   name: `Passkey ${id}`,
@@ -47,7 +55,7 @@ const passkeyItem = (id: string, rpId: string) => ({
         keyCurve: 'P-256',
         keyValue: KEY,
         userHandle: USER_HANDLE,
-        counter: '0',
+        counter,
         discoverable: 'true',
       },
     ],
@@ -64,12 +72,17 @@ beforeAll(async () => {
   sites = await startSites();
   dir = mkdtempSync(join(tmpdir(), 'bf-pk-'));
   process.env.BLINDFILL_AUDIT_FILE = join(dir, 'audit.jsonl');
-  const f = join(dir, 'items.json');
+  itemsFile = join(dir, 'items.json');
   writeFileSync(
-    f,
-    JSON.stringify([passkeyItem('pk-good', 'good.localhost'), passkeyItem('pk-other', 'other.localhost')]),
+    itemsFile,
+    JSON.stringify([
+      passkeyItem('pk-good', 'good.localhost'),
+      passkeyItem('pk-other', 'other.localhost'),
+      passkeyItem('pk-strict', 'good.localhost'),
+      passkeyItem('pk-five', 'good.localhost', '5'),
+    ]),
   );
-  process.env.BLINDFILL_MOCK_BW_ITEMS = f;
+  process.env.BLINDFILL_MOCK_BW_ITEMS = itemsFile;
 });
 afterAll(async () => {
   for (const a of opened) await a.close();
@@ -89,7 +102,7 @@ describe('passkey sign-in (Chromium virtual authenticator)', () => {
       expect: { urlIncludes: '/home' },
     });
     outputs.push(JSON.stringify(r));
-    expect(r).toMatchObject({ status: 'asserted', outcome: 'success', counter_written_back: false });
+    expect(r).toMatchObject({ status: 'asserted', outcome: 'success', counter_written_back: true });
 
     const a = sites.received.find((x) => x.path === '/passkey')!.fields;
     const authData = Buffer.from(a.authenticatorData, 'base64url');
@@ -108,6 +121,40 @@ describe('passkey sign-in (Chromium virtual authenticator)', () => {
     );
     const audit = readFileSync(join(dir, 'audit.jsonl'), 'utf8');
     for (const o of [...outputs, audit]) expect(o).not.toContain(KEY.slice(8, 40));
+  }, 60_000);
+
+  it('a strict relying party accepts three sign-ins in a row; the vault counter follows (BE=BS=1)', async () => {
+    for (const want of [1, 2, 3]) {
+      const eng = await engine(); // fresh session each time, like separate logins
+      sites.received.length = 0;
+      const r = await eng.passkey({
+        item: 'pk-strict',
+        url: `${O()}/passkey`,
+        click: '#pk',
+        expect: { urlIncludes: '/home' },
+      });
+      const a = sites.received.find((x) => x.path === '/passkey')!.fields;
+      const authData = Buffer.from(a.authenticatorData, 'base64url');
+      expect({ verdict: a.verdict, count: authData.readUInt32BE(33), flags: authData[32] & 0x18 }).toEqual({
+        verdict: 'accepted',
+        count: want,
+        flags: 0x18,
+      });
+      expect(r).toMatchObject({
+        status: 'asserted',
+        outcome: 'success',
+        sign_count: want,
+        counter_written_back: true,
+      });
+      expect(vaultCounter('pk-strict')).toBe(String(want));
+    }
+    expect(readFileSync(join(dir, 'audit.jsonl'), 'utf8')).not.toContain(KEY.slice(8, 40));
+  }, 90_000);
+
+  it('continues from a stored counter (5 -> 6)', async () => {
+    const r = await (await engine()).passkey({ item: 'pk-five', url: `${O()}/passkey`, click: '#pk' });
+    expect(r).toMatchObject({ status: 'asserted', sign_count: 6, counter_written_back: true });
+    expect(vaultCounter('pk-five')).toBe('6');
   }, 60_000);
 
   it('refuses before reading the key: lookalike origin, rpId that does not cover the host, no CDP', async () => {

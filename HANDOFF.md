@@ -4,7 +4,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## State
 
-- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 228 passed, 11 skipped
+- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 242 passed, 11 skipped
   (opt-in Firefox, live-vault and Android-device tests).
 - Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
   `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
@@ -24,8 +24,11 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   password + TOTP fill, `item generate` + register; items removed afterwards. Not yet used on real
   websites. Passkey data shape was checked by hand with `bw` (create and read back of a fake item,
   since deleted); real-client-created passkeys unverified.
-- Passkeys: web sign-in through a Chromium virtual authenticator, tested against a fake relying
-  party that verifies the signature. No counter write-back, no registration, no Firefox.
+- Passkeys: web sign-in through a Chromium virtual authenticator and Android host signing, with the
+  counter written back to the vault (no terminal) and BE=BS=1 like Bitwarden clients. Tested against a
+  strict fake relying party (counter and BE) and, with the live Vault, three sign-ins in a row on
+  webauthn.io from a blindfill-stored `b64.` credential. No registration, no Firefox; passkeys made by
+  real Bitwarden clients still unverified (needs a person in the Bitwarden extension).
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
 - Android: companion APK (`android/`), passwords via autofill and passkeys via the credential
   provider, signed on the host. Release-signed (certificate SHA-256

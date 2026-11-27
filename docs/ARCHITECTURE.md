@@ -237,8 +237,12 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
   `UNSUPPORTED`.
 - While armed (up to 15 s), any frame of that page whose origin WebAuthn accepts for the rpId could
   request the assertion; blindfill does not see which frame asked.
-- Open: `counter` write-back (the result reports `sign_count`, `counter_written_back: false`),
-  registration (`create`), and credentials created by real Bitwarden clients.
+- Counter (owner decision 2026-11-27, no terminal): after a signature the engine raises the vault
+  counter through `Backend.raisePasskeyCounter` (bw: only `fido2Credentials[0].counter` of the same
+  credential id, never lowered). Chromium reports stored + 1; the Android host keeps a stored 0 at 0
+  (Bitwarden's rule) and otherwise signs stored + 1. Both sign with BE=BS=1 like Bitwarden clients.
+  The result reports `sign_count` and `counter_written_back` (plus `counter_error` on a failed write).
+- Open: registration (`create`), and credentials created by real Bitwarden clients.
 - Android: Credential Manager prompts need biometric/device unlock; not promised.
 
 ## 4. Threat model (short)

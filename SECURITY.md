@@ -47,7 +47,8 @@ blindfill defends against **the model and its logs**:
   `blindfill.*` control data fails the operation instead of being skipped.
 - A passkey's private key goes from the vault to a temporary Chromium virtual authenticator over
   CDP; the page and the agent never receive it. It is used only when the item binds the page and
-  its rpId covers the host, at most once per session and origin.
+  its rpId covers the host, at most once per session and origin. Before any item is written back
+  to `bw`, every key in it (passkey `keyValue`, SSH private key) is registered with the scrubber too.
 
 ## What blindfill does NOT defend against
 
@@ -71,10 +72,15 @@ blindfill defends against **the model and its logs**:
    not scrubbed.
 6. **Shadow DOM, closed iframes and canvas inputs** are not supported by the field detector;
    blindfill stops (fail closed) rather than guessing.
-7. **Passkeys** are web sign-in in Chromium and Android app sign-in; the sign counter is not written
-   back and new passkeys cannot be registered. Assertions set the user-verified flag without a
-   biometric: the vault unlock and the item binding stand in for it. While a web passkey is armed
-   (up to 15 s), any frame of that page that WebAuthn allows for the rpId may trigger the signature.
+7. **Passkeys** are web sign-in in Chromium and Android app sign-in; new passkeys cannot be
+   registered. Assertions set the user-verified flag without a biometric: the vault unlock and the
+   item binding stand in for it. They also set backup-eligible and backed-up, as Bitwarden clients do.
+   After a signature the sign counter is raised in the vault without a person at a terminal (owner
+   decision): that write changes only the counter and never lowers it. A stored counter of 0 stays 0
+   on Android; Chromium always counts up. A failed write is reported (`counter_written_back: false`,
+   `counter_error`), not retried, and the next sign-in repeats the counter, which strict relying
+   parties refuse. While a web passkey is armed (up to 15 s), any frame of that page that WebAuthn
+   allows for the rpId may trigger the signature.
 8. **Backends marked "blind-written/unverified"** have never touched a real vault. They pass
    contract tests against recorded fixtures only. `bw` runs in CI against a mock CLI; it passed one
    live run against a Vaultwarden instance on 2026-11-27, with throw-away items on local fake pages
