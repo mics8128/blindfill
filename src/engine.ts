@@ -713,9 +713,9 @@ export class Engine {
           return act.locateRule(scope, name);
         }
         const sel = legacy?.[name]?.selector;
-        if (typeof sel === 'string') return act.locateBySelector(sel, isBound);
+        if (typeof sel === 'string') return act.locateBySelector(sel);
         const r = role ?? fieldRole(name);
-        return act.locate(r ? { role: r } : { name }, isBound, ds);
+        return act.locate(r ? { role: r } : { name }, ds);
       };
     try {
       const ds = rule ? undefined : await act.detectStable();
@@ -729,6 +729,7 @@ export class Engine {
       }
       if (opts.confirmField && rule && !rule.password_confirmation) await locator('confirm_password')(ds);
       if (req.submit && rule) await act.checkRuleSubmit(await act.openRule(rule, isBound), isBound);
+      await act.bindDocument(Object.values(found).map((d) => d.frame));
     } catch (e) {
       const be = e as BlindfillError;
       audit({

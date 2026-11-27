@@ -52,8 +52,8 @@ Browser providers and their contract: [docs/browsers.md](docs/browsers.md).
 
 ## What works (verified by the test suite)
 
-- **Web fill**: origin binding from the vault item, cross-origin-iframe refusal, honeypot skipping, SPA
-  waits, one-shot submit, post-fill lock.
+- **Web fill**: origin binding from the vault item, frames only through an explicit rule, refusal if the
+  page navigates between planning and typing, honeypot skipping, SPA waits, one-shot submit, post-fill lock.
 - **Field rules and login profiles**: exact selectors per site in the item (`blindfill.rules`) or a local
   profile, for forms heuristics cannot read. Rule selectors are plain CSS without value or state probes.
 - **Page tools**: `page discover|diagnose|verify|list` report structure and booleans, never values, and are
