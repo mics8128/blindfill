@@ -10,6 +10,38 @@ blindfill drives a Playwright `Page`. How that page is obtained is a **BrowserPr
 | `firefox-connect` | `firefox-connect.ts` | Playwright browser-server websocket (Firefox / Camoufox), loopback only                                 | yes                         |
 | `borrowed-page`   | `borrowed-page.ts`   | library use: caller passes its own `Page` (`withPage(page, …)`); never closed by blindfill              | n/a                         |
 
+## Connecting a browser
+
+**Nothing configured.** `blindfill session start` launches its own Chromium (Playwright's bundled build, or any
+Chromium-based browser via `--executable`, `BLINDFILL_CHROMIUM` or `web.executablePath`; headless unless `--headed` or
+`web.headless: false`). It starts with an empty profile and `session stop` closes it.
+
+**Your own running browser, set once.** Put the endpoint in `~/.config/blindfill/config.json` (or the file named by
+`BLINDFILL_CONFIG`), for example one of:
+
+```
+{ "backend": "bw", "web": { "endpoint": "http://127.0.0.1:9222" } }
+{ "backend": "bw", "web": { "endpointFile": "/path/to/endpoint.json", "browser": "firefox-connect" } }
+```
+
+Then `blindfill session attach` needs no arguments, and the other commands (`fill`, `page list`, …) connect to it
+directly. Order: flags (`--endpoint`/`--cdp`, `--endpoint-file`, `--browser`) > environment (`BLINDFILL_ENDPOINT`,
+`BLINDFILL_ENDPOINT_FILE`, `BLINDFILL_BROWSER`) > config (`web.endpoint` or its alias `web.cdp`, `web.endpointFile`,
+`web.browser`). Any endpoint flag replaces all configured endpoints; an endpoint wins over an endpoint file.
+Without `browser`, the provider is inferred: `http(s)://` or a `/devtools/` path is `chromium-cdp`, any other `ws://`
+is `firefox-connect`. Endpoints must be loopback.
+
+**Endpoint file.** JSON `{"endpoint": "ws://127.0.0.1:PORT/TOKEN"}`; other keys are ignored. Any launcher can write it
+(keep it mode 0600: the token gives full control of the browser). blindfill re-reads it on every connect, so a
+launcher may rewrite it with a new port or token on each start.
+
+| Browser                  | How to make it attachable                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome / Chromium / Edge | start it with `--remote-debugging-port=9222`; endpoint `http://127.0.0.1:9222`. Chrome 136+ ignores that flag on the default profile directory, so also pass `--user-data-dir=<separate directory>`: a separate profile (log in there once). Never expose the port beyond loopback.                                                                                                                             |
+| Firefox                  | stock Firefox cannot be driven by Playwright. Run a Playwright-compatible Firefox (Playwright's own build, or Camoufox) as a **Playwright browser server** from a small launcher (`firefox.launchServer()`, or a persistent context published with `browser.bind`) and write its `wsEndpoint` to an endpoint file. Client and server Playwright versions must match ([Firefox / Camoufox](#firefox--camoufox)). |
+| Camoufox                 | the same, via `camoufox.server.launch_server` (no contexts: blindfill creates an empty one) or a launcher that publishes a persistent context. Example: Ollie's launcher on ollie-ubuntu writes `/run/user/$UID/camoufox-desktop/connection.json` (see below).                                                                                                                                                  |
+| Ego Lite                 | no CDP and no Playwright server: only a separate instance that blindfill launches itself, `session start --executable '/Applications/ego lite.app/Contents/MacOS/ego lite'`, with an empty profile ([Ego Lite](#ego-lite)).                                                                                                                                                                                     |
+
 ## Using them
 
 ```
@@ -90,13 +122,39 @@ Chromium-based (0.6.3.17, Chrome/156), checked on the owner's Mac on 2026-11-27.
 - Works via `chromium-launch` with a custom executable: `BLINDFILL_CHROMIUM='/Applications/ego lite.app/Contents/MacOS/ego lite'`
   (or `--executable`). e2e 17/17 and session start/status/stop passed. It is a separate instance with an **empty profile**.
 - **Cannot attach to the already-running instance**: it exposes no CDP and no Playwright server.
-- A borrowed-page provider via `ego-browser` is deliberately **not built**: secrets would pass through Ego's Node runtime and
-  logging there is unverified. A leak test through `ego-browser nodejs` (random fake password, `page.fill` and CDP
-  `Input.insertText`, both fields confirmed filled) did not find the password in `~/Library/Application Support/Citro Labs` (~1 GB),
-  `~/Library/Caches` or `~/Library/Logs`, searched immediately and after 45 s. **Not covered**: process memory, outbound network
-  traffic (Ego has Sentry error reporting and usage stats), the Ego UI showing operation parameters, future versions.
-- If ever needed: first capture Ego's outbound traffic and check its operation log for filled values; ship only as an
-  opt-in provider, not labelled "supported".
+- An opt-in `ego-cli` provider (running Ego Lite through Ego's own `ego-browser nodejs`; filled values pass through Ego's
+  Node runtime as CDP `Input.insertText` parameters) exists on branch `feature/ego-cli` and is **not merged**.
+- Disk leak test (2026-11-27, `ego-browser nodejs`, random fake password via `page.fill` and CDP `Input.insertText`): not
+  found in `~/Library/Application Support/Citro Labs` (~1 GB), `~/Library/Caches` or `~/Library/Logs`, immediately and after 45 s.
+- **Outbound traffic check** (2026-11-28, owner's Mac, Ego Lite 0.6.3.17, `ego-cli` at `dbfe53f`, whose Ego e2e passed
+  18/18; `feature/ego-cli` after its later merges of `main` fails that e2e and needs fixing first). Fake data only: a local
+  login page on `localhost` and a new random password per run, in the user's running Ego (its normal profile, no proxy,
+  no certificate, no restart).
+  - Capture: Ego's own `chrome://net-export` in "Include raw bytes" mode (TLS plaintext of everything Chromium's network
+    service sends, which is also where Ego's built-in Sentry envelope and PostHog batch endpoints live, both in the
+    browser binary) for about 3 minutes around the runs; plus every 0.3 s `lsof` of every other Ego process, and `nettop`.
+  - Runs: fill without submit; fill with submit; a script that typed a password, made failing CDP calls carrying it, crashed
+    the page's renderer (`Page.crash`), and ended with an uncaught exception and an unhandled rejection (to provoke Sentry);
+    the same error script again under `nettop` for 60 s.
+  - Result: the passwords appear in the capture **only** in the form POST to the local page (searched raw, URL-encoded,
+    hex, UTF-16 and base64 at all three alignments, in the whole log and in every decoded socket payload). No Sentry or
+    PostHog request was made during the window, including after the errors. The `ego Helper (Node)` process (where the
+    values pass) and the browser process opened no network sockets; all traffic was the network service's.
+  - Crash reports: the renderer minidump written by the crash does not contain the password (it does contain the page's
+    host); Crashpad uploads are disabled on this install (`settings.dat`: uploads off, never attempted).
+  - Not blindfill-specific but worth knowing: after a submit, Ego's password manager runs Chromium's **leak check**
+    (`passwordsleakcheck-pa.googleapis.com`, a hashed and encrypted lookup, over QUIC), as it does for a password a person
+    types in that profile; no login was saved (no new entries in any profile's `Login Data`). The same applies to any
+    user profile reached through `chromium-cdp`.
+  - Disk after all runs: none of the passwords (ASCII or UTF-16) in `~/Library/Application Support/Citro Labs`, `~/.ego`,
+    `~/.ego-browser`, `~/.local/share/ego` or `~/Library/Logs` (7,194 files, 1.46 GB).
+  - **Not covered**: QUIC payloads (net-export does not log them; in the window they went only to Google endpoints:
+    the leak check, the new-tab page and the optimization guide), telemetry that is batched and sent later than ~3
+    minutes, process memory, a version with Crashpad uploads on, Ego's agent features (Ego's own AI sidebar), the Ego
+    UI operation log, and future Ego versions.
+- Recommendation: no outbound leak was observed, so `ego-cli` may be merged **as opt-in, not supported**, once the branch
+  passes its Ego e2e again; keep the "values pass through Ego's Node runtime" warning and re-run this check after Ego
+  updates. The decision is the maintainer's.
 
 ## Adding a provider
 
