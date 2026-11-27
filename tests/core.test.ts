@@ -254,7 +254,7 @@ describe('policy: match types', () => {
       ).ok,
     ).toBe(true);
   });
-  it('android binding needs package + pinned signer', () => {
+  it('android binding needs the package, and the pinned signer when the item has a pin', () => {
     const m = meta([{ uri: 'androidapp://com.x.y', match: 'host' }], {
       control: {
         submit: 'once',
@@ -268,7 +268,9 @@ describe('policy: match types', () => {
     expect(checkAndroidBinding('com.x.y', 'AABBCD', m).ok).toBe(false);
     expect(checkAndroidBinding('com.x.z', 'AABBCC', m).ok).toBe(false);
     expect(checkAndroidBinding('com.x.y', undefined, m).ok).toBe(false);
-    expect(checkAndroidBinding('com.x.y', 'AABBCC', meta(m.uris)).ok).toBe(false);
+    // no pin (as Bitwarden): the package alone binds
+    expect(checkAndroidBinding('com.x.y', undefined, meta(m.uris)).ok).toBe(true);
+    expect(checkAndroidBinding('com.x.z', undefined, meta(m.uris)).ok).toBe(false);
   });
 });
 

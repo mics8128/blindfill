@@ -132,14 +132,20 @@ interface Actuator {
   until a traffic and operation-log review is done (`docs/browsers.md`).
 - **Android actuator** (companion APK, `android/`; host side `src/actuators/android/`): chosen
   over scrcpy text injection because the system, not blindfill, attests which app is asking.
-  Flow: `android fill|passkey --item --serial` arms the companion with a one-time token over
+  Flow: `android fill|register|passkey --item --serial` arms the companion with a one-time token over
   `adb shell am broadcast` (the receiver requires `DUMP`, which only the shell holds) and listens
   on a loopback port the phone reaches through `adb reverse`. When an app asks, the companion
   reports its package (AssistStructure / CallingAppInfo) and the SHA-256 of its single signing
-  certificate (PackageManager); the host checks both against `androidapp://` + `blindfill.signers`
-  before reading any secret, answers once, closes the port and disarms. Passwords go into an
-  autofill Dataset the user or agent selects; WebViews, sign-up screens (two passwords,
-  `new` hints) and multi-signer apps are refused. Passkeys: the companion builds clientDataJSON
+  certificate (PackageManager); the host checks the package against `androidapp://` (and the
+  signer against `blindfill.signers` when the item has a pin; without one the package alone binds,
+  as in Bitwarden, SECURITY 21) before reading any secret, answers once, closes the port and
+  disarms. Passwords go into an autofill Dataset the user or agent selects, or, for apps that ask
+  Credential Manager (`GetPasswordOption`), a password entry (`PasswordActivity`). A WebView
+  reports the scheme and domain of its document per view node; it is accepted when the screen
+  shows exactly one `https` domain the item binds, whatever the app (SECURITY 22). Kind `password`
+  needs a single-password screen; kind `password-new` (`android register`, item opted in) needs a
+  sign-up screen (two password fields, or one with a new-password hint) and fills the same
+  password into both. `item generate --android <pkg>` makes such an item. Passkeys: the companion builds clientDataJSON
   for the calling app (`android:apk-key-hash:` origin) and sends only its hash; the host signs
   `authData || hash` (flags UP+UV, counter 0), so the private key never reaches the phone.
   Registration: `android passkey-register --rp-id` arms kind `passkey-create`; the provider offers a
@@ -281,7 +287,7 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
 | Prompt injection from the page      | origin binding from vault; caller cannot choose the target |
 | Secret echoed in logs / tool output | scrubber (raw, URL-encoded, Base64), post-fill lock        |
 | Wrong site (phishing, redirect)     | observed origin vs item URIs, Host match by default        |
-| Rogue app on phone                  | package + signer pin, fail closed                          |
+| Rogue app on phone                  | package (+ signer pin when the item has one), fail closed; WebViews by https domain (SECURITY 21–22) |
 | Malicious page reads DOM            | **not handled**, documented                                |
 | Compromised host                    | out of scope                                               |
 
@@ -352,7 +358,7 @@ Goal: install in one command, no toolchain explanation.
   provider) with signer pinning, tested on one device with a fake app and, on 2026-11-27, with
   Threads (sign-in succeeded) and Instagram (partial).
 - **M3** community verification of the blind-written backends, public release and backend matrix.
-- **M4** community rule packs; desktop actuator exploration; Android saving new logins and WebView logins.
+- **M4** community rule packs; desktop actuator exploration; Android saving logins typed by hand.
 - Optional: an attach provider for the already-running Ego Lite, only after an outbound-traffic
   capture and an operation-log check show filled values do not leak; never labelled "supported".
 

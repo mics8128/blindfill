@@ -13,10 +13,12 @@ import androidx.credentials.provider.BeginCreateCredentialResponse;
 import androidx.credentials.provider.BeginGetCredentialOption;
 import androidx.credentials.provider.BeginGetCredentialRequest;
 import androidx.credentials.provider.BeginGetCredentialResponse;
+import androidx.credentials.provider.BeginGetPasswordOption;
 import androidx.credentials.provider.BeginGetPublicKeyCredentialOption;
 import androidx.credentials.provider.CreateEntry;
 import androidx.credentials.provider.CredentialEntry;
 import androidx.credentials.provider.CredentialProviderService;
+import androidx.credentials.provider.PasswordCredentialEntry;
 import androidx.credentials.provider.ProviderClearCredentialStateRequest;
 import androidx.credentials.provider.PublicKeyCredentialEntry;
 import java.util.ArrayList;
@@ -24,9 +26,10 @@ import java.util.List;
 import org.json.JSONObject;
 
 /**
- * Passkeys for native apps. Offers one entry only while the host has armed a passkey request
- * (sign-in or creation) for that rpId; keys are made and used on the host (PasskeyActivity,
- * PasskeyCreateActivity), so a private key never reaches the phone.
+ * Credential Manager for native apps. Offers one entry only while the host has armed a request:
+ * a passkey (sign-in or creation) for that rpId, or a password sign-in. Keys are made and used on
+ * the host (PasskeyActivity, PasskeyCreateActivity), so a private key never reaches the phone;
+ * a password reaches it only inside the response PasswordActivity returns.
  */
 public class PasskeyProvider extends CredentialProviderService {
 
@@ -53,6 +56,18 @@ public class PasskeyProvider extends CredentialProviderService {
                         .build());
             }
         }
+        Arm pw = Arm.peek("password");
+        if (pw != null)
+            for (BeginGetCredentialOption o : request.getBeginGetCredentialOptions()) {
+                if (!(o instanceof BeginGetPasswordOption)) continue;
+                PendingIntent pi = PendingIntent.getActivity(this, 3, new Intent(this, PasswordActivity.class),
+                        PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                entries.add(new PasswordCredentialEntry.Builder(this, pw.user.isEmpty() ? pw.item : pw.user, pi,
+                                (BeginGetPasswordOption) o)
+                        .setDisplayName("blindfill: " + pw.item)
+                        .build());
+                break;
+            }
         cb.onResult(new BeginGetCredentialResponse.Builder().setCredentialEntries(entries).build());
     }
 

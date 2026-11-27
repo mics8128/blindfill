@@ -117,7 +117,8 @@ blindfill defends against **the model and its logs**:
     framework and then the app, which receives them by design. The arm token travels as an `adb`
     argument (visible to the host user's processes for a moment). Any app on the phone can connect
     to the loopback port; without the token it gets nothing, but its connection ends the arm (fails
-    closed, the agent re-arms). The companion trusts the system's package and signer report; a rooted
+    closed, the agent re-arms). The companion trusts the system's package and signer report (and a
+    WebView's own domain report, item 22); a rooted
     or compromised phone defeats it. Before every arm the host reads the installed companion APK back
     from the phone (`pm path`, `adb exec-out cat`), parses its APK Signing Block and refuses unless
     its only signer certificate has SHA-256
@@ -146,7 +147,7 @@ blindfill defends against **the model and its logs**:
     gets the rpId and credential id. If the vault write fails (`vault_write_failed`) or the key is
     unusable (`not_stored`), the relying party may keep a passkey the vault does not have; a person
     must delete it there. On Android (`android passkey-register --rp-id`) the item must also bind the
-    app (`androidapp://` + `blindfill.signers`) and `https://<rpId>`, which stands in for the Digital
+    app (`androidapp://`, plus its `blindfill.signers` pin if it has one; see 21) and `https://<rpId>`, which stands in for the Digital
     Asset Links check a credential provider owes native apps; the host makes the key and stores it
     before the phone gets the attestation, so a failed vault write leaves no passkey at the app.
 20. **An agent can rewrite an item's rules** (`item edit --set blindfill.rules=…` without a terminal,
@@ -155,6 +156,27 @@ blindfill defends against **the model and its logs**:
     an agent misled by page text could map the password field to a visible input on a bound origin
     (a comment box, a profile field) and so publish the password there. Origin binding does not stop
     that; review rule changes in the audit log (`event: item`, field `blindfill.rules`).
+21. **Android apps are bound by package name; a signer pin is optional** (owner decision
+    2026-11-27, as Bitwarden does). An item with `androidapp://<package>` and no `blindfill.signers`
+    gives its password (autofill or Credential Manager), passkey sign-in and passkey registration to
+    whatever app has that package name. **If a fake app with the same package name replaces the real
+    one** (sideloaded after the real app is removed, or installed on a phone that never had it), it
+    gets the password. Android refuses to install a differently signed APK over an installed one, so
+    the risk is an app that was absent or uninstalled. Add `blindfill.signers` (SHA-256 of the
+    signing certificate) to an item to close it; with a pin, the signer must match.
+22. **WebViews are bound by the domain alone** (owner decision 2026-11-27). A login or sign-up form
+    inside any app's WebView gets an item's password when every web node on the screen reports the
+    same `https` domain and the item binds `https://<that domain>` (host match by default); the app
+    itself need not be bound, so one item serves the site and the apps that show it. The domain is
+    reported by the WebView in the app's own process: **an app can claim any domain** (load its own
+    page with that base URL) and so receive the password of any item that binds that domain. Only
+    arm WebView fills for apps you trust, as with a browser. Passkeys are not offered to WebViews.
+23. **App sign-up fills a generated password** (`android register`, `password-new`). The item must
+    carry `blindfill.registration=allow` (set by `item generate`) and bind the app (item 21) or the
+    WebView's domain (item 22); the screen must look like sign-up (two password fields, or one with a
+    new-password hint; more than two is refused). The same password goes into the password and its
+    confirmation. blindfill does not submit and cannot tell whether the account was created; if the
+    app rejects the password, the item keeps a password the account does not have.
 
 ## Reporting a vulnerability
 

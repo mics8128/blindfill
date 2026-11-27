@@ -14,7 +14,7 @@ public class ArmReceiver extends BroadcastReceiver {
         Arm.set(
                 i.getStringExtra("token"),
                 i.getIntExtra("port", 0),
-                "passkey".equals(mode) || "passkey-create".equals(mode) ? mode : "password",
+                "passkey".equals(mode) || "passkey-create".equals(mode) || "password-new".equals(mode) ? mode : "password",
                 Arm.unb64(i.getStringExtra("item")),
                 Arm.unb64(i.getStringExtra("user")),
                 Arm.unb64(i.getStringExtra("rp")),

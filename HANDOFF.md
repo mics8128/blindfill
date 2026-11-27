@@ -4,7 +4,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## State
 
-- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 263 passed, 16 skipped
+- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 278 passed, 20 skipped
   (opt-in Firefox, live-vault and Android-device tests).
 - Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
   `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
@@ -39,7 +39,8 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   blindfill signed in again after the extension (counter accepted). Not tested: passkeys made by
   Bitwarden clients used by blindfill; Firefox passkeys on a real site or in the shared Camoufox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
-- Android: companion APK (`android/`), passwords via autofill and passkeys via the credential
+- Android: companion APK (`android/`), passwords via autofill (login, sign-up with `android register`,
+  WebViews bound by https domain) and Credential Manager (`GetPasswordOption`), passkeys via the credential
   provider, signed on the host. Release-signed (certificate SHA-256
   `C7EDE55AB64522DC9BC142F8F20B9BAABE5341D828210183D991157FE0EC45C8`; key custody in SECURITY.md
   item 16); the host checks the installed APK's signer before every arm; `blindfill android
@@ -51,6 +52,10 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
   `cd android && ./gradlew assembleDebug` (android/README.md). Real apps on the same Xperia with a
   live `bw` item and the companion debug build (2026-11-27): Threads sign-in succeeded; Instagram
   partial (suggestion filled and login tapped, result not checked). Rows in `docs/TESTED.md`.
+  Owner decisions 2026-11-27 (design `docs/design/android-app-registration-webview.md`): apps bound by
+  package like Bitwarden, `blindfill.signers` optional (SECURITY 21); WebViews by domain alone
+  (SECURITY 22); Credential Manager passwords built. Sign-up, WebView and Credential Manager
+  passwords tested with the fake app only (emulator and Xperia, 8/8, 2026-11-28).
 - Not supported: WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.

@@ -111,6 +111,9 @@ describe('item generate / create / password-policy (bw, mock)', () => {
       await expect(eng.itemGenerate({ ...base, origins: [o] })).rejects.toMatchObject({ code: 'POLICY' });
     await expect(eng.itemGenerate({ ...base, origins: [] })).rejects.toMatchObject({ code: 'POLICY' });
     await expect(eng.itemGenerate({ ...base, username: '' })).rejects.toMatchObject({ code: 'POLICY' });
+    await expect(
+      eng.itemGenerate({ ...base, origins: [], androidApp: 'com.example/../x' }),
+    ).rejects.toMatchObject({ code: 'POLICY' });
     await expect(eng.itemGenerate({ ...base, policy: { version: 1, min_length: 2 } })).rejects.toThrow(
       /invalid password policy/,
     );
@@ -121,6 +124,22 @@ describe('item generate / create / password-policy (bw, mock)', () => {
       createItem: undefined,
     } as unknown as Backend;
     await expect(new Engine(ro).itemGenerate(base)).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+  });
+
+  it('generate --android: binds androidapp://<package> with no signer pin, origins optional', async () => {
+    const eng = new Engine(backend());
+    const r = await eng.itemGenerate({
+      name: 'gen-app',
+      origins: [],
+      username: 'bob',
+      androidApp: 'com.example.app',
+    });
+    expect(r).toMatchObject({ android_app: 'com.example.app', registration_enabled: true });
+    const raw = stored().find((i) => i.name === 'gen-app')!;
+    expect(JSON.stringify(r)).not.toContain(raw.login.password);
+    const meta = await backend().meta({ backend: 'bw', id: raw.id });
+    expect(meta.uris.map((u) => u.uri)).toEqual(['androidapp://com.example.app']);
+    expect(meta.control.signers).toEqual([]);
   });
 
   it('create: origin-bound item from supplied values; password never echoed', async () => {

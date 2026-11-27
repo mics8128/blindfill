@@ -42,7 +42,7 @@
 | Firefox / Camoufox，通过本机回环 Playwright 服务器（`--browser firefox-connect`） | 已测试（可选测试套件），版本为 Camoufox 158.0.1-beta.41 和 159.0-beta.43。带持久配置文件的服务器（例如共享的 Camoufox）直接沿用：使用它的 cookie 和登录状态，`--url` 另开自己的标签页，现有标签页不会被导航或关闭（[docs/browsers.md](docs/browsers.md)）；已对长时间运行的实例做只读检查                                                                                                                                                                                                     |
 | Ego Lite                                                                          | 仅限独立、空白配置文件的实例（`--executable`）；不支持连接正在运行的应用                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | WebKit / Safari                                                                   | 不支持                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Android（14 以上）                                                                | 辅助 APK：密码走自动填充服务，passkey 走凭据提供程序（登录，以及对 opt-in 条目只新增的注册；密钥在主机端产生与使用）；正式签名，每次填充前主机都会核对手机上 APK 的签名；用 `blindfill android install --serial <s>` 安装（[android/README.md](android/README.md)）；已用假 app 在一部手机（Xperia 5 II，Android 17）和模拟器（Android 16）测试（含注册后登录）。同一部手机配合真实 `bw` Vault 测试真实 app（2026-11-27）：Threads 登录成功；Instagram 部分完成（建议已填充，未确认登录结果） |
+| Android（14 以上） | 辅助 APK：密码走自动填充服务（登录，以及用 `item generate` 生成的密码填写注册表单），密码与 passkey 走 Credential Manager（登录，以及对 opt-in 条目只新增的 passkey 注册；密钥在主机端产生与使用）；app 与 Bitwarden 一样按包名绑定，条目有 `blindfill.signers` 时也核对签名；WebView 只按 https 域名绑定（见 SECURITY.md 21–23）；正式签名，每次填充前主机都会核对手机上辅助 APK 的签名；用 `blindfill android install --serial <s>` 安装（[android/README.md](android/README.md)）；已用假 app 在一部手机（Xperia 5 II，Android 17）和模拟器（Android 16）测试：密码、注册表单、WebView 登录与注册、Credential Manager 密码、passkey 注册后登录。同一部手机配合真实 `bw` Vault 测试真实 app（2026-11-27）：Threads 登录成功；Instagram 部分完成（建议已填充，未确认登录结果） |
 | Passkey                                                                           | 网页登录与注册（只新增、需 opt-in 的条目）：Chromium，以及通过 Marionette 的 Firefox/Camoufox（`BLINDFILL_MARIONETTE`；Firefox 以 BE=0 签名，检查 BE 的网站可能拒绝 Bitwarden 创建的 passkey，此时改用 Chromium）。以严格的假 relying party 测试（Firefox：opt-in 测试，Mac 与 Linux 上的 Camoufox）；2026-11-27 以 `bw` Vault 在 webauthn.io（Chromium）连续登录三次、注册一次后登录，Bitwarden 扩展也能用这个 blindfill 创建的 passkey 登录；计数器会回写 Vault                             |
 
 浏览器提供者及其契约：[docs/browsers.md](docs/browsers.md)。每次测试记录（含失败）：[docs/TESTED.md](docs/TESTED.md)。
@@ -61,7 +61,7 @@
 
 ## 尚未完成
 
-- Android：保存新登录、WebView 登录、在真实 app 中注册 passkey。WebKit。Firefox passkey 在真实网站或长期运行的 Camoufox 上使用。
+- Android：保存手动输入的登录、在真实 app 中的注册表单、WebView 与 Credential Manager 密码、在真实 app 中注册 passkey。WebKit。Firefox passkey 在真实网站或长期运行的 Camoufox 上使用。
 - `bw` 登录真实网站（真实 Vault 测试使用的是本机假网页）。其余六个后端为盲写且未验证。
 - 尚未发布到 npm（`latest` 为空占位版本）。
 - 从 olliepm 迁移：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。

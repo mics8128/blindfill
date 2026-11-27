@@ -1,6 +1,7 @@
 package io.github.mics8128.blindfill.testrp;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.text.InputType;
@@ -15,6 +16,8 @@ import androidx.credentials.CreateCredentialResponse;
 import androidx.credentials.CreatePublicKeyCredentialRequest;
 import androidx.credentials.CreatePublicKeyCredentialResponse;
 import androidx.credentials.GetCredentialRequest;
+import androidx.credentials.GetPasswordOption;
+import androidx.credentials.PasswordCredential;
 import androidx.credentials.GetCredentialResponse;
 import androidx.credentials.GetPublicKeyCredentialOption;
 import androidx.credentials.PublicKeyCredential;
@@ -62,6 +65,14 @@ public class MainActivity extends Activity {
         passkey.setText("passkey");
         Button register = new Button(this);
         register.setText("register");
+        Button signup = new Button(this);
+        signup.setText("signup");
+        Button webLogin = new Button(this);
+        webLogin.setText("web login");
+        Button webSignup = new Button(this);
+        webSignup.setText("web signup");
+        Button cmPassword = new Button(this);
+        cmPassword.setText("cm password");
         status = new TextView(this);
         status.setContentDescription("status");
         status.setText("ready");
@@ -70,6 +81,10 @@ public class MainActivity extends Activity {
         l.addView(check);
         l.addView(passkey);
         l.addView(register);
+        l.addView(signup);
+        l.addView(webLogin);
+        l.addView(webSignup);
+        l.addView(cmPassword);
         l.addView(status);
         setContentView(l);
 
@@ -77,6 +92,31 @@ public class MainActivity extends Activity {
                 "user=" + user.getText() + " pwsha256=" + sha256hex(pw.getText().toString())));
         passkey.setOnClickListener(v -> getPasskey());
         register.setOnClickListener(v -> createPasskey());
+        signup.setOnClickListener(v -> startActivity(new Intent(this, SignupActivity.class)));
+        webLogin.setOnClickListener(v -> startActivity(new Intent(this, WebActivity.class)));
+        webSignup.setOnClickListener(v -> startActivity(new Intent(this, WebActivity.class).putExtra("signup", true)));
+        cmPassword.setOnClickListener(v -> getPassword());
+    }
+
+    /** Credential Manager password sign-in (GetPasswordOption), as apps that skip autofill do. */
+    private void getPassword() {
+        status.setText("cm: waiting");
+        GetCredentialRequest req = new GetCredentialRequest(List.of(new GetPasswordOption()));
+        CredentialManager.create(this).getCredentialAsync(this, req, new CancellationSignal(), getMainExecutor(),
+                new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
+                    @Override
+                    public void onResult(GetCredentialResponse r) {
+                        if (r.getCredential() instanceof PasswordCredential) {
+                            PasswordCredential c = (PasswordCredential) r.getCredential();
+                            status.setText("cm user=" + c.getId() + " pwsha256=" + sha256hex(c.getPassword()));
+                        } else status.setText("cm: wrong type");
+                    }
+
+                    @Override
+                    public void onError(GetCredentialException e) {
+                        status.setText("cm: error " + e.getType());
+                    }
+                });
     }
 
     private void getPasskey() {

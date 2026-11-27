@@ -1,9 +1,16 @@
 import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
-import { AndroidActuator } from './actuators/android/index.js';
+import { AndroidActuator, type PhoneRequest } from './actuators/android/index.js';
 import { bwCredentialId, credentialIdBase64, type BwFido2Credential } from './backends/bwmap.js';
 import type { Backend, ItemPatch } from './backends/spi.js';
 import { audit } from './core/audit.js';
-import { androidPackages, checkAndroidBinding, checkWebBinding, SubmitGuard } from './core/policy.js';
+import {
+  androidPackages,
+  checkAndroidBinding,
+  checkWebBinding,
+  SubmitGuard,
+  webUris,
+} from './core/policy.js';
+import type { MatchResult } from './core/policy.js';
 import { globalScrubber } from './core/scrubber.js';
 import { SecretHandle } from './core/secret.js';
 import { noneAttestation } from './core/webauthn.js';
@@ -472,12 +479,17 @@ export class Engine {
     length?: number;
     policy?: unknown;
     registration?: boolean;
+    /** also bind this Android app (androidapp://<pkg>); no signer pin unless a person adds one */
+    androidApp?: string;
   }): Promise<Record<string, unknown>> {
     const b = this.writable();
     if (!req.username || (req.displayName !== undefined && !req.displayName))
       throw new BlindfillError('POLICY', 'username must be non-empty');
-    if (!req.origins?.length) throw new BlindfillError('POLICY', 'at least one origin is required');
-    const origins = req.origins.map((o) => Engine.canonicalOrigin(o));
+    if (!req.origins?.length && !req.androidApp)
+      throw new BlindfillError('POLICY', 'at least one origin or an Android app is required');
+    if (req.androidApp && !/^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$/.test(req.androidApp))
+      throw new BlindfillError('POLICY', 'invalid Android package name');
+    const origins = (req.origins ?? []).map((o) => Engine.canonicalOrigin(o));
     const policy = req.policy === undefined ? undefined : validatePasswordPolicy(req.policy);
     await this.assertNameFree(req.name);
     const password = generatePassword(policy, req.length);
@@ -489,7 +501,7 @@ export class Engine {
     const ref = await b.createItem({
       name: req.name,
       username: req.username,
-      uris: origins,
+      uris: req.androidApp ? [...origins, `androidapp://${req.androidApp}`] : origins,
       password,
       fields,
     });
@@ -499,6 +511,7 @@ export class Engine {
       id: ref.id,
       name: req.name,
       origins,
+      ...(req.androidApp ? { android_app: req.androidApp } : {}),
       password_generated: true,
       secret_exposed: false,
       registration_enabled: req.registration !== false,
@@ -1440,21 +1453,29 @@ export class Engine {
 
   /**
    * Android (companion APK): arm the phone for one fill. The phone reports the app asking (system
-   * attested package + signer); the item must bind both (androidapp:// + blindfill.signers) before
-   * any secret is read. kind=password: username+password go to the companion's autofill dataset.
+   * attested package + signer); the item must bind the package (androidapp://; a blindfill.signers pin
+   * is checked when present) before any secret is read, or, for a WebView, the https domain it shows.
+   * kind=password: username+password go to the companion's autofill dataset or Credential Manager
+   * password entry. kind=password-new: same, into a sign-up form (password and confirmation).
    * kind=passkey: the host signs (key never leaves the host); the phone gets only the assertion.
    */
   async androidOffer(
-    req: ItemSelector & { serial: string; kind: 'password' | 'passkey'; timeoutMs?: number },
+    req: ItemSelector & { serial: string; kind: 'password' | 'password-new' | 'passkey'; timeoutMs?: number },
     android = new AndroidActuator(),
   ): Promise<Record<string, unknown>> {
     const ref = await this.resolveItem(req);
     const meta = await this.backend.meta(ref);
-    const pkgs = androidPackages(meta);
-    if (pkgs.length === 0 || meta.control.signers.length === 0)
+    if (androidPackages(meta).length === 0 && (req.kind === 'passkey' || webUris(meta).length === 0))
       throw new BlindfillError(
         'ORIGIN_MISMATCH',
-        'item binds no Android app: it needs an androidapp://<package> URI and a blindfill.signers pin',
+        req.kind === 'passkey'
+          ? 'item binds no Android app: it needs an androidapp://<package> URI'
+          : 'item binds no Android app (androidapp://<package>) and no web URI for a WebView',
+      );
+    if (req.kind === 'password-new' && !meta.control.registration)
+      throw new BlindfillError(
+        'POLICY',
+        'this item has not opted in to registration (custom field blindfill.registration=allow)',
       );
     const field = req.kind === 'passkey' ? 'passkey' : 'password';
     if (!meta.secretFields.includes(field)) throw new BlindfillError('NOT_FOUND', `item has no ${field}`);
@@ -1481,14 +1502,20 @@ export class Engine {
         timeoutMs: req.timeoutMs,
       },
       async (p) => {
-        target = formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined });
+        target =
+          formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined }) +
+          (p.web ? ` web:${p.webScheme ?? '?'}://${p.webDomain ?? '?'}` : '');
         if (p.kind !== req.kind) refuse('the phone answered a different request kind');
-        if (p.web) refuse('a web page or WebView asked; use the web actuator for web logins');
-        const bind = checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
+        if (p.web && req.kind === 'passkey') refuse('a web page or WebView asked for a passkey');
+        const bind = phoneBinding(p, meta);
         if (!bind.ok) refuse(bind.reason);
-        if (req.kind === 'password') {
-          if ((p.passwords ?? 0) !== 1 || p.newPassword)
+        if (req.kind !== 'passkey') {
+          const n = p.passwords ?? 0;
+          // Credential Manager password requests (cm) carry no form: nothing to check
+          if (!p.cm && req.kind === 'password' && (n !== 1 || p.newPassword))
             refuse('not a single-password login screen (sign-up or change-password)');
+          if (req.kind === 'password-new' && (p.cm || !(n === 2 || (n === 1 && p.newPassword))))
+            refuse('not a sign-up screen (needs a new-password field, or a password and a confirmation)');
           let password = '';
           await (
             await this.backend.openSecret(ref, 'password')
@@ -1562,18 +1589,20 @@ export class Engine {
             ...(await this.writeCounter(ref, signed.credentialId, signed.count, target)),
           }
         : {}),
+      ...(req.kind === 'password-new' ? { registration_outcome: 'unknown' } : {}),
       note:
-        answered && req.kind === 'password'
-          ? 'the phone shows a "blindfill: <item>" autofill suggestion; selecting it fills the fields'
+        answered && req.kind !== 'passkey'
+          ? `the phone shows a "blindfill: <item>" suggestion; selecting it fills the fields${req.kind === 'password-new' ? ' (the same password into the password and confirmation); submitting is up to the caller, and only the app can tell whether the account was created' : ''}`
           : undefined,
     };
   }
 
   /**
    * Android passkey registration (companion, design 5.5), add only like passkeyRegister: the item must
-   * bind the app (androidapp:// + blindfill.signers) and the rpId (a web URI on it, standing in for the
-   * Digital Asset Links check a provider owes non-browser callers), have opted in and hold no passkey.
-   * The host makes the key and stores it before the phone gets the attestation; the key stays here.
+   * bind the app (androidapp://, plus its blindfill.signers pin if it has one) and the rpId (a web URI
+   * on it, standing in for the Digital Asset Links check a provider owes non-browser callers), have
+   * opted in and hold no passkey. The host makes the key and stores it before the phone gets the
+   * attestation; the key stays here.
    */
   async androidPasskeyRegister(
     req: ItemSelector & { serial: string; rpId: string; timeoutMs?: number },
@@ -1593,8 +1622,8 @@ export class Engine {
       });
       throw new BlindfillError(code, `refused: ${reason}`);
     };
-    if (androidPackages(meta).length === 0 || meta.control.signers.length === 0)
-      refuse('item binds no Android app: it needs an androidapp://<package> URI and a blindfill.signers pin');
+    if (androidPackages(meta).length === 0)
+      refuse('item binds no Android app: it needs an androidapp://<package> URI');
     if (!/^[a-z0-9.-]+$/.test(rpId) || !checkWebBinding(`https://${rpId}/`, meta).ok)
       refuse(`the item has no web URI for rpId ${rpId}`);
     if (!meta.control.registration)
@@ -1620,7 +1649,7 @@ export class Engine {
       async (p) => {
         target = formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined });
         if (p.kind !== 'passkey-create') refuse('the phone answered a different request kind');
-        if (p.web) refuse('a web page or WebView asked; use the web actuator for web logins');
+        if (p.web) refuse('a web page or WebView asked for a passkey');
         const bind = checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
         if (!bind.ok) refuse(bind.reason);
         if (p.rpId !== rpId) refuse('the requested rpId is not the armed rpId');
@@ -1692,4 +1721,13 @@ export class Engine {
   async stop(): Promise<void> {
     await this.web?.close();
   }
+}
+
+/** Package (+ pin if any) for an app; for a WebView, one https domain the item binds (D3: domain alone). */
+function phoneBinding(p: PhoneRequest, meta: ItemMeta): MatchResult {
+  if (!p.web) return checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
+  if (p.webDomains !== 1 || !p.webDomain || !/^[a-z0-9.-]+$/i.test(p.webDomain))
+    return { ok: false, reason: 'the WebView does not show exactly one web domain' };
+  if (p.webScheme !== 'https') return { ok: false, reason: 'the WebView page is not https' };
+  return checkWebBinding(`https://${p.webDomain.toLowerCase()}/`, meta);
 }

@@ -318,11 +318,11 @@ export function buildServer(): McpServer {
   server.registerTool(
     'android_offer',
     {
-      description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion; kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind both (androidapp:// URI + blindfill.signers) or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,
+      description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion (or Credential Manager password entry); kind=password-new: the same into a sign-up form (password and confirmation; the item needs blindfill.registration=allow; the caller submits); kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind the package (androidapp:// URI; a blindfill.signers pin is checked when present), or for a WebView the https domain it shows, or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         serial: z.string().describe('adb device serial'),
-        kind: z.enum(['password', 'passkey']),
+        kind: z.enum(['password', 'password-new', 'passkey']),
         timeout_s: z.number().int().min(5).max(300).optional(),
       },
     },
@@ -334,7 +334,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'android_passkey_register',
     {
-      description: `Arm the blindfill companion APK on an adb-attached phone for one passkey creation (bw only). Add only: the item must bind the app (androidapp:// + blindfill.signers) and https://<rp_id>, have opted in (blindfill.registration=allow) and hold no passkey. The host makes the key and stores it in the vault; the phone gets only the attestation. Returns rp_id and credential_id. ${CONTRACT}`,
+      description: `Arm the blindfill companion APK on an adb-attached phone for one passkey creation (bw only). Add only: the item must bind the app (androidapp://; a blindfill.signers pin is checked when present) and https://<rp_id>, have opted in (blindfill.registration=allow) and hold no passkey. The host makes the key and stores it in the vault; the phone gets only the attestation. Returns rp_id and credential_id. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         serial: z.string().describe('adb device serial'),

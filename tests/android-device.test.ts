@@ -43,7 +43,11 @@ const saved: Record<string, string> = {};
 
 /** Find a node in the current UI by text or content-desc; returns its centre. */
 function find(match: (attrs: string) => boolean): [number, number] | null {
-  adb('shell', 'uiautomator', 'dump', '/sdcard/bf-ui.xml');
+  try {
+    adb('shell', 'uiautomator', 'dump', '/sdcard/bf-ui.xml');
+  } catch {
+    return null; // "could not get idle state" while a WebView animates: the caller retries
+  }
   const xml = adb('shell', 'cat', '/sdcard/bf-ui.xml');
   for (const n of xml.match(/<node [^>]*>/g) ?? []) {
     if (!match(n)) continue;
@@ -127,6 +131,13 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
             { name: 'blindfill.signers', value: signer, type: 0 },
             { name: 'blindfill.registration', value: 'allow', type: 0 },
           ],
+        },
+        {
+          id: 'dev-web',
+          type: 1,
+          name: 'Web RP',
+          login: { username: USER, password: PW, uris: [{ uri: `https://${RP_ID}`, match: null }] },
+          fields: [],
         },
       ]),
     );
@@ -257,6 +268,101 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
     });
     expect(verify('sha256', signed, pub, Buffer.from(resp.response.signature, 'base64url'))).toBe(true);
   }, 150_000);
+
+  /** The generated password of a mock item, read from the fake vault file (test only, fake data). */
+  const storedHash = (name: string) => {
+    const all = JSON.parse(readFileSync(process.env.BLINDFILL_MOCK_BW_ITEMS!, 'utf8')) as {
+      name: string;
+      login: { password: string };
+    }[];
+    return createHash('sha256')
+      .update(all.find((i) => i.name === name)!.login.password)
+      .digest('hex');
+  };
+
+  it('password-new: a generated password fills a native sign-up form (package-only item)', async () => {
+    adb('shell', 'settings', 'put', 'secure', 'autofill_service', `${COMPANION}/.FillService`);
+    const g = await engine().itemGenerate({
+      name: 'Signup RP',
+      origins: [],
+      username: 'signup-user@example.test',
+      androidApp: RP_PKG,
+    });
+    startRp();
+    const run = engine().androidOffer(
+      { item: String(g.id), serial: SERIAL!, kind: 'password-new', timeoutMs: 45_000 },
+      new AndroidActuator(ADB),
+    );
+    await sleep(1500);
+    await tap(has('text="signup"'), 'signup button');
+    await tap(has('content-desc="new username"'), 'new username field');
+    await tap(has('text="blindfill: Signup RP"'), 'blindfill suggestion');
+    expect(await run).toMatchObject({ status: 'offered', registration_outcome: 'unknown' });
+    await tap(has('text="create account"'), 'create account button');
+    expect(await status(/^signup user=/)).toBe(
+      `signup user=signup-user@example.test pwsha256=${storedHash('Signup RP')} match=true`,
+    );
+  }, 120_000);
+
+  it('WebView: a login form on a domain the item binds gets the password', async () => {
+    adb('shell', 'settings', 'put', 'secure', 'autofill_service', `${COMPANION}/.FillService`);
+    startRp();
+    const run = engine().androidOffer(
+      { item: 'dev-web', serial: SERIAL!, kind: 'password', timeoutMs: 45_000 },
+      new AndroidActuator(ADB),
+    );
+    await sleep(1500);
+    await tap(has('text="web login"'), 'web login button');
+    await tap((n) => n.includes('resource-id="u"') || n.includes('hint="email"'), 'web email field');
+    await tap(has('text="blindfill: Web RP"'), 'blindfill suggestion');
+    const r = await run;
+    expect(r).toMatchObject({ status: 'offered' });
+    expect(String(r.target)).toContain(`web:https://${RP_ID}`);
+    await tap(has('text="sign in"'), 'sign in button');
+    const pwHash = createHash('sha256').update(PW).digest('hex');
+    expect(await status(/^web user=/)).toBe(`web user=${USER} pwsha256=${pwHash}`);
+  }, 120_000);
+
+  it('WebView: a generated password fills a sign-up form on a bound domain', async () => {
+    adb('shell', 'settings', 'put', 'secure', 'autofill_service', `${COMPANION}/.FillService`);
+    const g = await engine().itemGenerate({
+      name: 'Web Signup',
+      origins: [`https://${RP_ID}`],
+      username: 'web-signup@example.test',
+    });
+    startRp();
+    const run = engine().androidOffer(
+      { item: String(g.id), serial: SERIAL!, kind: 'password-new', timeoutMs: 45_000 },
+      new AndroidActuator(ADB),
+    );
+    await sleep(1500);
+    await tap(has('text="web signup"'), 'web signup button');
+    await tap((n) => n.includes('resource-id="u"') || n.includes('hint="email"'), 'web email field');
+    await tap(has('text="blindfill: Web Signup"'), 'blindfill suggestion');
+    expect(await run).toMatchObject({ status: 'offered' });
+    await tap(has('text="create"'), 'create button');
+    expect(await status(/^web signup user=/)).toBe(
+      `web signup user=web-signup@example.test pwsha256=${storedHash('Web Signup')} match=true`,
+    );
+  }, 120_000);
+
+  it('Credential Manager: a GetPasswordOption request gets the bound item', async () => {
+    adb('shell', 'settings', 'put', 'secure', 'credential_service', `${COMPANION}/.PasskeyProvider`);
+    adb('shell', 'settings', 'put', 'secure', 'credential_service_primary', `${COMPANION}/.PasskeyProvider`);
+    startRp();
+    const run = engine().androidOffer(
+      { item: 'dev-app', serial: SERIAL!, kind: 'password', timeoutMs: 45_000 },
+      new AndroidActuator(ADB),
+    );
+    await sleep(1500);
+    await tap(has('text="cm password"'), 'cm password button');
+    await tap((n) => n.includes(USER) || n.includes('blindfill: Test RP'), 'blindfill password entry');
+    const cont = find((n) => /text="(Continue|Sign in|繼續|登入)"/.test(n));
+    if (cont) adb('shell', 'input', 'tap', String(cont[0]), String(cont[1]));
+    expect(await run).toMatchObject({ status: 'offered' });
+    const pwHash = createHash('sha256').update(PW).digest('hex');
+    expect(await status(/^cm /)).toBe(`cm user=${USER} pwsha256=${pwHash}`);
+  }, 120_000);
 
   it('refuses before arming when the installed companion has another signer than the pin', async () => {
     const pinned = process.env.BLINDFILL_COMPANION_SIGNER;

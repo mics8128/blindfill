@@ -35,15 +35,19 @@ Commands:
   item list [text]            list items (names, origins, field names); item status <id> structural status
   item rename <id> <name>     rename; item edit <id> [--origin o ...] [--username u] [--set N=V] [--unset N] [--secret N]
                               (origins, blindfill.* other than blindfill.rules, and --secret need a terminal; no reveal)
-  item generate <name>        generate a password (CSPRNG, optional --policy-file) and save it as a new item; never printed
+  item generate <name>        generate a password (CSPRNG, optional --policy-file) and save it as a new item; never printed;
+                              --android <package> also binds that Android app
   item create [name]          create an item; username/password are read from the terminal (hidden)
   item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy
   passkey --click <css>       sign in with the item's passkey: Chromium only; the page's WebAuthn request is answered once
   passkey register --click <css>
                               create a passkey for the page and store it in the item (Chromium, bw; the item must
                               bind the page, have blindfill.registration=allow and no passkey yet); key never printed
-  android fill|passkey        arm the companion APK on --serial <adb serial> for one fill of --item (app must be bound
-                              by androidapp:// + blindfill.signers); waits --timeout seconds (default 60)
+  android fill|passkey        arm the companion APK on --serial <adb serial> for one fill of --item (the app must be
+                              bound by androidapp://<package>, plus its blindfill.signers pin if the item has one; a
+                              WebView by its https domain); waits --timeout seconds (default 60)
+  android register            like android fill, into the app's sign-up form (password and confirmation; the item
+                              needs blindfill.registration=allow); the caller submits
   android passkey-register --rp-id <domain>
                               arm the companion for one passkey creation by the bound app for --rp-id (the item
                               must also bind https://<domain>, have blindfill.registration=allow and no passkey)
@@ -119,6 +123,7 @@ const { values, positionals } = parseArgs({
     selector: { type: 'string' },
     serial: { type: 'string' },
     'rp-id': { type: 'string' },
+    android: { type: 'string' },
     timeout: { type: 'string' },
     'expect-timeout': { type: 'string' },
     submit: { type: 'boolean' },
@@ -284,7 +289,7 @@ async function main(): Promise<number> {
         if (!name || !values.username)
           throw new BlindfillError(
             'POLICY',
-            'usage: blindfill item generate <name> --origin <https origin> [--origin ...] --username <u> [--display-name n] [--length n] [--policy-file f] [--no-registration]',
+            'usage: blindfill item generate <name> (--origin <https origin> [--origin ...] | --android <package>) --username <u> [--display-name n] [--length n] [--policy-file f] [--no-registration]',
           );
         const e = await engineFor(false);
         out(
@@ -296,6 +301,7 @@ async function main(): Promise<number> {
             length: values.length ? Number(values.length) : undefined,
             policy,
             registration: values['no-registration'] === true ? false : true,
+            androidApp: values.android as string | undefined,
           }),
         );
         return 0;
@@ -406,10 +412,16 @@ async function main(): Promise<number> {
       return 0;
     }
     case 'android': {
-      if (sub !== 'fill' && sub !== 'passkey' && sub !== 'passkey-register' && sub !== 'install')
+      if (
+        sub !== 'fill' &&
+        sub !== 'register' &&
+        sub !== 'passkey' &&
+        sub !== 'passkey-register' &&
+        sub !== 'install'
+      )
         throw new BlindfillError(
           'POLICY',
-          'usage: blindfill android fill|passkey --item <id> --serial <adb serial> | android passkey-register --item <id> --rp-id <domain> --serial <adb serial> | android install --serial <adb serial> [--set-services]',
+          'usage: blindfill android fill|register|passkey --item <id> --serial <adb serial> | android passkey-register --item <id> --rp-id <domain> --serial <adb serial> | android install --serial <adb serial> [--set-services]',
         );
       const serial = (values.serial as string | undefined) ?? process.env.ANDROID_SERIAL;
       if (!serial)
@@ -443,7 +455,13 @@ async function main(): Promise<number> {
       if (sub === 'passkey-register') {
         if (!values['rp-id']) throw new BlindfillError('POLICY', 'usage: pass --rp-id <domain>');
         out(await e.androidPasskeyRegister({ ...sel, rpId: values['rp-id'] as string }));
-      } else out(await e.androidOffer({ ...sel, kind: sub === 'passkey' ? 'passkey' : 'password' }));
+      } else
+        out(
+          await e.androidOffer({
+            ...sel,
+            kind: sub === 'passkey' ? 'passkey' : sub === 'register' ? 'password-new' : 'password',
+          }),
+        );
       return 0;
     }
     case 'passkey': {

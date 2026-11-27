@@ -127,6 +127,25 @@ beforeAll(() => {
     JSON.stringify([
       item('app'),
       item('nopin', {}, ''),
+      item(
+        'web',
+        { username: 'web-user', uris: [{ uri: `https://${RP}`, match: null }], fido2Credentials: [] },
+        '',
+      ),
+      {
+        ...item(
+          'signup',
+          {
+            uris: [
+              { uri: `androidapp://${PKG}`, match: null },
+              { uri: `https://${RP}`, match: null },
+            ],
+            fido2Credentials: [],
+          },
+          '',
+        ),
+        fields: [{ name: 'blindfill.registration', value: 'allow', type: 0 }],
+      },
       item('app-ctr', {
         fido2Credentials: [
           { credentialId: randomUUID(), rpId: RP, keyValue: KEY, userHandle: 'dXNlcg', counter: '3' },
@@ -205,9 +224,88 @@ describe('android companion, host side', () => {
     expect(r).toMatchObject({ status: 'expired' });
   });
 
-  it('refuses an item without a signer pin before touching the device', async () => {
+  it('an item without a signer pin binds by package alone (as Bitwarden)', async () => {
+    const run = engine().androidOffer({ item: 'nopin', serial: 'S1', kind: 'password' }, android());
+    const reply = await phone({ ...base, signer: 'AB'.repeat(32), kind: 'password', passwords: 1 });
+    expect(reply).toEqual({ ok: true, username: 'app-user', password: PW });
+    expect(await run).toMatchObject({ status: 'offered' });
+  });
+
+  it('Credential Manager password request (no form): answered for the bound app', async () => {
+    const run = engine().androidOffer({ item: 'app', serial: 'S1', kind: 'password' }, android());
+    expect(await phone({ ...base, kind: 'password', cm: true })).toEqual({
+      ok: true,
+      username: 'app-user',
+      password: PW,
+    });
+    expect(await run).toMatchObject({ status: 'offered' });
+  });
+
+  const web = {
+    pkg: 'com.any.browserish',
+    signer: null,
+    web: true,
+    webScheme: 'https',
+    webDomain: RP,
+    webDomains: 1,
+  };
+  it('WebView: any app showing a domain the item binds gets the password (D3: domain alone)', async () => {
+    const run = engine().androidOffer({ item: 'web', serial: 'S1', kind: 'password' }, android());
+    expect(await phone({ ...web, kind: 'password', passwords: 1 })).toEqual({
+      ok: true,
+      username: 'web-user',
+      password: PW,
+    });
+    const r = await run;
+    expect(r).toMatchObject({ status: 'offered', target: `android:com.any.browserish web:https://${RP}` });
+  });
+
+  it.each([
+    ['another domain', { webDomain: 'evil.com' }],
+    ['http', { webScheme: 'http' }],
+    ['two domains on screen', { webDomains: 2 }],
+    ['no domain reported', { webDomain: undefined, webDomains: undefined }],
+  ])('WebView: refuses %s', async (_n, patch) => {
+    const run = engine().androidOffer({ item: 'web', serial: 'S1', kind: 'password' }, android());
+    const guarded = run.catch((e) => e);
+    expect(await phone({ ...web, kind: 'password', passwords: 1, ...patch })).toEqual({ ok: false });
+    expect(await guarded).toMatchObject({ code: 'ORIGIN_MISMATCH' });
+  });
+
+  it.each([
+    ['password and confirmation', { passwords: 2 }],
+    ['one new-password field', { passwords: 1, newPassword: true }],
+    ['a WebView sign-up on a bound domain', { ...web, passwords: 2, newPassword: true }],
+  ])('password-new: fills a sign-up form with %s', async (_n, patch) => {
+    const run = engine().androidOffer({ item: 'signup', serial: 'S1', kind: 'password-new' }, android());
+    expect(await phone({ ...base, signer: null, kind: 'password-new', ...patch })).toEqual({
+      ok: true,
+      username: 'app-user',
+      password: PW,
+    });
+    const r = await run;
+    expect(r).toMatchObject({ status: 'offered', registration_outcome: 'unknown' });
+    expect(readFileSync(log, 'utf8')).toContain('password-new');
+  });
+
+  it.each([
+    ['a login screen', { passwords: 1 }],
+    ['three password fields', { passwords: 3, newPassword: true }],
+    ['a Credential Manager request', { cm: true }],
+    ['a login request', { kind: 'password', passwords: 2 }],
+  ])('password-new: refuses %s', async (_n, patch) => {
+    const run = engine().androidOffer({ item: 'signup', serial: 'S1', kind: 'password-new' }, android());
+    const guarded = run.catch((e) => e);
+    expect(await phone({ ...base, kind: 'password-new', ...patch })).toEqual({ ok: false });
+    expect(await guarded).toMatchObject({ code: 'ORIGIN_MISMATCH' });
+  });
+
+  it('refuses before touching the device: sign-up without opt-in, a passkey for an item with no app', async () => {
     await expect(
-      engine().androidOffer({ item: 'nopin', serial: 'S1', kind: 'password' }, android()),
+      engine().androidOffer({ item: 'app', serial: 'S1', kind: 'password-new' }, android()),
+    ).rejects.toMatchObject({ code: 'POLICY' });
+    await expect(
+      engine().androidOffer({ item: 'web', serial: 'S1', kind: 'passkey' }, android()),
     ).rejects.toMatchObject({ code: 'ORIGIN_MISMATCH' });
     expect(existsSync(log)).toBe(false);
   });
@@ -377,7 +475,7 @@ describe('android companion, host side', () => {
   it.each([
     ['other signer', { signer: 'AB'.repeat(32) }],
     ['other package', { pkg: 'com.evil.app' }],
-    ['web view', { web: true }],
+    ['web view', { web: true, webScheme: 'https', webDomain: RP, webDomains: 1 }],
     ['another rpId', { rpId: 'evil.com' }],
     ['no ES256', { algs: [-8] }],
     ['a sign-in request', { kind: 'passkey' }],
