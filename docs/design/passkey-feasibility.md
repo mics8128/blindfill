@@ -367,6 +367,14 @@ hasUserVerification:true,isUserVerified:true}` and `WebAuthn:AddCredential {auth
 3. **Counter write-back without a terminal** (counter field only). Recommendation: yes.
 4. **Real-site test account** for Phase 5 (which site, throw-away account, who owns it).
 
+Decided by Mics on 2026-11-27:
+
+1. Allowed, applied only after spike 2 passes (spike 2 passed the same day on a throw-away Camoufox;
+   the shared one was not restarted).
+2. Yes: add-only, without a terminal, on opted-in items; replacing or deleting a passkey needs a terminal.
+3. Yes: counter write-back without a terminal.
+4. GitHub; Mics adds the account to the Vault later (no passkey on it yet).
+
 ## Sources
 
 - [webauthn-verify]: W3C, Web Authentication Level 3, §7.2 Verifying an Authentication Assertion (signature

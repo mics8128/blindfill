@@ -83,3 +83,10 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    agent may store accounts it registers; set in the Vault, not in this repo); default web match stays
    Host; rules live in the custom field `blindfill.rules`; MCP `list_credentials` stays (agents see
    item names, origins and field names, never values).
+5. Owner decisions on passkeys (Mics, 2026-11-27; docs/design/passkey-feasibility.md §9):
+   1. The shared Camoufox may be restarted with `-marionette` and the softtoken prefs, but only after
+      Phase 0 spike 2 passed (it did, 2026-11-27, on a separate throw-away Camoufox). Not applied yet.
+   2. On opted-in items the agent may add a passkey without a terminal: add only, never replace or
+      delete (same footing as `item generate`).
+   3. Counter write-back to the Vault needs no terminal.
+   4. Phase 5 real site: GitHub; Mics will put the account in the Vault (no passkey registered yet).
