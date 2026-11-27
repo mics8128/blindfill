@@ -78,7 +78,9 @@ blindfill defends against **the model and its logs**:
    sign-in and registration. Assertions set the user-verified flag without a biometric: the vault unlock and the item
    binding stand in for it. Chromium and Android set backup-eligible and backed-up as Bitwarden clients
    do, unless the item says `blindfill.passkey_be=0`. Firefox cannot set that flag: its passkeys are
-   BE=0 and Bitwarden-made ones are refused there. Firefox needs its Marionette port (`-marionette`),
+   BE=0, and Bitwarden-made (BE=1) ones are signed there with BE=0 too (owner decision 2026-11-27); a
+   relying party that checks BE rejects that sign-in, an ordinary failure (use Chromium). Marionette
+   has no W3C `WebAuthn:SetCredentialProperties` yet; once it does, Firefox can set BE. Firefox needs its Marionette port (`-marionette`),
    an unauthenticated loopback control port that any local process can use to drive the browser, and
    the softtoken pref, which turns real USB security keys off in that browser. Its authenticator is
    browser-wide while armed (up to 15 s): any focused page of that browser that WebAuthn allows for

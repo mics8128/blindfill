@@ -305,15 +305,27 @@ describe.skipIf(!enabled)('Firefox / Camoufox (opt-in: BLINDFILL_TEST_FIREFOX=1)
       expect(readFileSync(join(dir, 'audit.jsonl'), 'utf8')).not.toContain(key.slice(10, 50));
     }, 120_000);
 
-    it('refuses a Bitwarden-made (BE=1) passkey in Firefox, and passkeys without a Marionette endpoint', async () => {
+    it('signs with a Bitwarden-made (BE=1) passkey in Firefox (sent as BE=0); refuses without a Marionette endpoint', async () => {
+      sites.received.length = 0;
       const act = await ffAct();
       try {
-        await expect(
-          new Engine(backend(), act).passkey({ item: 'ffpk-bw', url: good('/passkey'), click: '#pk' }),
-        ).rejects.toMatchObject({ code: 'POLICY' });
+        const s = await new Engine(backend(), act).passkey({
+          item: 'ffpk-bw',
+          url: good('/passkey'),
+          click: '#pk',
+          expect: { urlIncludes: '/home' },
+        });
+        expect(s).toMatchObject({ status: 'asserted' });
+        expect(s.outcome).not.toBe('success');
+        expect(String(s.note)).toMatch(/use Chromium/);
       } finally {
         await act.close();
       }
+      // the strict RP saw BE=1 for this credential, so it rejects the BE=0 assertion: an ordinary failure
+      const a = sites.received.find((x) => x.path === '/passkey')!.fields;
+      expect(Buffer.from(a.authenticatorData, 'base64url')[32] & 0x18).toBe(0);
+      expect(a.verdict).not.toBe('accepted');
+      sites.received.length = 0;
       const plain = await WebActuator.fromProvider('firefox-connect', { endpoint: ff.endpoint });
       try {
         await expect(

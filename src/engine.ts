@@ -1301,15 +1301,6 @@ export class Engine {
         'rpId mismatch',
         new BlindfillError('ORIGIN_MISMATCH', 'the passkey rpId does not cover this page'),
       );
-    // Firefox cannot set BE; an RP that checks it against registration would reject a Bitwarden-made passkey
-    if (act.passkeyRoute === 'marionette' && meta.control.passkeyBe)
-      refuse(
-        'backup-eligible passkey in Firefox',
-        new BlindfillError(
-          'POLICY',
-          'this passkey was created backup-eligible (BE=1, as Bitwarden clients do) and Firefox can only sign with BE=0, which relying parties may reject: use Chromium, or a passkey registered through Firefox (blindfill.passkey_be=0)',
-        ),
-      );
     act.policy.assertFirstSecretFill(target.origin, 'passkey');
     act.policy.recordSecretFill(target.origin, 'passkey');
     this.persist();
@@ -1332,6 +1323,13 @@ export class Engine {
         ? await this.writeCounter(ref, r.credentialId, r.signCount, tname)
         : { counter_written_back: false }),
       outcome: ev?.outcome ?? 'unknown',
+      // owner decision 2026-11-27: Firefox signs BE=1 passkeys too, though only with BE=0 (no W3C
+      // SetCredentialProperties in Marionette yet); a relying party that checks BE rejects it
+      ...(act.passkeyRoute === 'marionette' && meta.control.passkeyBe
+        ? {
+            note: 'this passkey was created backup-eligible (BE=1) and Firefox can only sign with BE=0; if the site rejects the sign-in, use Chromium',
+          }
+        : {}),
     };
   }
 

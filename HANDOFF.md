@@ -30,8 +30,8 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   registration through the companion (`android passkey-register --rp-id`, add only; fake app on the
   emulator and the Xperia, create then sign in); web
   registration in Chromium (`passkey register`, add only, opted-in items); Firefox/Camoufox sign-in and
-  registration over Marionette (`BLINDFILL_MARIONETTE`, BE=0 recorded as `blindfill.passkey_be=0`,
-  Bitwarden-made passkeys refused there). Tested against a strict fake relying party (Firefox: opt-in
+  registration over Marionette (`BLINDFILL_MARIONETTE`, BE=0 recorded as `blindfill.passkey_be=0`;
+  Bitwarden-made BE=1 passkeys are signed there with BE=0, so BE-checking sites reject them). Tested against a strict fake relying party (Firefox: opt-in
   suite) and, with the live Vault in Chromium, on webauthn.io: three sign-ins in a row, a registration
   then a sign-in (item `webauthn-io-interop`, kept), Mics's Bitwarden extension signed in with it, and
   blindfill signed in again after the extension (counter accepted). Not tested: passkeys made by
@@ -101,6 +101,10 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
       delete (same footing as `item generate`).
    3. Counter write-back to the Vault needs no terminal.
    4. Phase 5 real site: GitHub; Mics will put the account in the Vault (no passkey registered yet).
+   5. Firefox/Camoufox also use BE=1 (Bitwarden-made) passkeys: signed with BE=0 (Firefox cannot set
+      BE), no POLICY refusal; if the relying party rejects it, that is an ordinary failure and the
+      caller uses Chromium. `blindfill.passkey_be` is still recorded. Marionette has no W3C
+      `WebAuthn:SetCredentialProperties` yet; when it lands, BE can be set.
 6. Owner decision on TOTP (Mics, 2026-11-27): an agent may add a TOTP seed without a terminal
    (`totp enroll`), add only: an item that already has a seed is refused (same footing as
    `item generate` and add-only passkeys).

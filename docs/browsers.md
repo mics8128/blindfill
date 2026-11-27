@@ -51,7 +51,9 @@ holds the session. The Firefox authenticator is browser-wide, not per tab. Firef
 focused document, so blindfill brings the page to the front; in spike 2 a page in another context did not get a
 signature while armed (it was not focused), which is a side effect of focus, not a boundary. Firefox cannot set the
 backup-eligible flag: passkeys it registers are BE=0 and the item gets `blindfill.passkey_be=0`; Bitwarden-made
-(BE=1) passkeys are refused in Firefox (Chromium and the Android host sign with the item's flag). Tested by the
+(BE=1) passkeys are signed with BE=0 as well (owner decision 2026-11-27), so a relying party that checks BE rejects
+them: an ordinary failure, and the result's `note` says to use Chromium (which, like the Android host, signs with the
+item's flag). Marionette lacks the W3C `WebAuthn:SetCredentialProperties` command; once Firefox adds it, BE can be set. Tested by the
 same opt-in suite with Camoufox started with `-marionette`, the two prefs and `marionette.port=0`, on the owner's
 Mac and on ollie-ubuntu (Linux); the shared Camoufox was not used.
 

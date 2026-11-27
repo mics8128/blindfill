@@ -246,7 +246,9 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
   first: Firefox serves WebAuthn only to the focused document. Borrowed pages and Firefox without
   Marionette get `UNSUPPORTED`.
 - BE flag: `blindfill.passkey_be` (readable, default 1). Firefox cannot set BE, so Firefox
-  registrations store `0`, and Firefox refuses BE=1 (Bitwarden-made) passkeys before reading the key;
+  registrations store `0`, and BE=1 (Bitwarden-made) passkeys are still signed in Firefox, with BE=0
+  (owner decision 2026-11-27; a BE-checking relying party rejects them, and the result carries a
+  `note` to use Chromium). Waiting on Marionette `WebAuthn:SetCredentialProperties` to set BE.
   Chromium (`backupEligibility`) and the Android host (flags 0x1D or 0x05) sign with the item's flag.
 - While armed (up to 15 s), any frame of that page whose origin WebAuthn accepts for the rpId could
   request the assertion; blindfill does not see which frame asked.

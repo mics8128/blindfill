@@ -177,8 +177,10 @@ host flags `0x05` (BE=0) **[source]**.
 - Android host: flags `0x1D` (UP, UV, BE, BS).
 - Firefox: cannot set BE **[source]**; a Bitwarden-made passkey used through Firefox may be rejected by RPs
   that check BE **[inference]**. Passkeys registered through Firefox would be BE=0 and break in Bitwarden
-  clients at those RPs. Record the flag in the item (`blindfill.passkey_be`, readable) and refuse a
-  mismatching path rather than fail at the RP.
+  clients at those RPs. Record the flag in the item (`blindfill.passkey_be`, readable). Phase 3 refused a
+  mismatching path; owner decision 2026-11-27 replaced that: Firefox signs BE=1 passkeys with BE=0 and an
+  RP rejection is an ordinary failure (use Chromium). Firefox can set BE once Marionette implements the
+  W3C `WebAuthn:SetCredentialProperties` command.
 
 ### 4.3 Several passkeys
 
