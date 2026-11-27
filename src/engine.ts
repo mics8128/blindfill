@@ -1,6 +1,9 @@
+import { createHash, createPrivateKey, sign } from 'node:crypto';
+import { AndroidActuator } from './actuators/android/index.js';
+import { credentialIdBase64, type BwFido2Credential } from './backends/bwmap.js';
 import type { Backend, ItemPatch } from './backends/spi.js';
 import { audit } from './core/audit.js';
-import { checkWebBinding, SubmitGuard } from './core/policy.js';
+import { androidPackages, checkAndroidBinding, checkWebBinding, SubmitGuard } from './core/policy.js';
 import { globalScrubber } from './core/scrubber.js';
 import { BlindfillError, formatTarget, type ItemMeta, type ItemRef, type Target } from './core/types.js';
 import type {
@@ -1191,6 +1194,115 @@ export class Engine {
       sign_count: r.signCount,
       counter_written_back: false,
       outcome: ev?.outcome ?? 'unknown',
+    };
+  }
+
+  /**
+   * Android (companion APK): arm the phone for one fill. The phone reports the app asking (system
+   * attested package + signer); the item must bind both (androidapp:// + blindfill.signers) before
+   * any secret is read. kind=password: username+password go to the companion's autofill dataset.
+   * kind=passkey: the host signs (key never leaves the host); the phone gets only the assertion.
+   */
+  async androidOffer(
+    req: ItemSelector & { serial: string; kind: 'password' | 'passkey'; timeoutMs?: number },
+    android = new AndroidActuator(),
+  ): Promise<Record<string, unknown>> {
+    const ref = await this.resolveItem(req);
+    const meta = await this.backend.meta(ref);
+    const pkgs = androidPackages(meta);
+    if (pkgs.length === 0 || meta.control.signers.length === 0)
+      throw new BlindfillError(
+        'ORIGIN_MISMATCH',
+        'item binds no Android app: it needs an androidapp://<package> URI and a blindfill.signers pin',
+      );
+    const field = req.kind === 'passkey' ? 'passkey' : 'password';
+    if (!meta.secretFields.includes(field)) throw new BlindfillError('NOT_FOUND', `item has no ${field}`);
+    const rpId = meta.readable['passkey.rpId'];
+    let target = '';
+    const refuse = (reason: string): never => {
+      audit({
+        event: 'refused',
+        backend: this.backend.id,
+        item: ref.id,
+        target: target || 'android',
+        reason,
+      });
+      throw new BlindfillError('ORIGIN_MISMATCH', `refused: ${reason}`);
+    };
+    const r = await android.serve(
+      {
+        serial: req.serial,
+        mode: req.kind,
+        item: meta.name,
+        user: meta.username,
+        rpId,
+        timeoutMs: req.timeoutMs,
+      },
+      async (p) => {
+        target = formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined });
+        if (p.kind !== req.kind) refuse('the phone answered a different request kind');
+        if (p.web) refuse('a web page or WebView asked; use the web actuator for web logins');
+        const bind = checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
+        if (!bind.ok) refuse(bind.reason);
+        if (req.kind === 'password') {
+          if ((p.passwords ?? 0) !== 1 || p.newPassword)
+            refuse('not a single-password login screen (sign-up or change-password)');
+          let password = '';
+          await (
+            await this.backend.openSecret(ref, 'password')
+          ).into((b) => {
+            password = b.toString('utf8');
+          });
+          audit({
+            event: 'fill',
+            backend: this.backend.id,
+            item: ref.id,
+            target,
+            fields: ['username', 'password'],
+            outcome: 'offered',
+          });
+          return { username: meta.username ?? '', password };
+        }
+        if (!rpId || p.rpId !== rpId) refuse('the requested rpId is not the passkey rpId');
+        const cdh = Buffer.from(String(p.clientDataHash ?? ''), 'base64url');
+        if (cdh.length !== 32) refuse('malformed client data hash');
+        let out: Record<string, unknown> = {};
+        await (
+          await this.backend.openSecret(ref, 'passkey')
+        ).into((b) => {
+          const c = JSON.parse(b.toString('utf8')) as BwFido2Credential;
+          // rpIdHash | flags UP+UV | signCount 0 (not tracked, see ARCHITECTURE 3.8)
+          const authData = Buffer.concat([
+            createHash('sha256').update(rpId!).digest(),
+            Buffer.from([0x05, 0, 0, 0, 0]),
+          ]);
+          const key = createPrivateKey({
+            key: Buffer.from(c.keyValue ?? '', 'base64url'),
+            format: 'der',
+            type: 'pkcs8',
+          });
+          out = {
+            authenticatorData: authData.toString('base64url'),
+            signature: sign('sha256', Buffer.concat([authData, cdh]), key).toString('base64url'),
+            credentialId: Buffer.from(credentialIdBase64(c.credentialId ?? ''), 'base64').toString(
+              'base64url',
+            ),
+            userHandle: c.userHandle ?? '',
+          };
+        });
+        audit({ event: 'passkey', backend: this.backend.id, item: ref.id, target, outcome: 'signed' });
+        return out;
+      },
+    );
+    return {
+      status: r.status === 'answered' ? (req.kind === 'passkey' ? 'signed' : 'offered') : r.status,
+      ...(r.status === 'refused' ? { reason: r.reason } : {}),
+      target: target || null,
+      item: { id: ref.id, name: meta.name },
+      note:
+        r.status === 'answered' && req.kind === 'password'
+          ? 'the phone shows a "blindfill: <item>" autofill suggestion; selecting it fills the fields'
+          : undefined,
     };
   }
 

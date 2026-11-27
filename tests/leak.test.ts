@@ -263,6 +263,7 @@ describe('leak test: canary password never appears anywhere', () => {
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      'android_offer',
       'candidates',
       'diagnose_fields',
       'discover_fields',
@@ -338,6 +339,9 @@ describe('leak test: canary password never appears anywhere', () => {
     expect(vl.content[0].text).toContain('identity_verified');
     expect((await call('fill_totp', { item: 'leak-item' })).isError).toBe(true);
     expect((await call('passkey_sign', { item: 'leak-item', click: '#pk' })).isError).toBe(true);
+    expect(
+      (await call('android_offer', { item: 'leak-item', serial: 'NOPE', kind: 'password' })).isError,
+    ).toBe(true);
     await call('session_stop');
     await client.close();
     captured.push({ label: 'mcp stderr', text: mcpStderr });

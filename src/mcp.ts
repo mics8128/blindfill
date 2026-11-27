@@ -255,6 +255,22 @@ export function buildServer(): McpServer {
     (a) => run(async () => (await getEngine()).passkey(a)),
   );
   server.registerTool(
+    'android_offer',
+    {
+      description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion; kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind both (androidapp:// URI + blindfill.signers) or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        serial: z.string().describe('adb device serial'),
+        kind: z.enum(['password', 'passkey']),
+        timeout_s: z.number().int().min(5).max(300).optional(),
+      },
+    },
+    ({ timeout_s, ...a }) =>
+      run(async () =>
+        (await getEngine()).androidOffer({ ...a, timeoutMs: timeout_s ? timeout_s * 1000 : undefined }),
+      ),
+  );
+  server.registerTool(
     'session_stop',
     {
       description: `Stop the browser session and clear the post-fill lock and one-shot counters. ${CONTRACT}`,

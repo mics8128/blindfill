@@ -51,8 +51,9 @@ blindfill defends against **the model and its logs**:
    not scrubbed.
 6. **Shadow DOM, closed iframes and canvas inputs** are not supported by the field detector;
    blindfill stops (fail closed) rather than guessing.
-7. **Android is not implemented** (stub). **Passkeys** are web sign-in only, Chromium only; the
-   sign counter is not written back and new passkeys cannot be registered. While a passkey is armed
+7. **Passkeys** are web sign-in in Chromium and Android app sign-in; the sign counter is not written
+   back and new passkeys cannot be registered. Assertions set the user-verified flag without a
+   biometric: the vault unlock and the item binding stand in for it. While a web passkey is armed
    (up to 15 s), any frame of that page that WebAuthn allows for the rpId may trigger the signature.
 8. **Backends marked "blind-written/unverified"** have never touched a real vault. They pass
    contract tests against recorded fixtures only. `bw` is tested against a mock CLI only.
@@ -74,6 +75,12 @@ blindfill defends against **the model and its logs**:
     [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)), but fields are still found in
     any same-origin or item-bound frame and there is no document-identity binding between steps.
     Use `blindfill.rules` for sites that matter, and for forms without a `<form>` element.
+16. **Android companion trust.** Passwords pass through the companion's memory into the autofill
+    framework and then the app, which receives them by design. The arm token travels as an `adb`
+    argument (visible to the host user's processes for a moment). Any app on the phone can connect
+    to the loopback port; without the token it gets nothing, but its connection ends the arm (fails
+    closed, the agent re-arms). The companion trusts the system's package and signer report; a rooted
+    or compromised phone defeats it. Build the APK yourself; no signed release exists.
 
 ## Reporting a vulnerability
 

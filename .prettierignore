@@ -3,3 +3,5 @@ node_modules
 .openclaw
 package-lock.json
 tests/fixtures
+android/.gradle
+android/**/build

@@ -37,14 +37,14 @@ Output below is illustrative; field names may differ slightly.
 | Bitwarden / Vaultwarden (`bw`)                                                                   | verified (mock CLI + fixtures) | Item JSON shape also checked by hand against a live Vaultwarden. blindfill end to end on a live vault: not yet.   |
 | 1Password (`op`), rbw, pass, gopass, KeePassXC (`keepassxc-cli`), Secret Service (`secret-tool`) | blind-written, unverified      | Pass the shared contract tests on fixtures only. Run `blindfill backend selftest <id>` and open a backend report. |
 
-| Browser                                                                            | Status                                                                                                     |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Chromium: Playwright bundled, any Chromium build (`--executable`), or loopback CDP | supported, tested                                                                                          |
-| Firefox / Camoufox via a loopback Playwright server (`--browser firefox-connect`)  | tested (opt-in suite) against Camoufox 158.0.1-beta.41 and 159.0-beta.43; a long-running instance untested |
-| Ego Lite                                                                           | only as a separate, empty-profile instance (`--executable`); attaching to the running app is unsupported   |
-| WebKit / Safari                                                                    | not supported                                                                                              |
-| Android                                                                            | not implemented (stub)                                                                                     |
-| Passkeys                                                                           | web sign-in, Chromium only (tested against a fake relying party); no counter write-back, no registration   |
+| Browser                                                                            | Status                                                                                                                                                            |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chromium: Playwright bundled, any Chromium build (`--executable`), or loopback CDP | supported, tested                                                                                                                                                 |
+| Firefox / Camoufox via a loopback Playwright server (`--browser firefox-connect`)  | tested (opt-in suite) against Camoufox 158.0.1-beta.41 and 159.0-beta.43; a long-running instance untested                                                        |
+| Ego Lite                                                                           | only as a separate, empty-profile instance (`--executable`); attaching to the running app is unsupported                                                          |
+| WebKit / Safari                                                                    | not supported                                                                                                                                                     |
+| Android (14+)                                                                      | companion APK: autofill for passwords, credential provider for passkeys (signed on the host); tested on one phone (Android 17) with a fake app; build from source |
+| Passkeys                                                                           | web sign-in, Chromium only (tested against a fake relying party); no counter write-back, no registration                                                          |
 
 Browser providers and their contract: [docs/browsers.md](docs/browsers.md).
 
@@ -69,7 +69,7 @@ Browser providers and their contract: [docs/browsers.md](docs/browsers.md).
 
 ## Not done
 
-- Android actuator (stub). Passkey counter write-back and registration. WebKit.
+- Android: saving new logins, WebView logins, a signed release APK. Passkey counter write-back and registration. WebKit.
 - `bw` end to end against a live vault. The other six backends are blind-written and unverified.
 - Not published to npm (`latest` is an empty placeholder).
 - Moving from olliepm: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).

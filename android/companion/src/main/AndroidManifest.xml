@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- loopback only: the host is reached through `adb reverse` -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- to read the signer of the app asking for a fill -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <application android:label="blindfill" android:allowBackup="false">
+
+        <!-- Only senders holding DUMP may arm: `adb shell` has it, ordinary apps cannot. -->
+        <receiver
+            android:name=".ArmReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="io.github.mics8128.blindfill.ARM" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".FillService"
+            android:exported="true"
+            android:label="blindfill"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service" />
+        </service>
+
+        <service
+            android:name=".PasskeyProvider"
+            android:exported="true"
+            android:label="blindfill"
+            android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.credentials.CredentialProviderService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.credentials.provider"
+                android:resource="@xml/provider" />
+        </service>
+
+        <activity
+            android:name=".PasskeyActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+</manifest>
