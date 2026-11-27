@@ -53,9 +53,15 @@ Item 7 is not done:
   party that verifies the signature. No counter write-back, no registration, no Firefox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
 - Android: companion APK (`android/`), passwords via autofill and passkeys via the credential
-  provider, signed on the host. Tested on the Xperia 5 II (Android 17) on ollie-ubuntu with a fake
-  app (`BLINDFILL_TEST_ANDROID_SERIAL=QV720B4852 BLINDFILL_APKSIGNER=/usr/bin/apksigner npx vitest run
-tests/android-device.test.ts` after `cd android && ./gradlew assembleDebug`); not with real apps.
+  provider, signed on the host. Release-signed (certificate SHA-256
+  `C7EDE55AB64522DC9BC142F8F20B9BAABE5341D828210183D991157FE0EC45C8`; key custody in SECURITY.md
+  item 16); the host checks the installed APK's signer before every arm; `blindfill android
+install --serial <s> [--set-services]`. CI job `android` builds and checks the signed APK;
+  `release.yml` ships it in the npm package. Tested with the release APK and a fake app on the
+  Xperia 5 II (Android 17) on ollie-ubuntu and on a headless arm64 emulator on the owner's Mac
+  (Android 16, API 36): `BLINDFILL_TEST_ANDROID_SERIAL=<serial>
+BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.ts` after
+  `cd android && ./gradlew assembleDebug` (android/README.md); not with real apps.
 - Not supported: passkey registration, WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.

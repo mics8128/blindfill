@@ -142,8 +142,17 @@ interface Actuator {
   `new` hints) and multi-signer apps are refused. Passkeys: the companion builds clientDataJSON
   for the calling app (`android:apk-key-hash:` origin) and sends only its hash; the host signs
   `authData || hash` (flags UP+UV, counter 0), so the private key never reaches the phone.
-  Tested on a real phone with a fake relying-party app (`tests/android-device.test.ts`), which
-  switches the autofill and credential provider for the run and restores them exactly.
+  The host only arms a companion whose installed APK (read back with `pm path` +
+  `adb exec-out cat`, APK Signing Block v2/v3/v3.1 parsed in `apk.ts`) has exactly one signer
+  with the pinned release certificate (`COMPANION_SIGNER`; cached per install path +
+  `lastUpdateTime`); otherwise `androidOffer` returns `refused` before any secret is read. The
+  release APK ships in the npm package (`dist/android/blindfill-companion.apk`, built by
+  `release.yml` from the same `package.json` version); `blindfill android install --serial`
+  installs it (CLI only: installing an app and switching a phone's providers is a device-level
+  change a person should start, so there is no MCP tool). Build and signing: `android/README.md`.
+  Tested with a fake relying-party app (`tests/android-device.test.ts`, which switches the
+  autofill and credential provider for the run and restores them exactly) using the release APK
+  on a Xperia 5 II (Android 17) and an arm64 emulator (Android 16, API 36, Google APIs).
 - Later: desktop (accessibility APIs), iOS (probably impossible without an Autofill extension).
 
 ### 3.3 Target model
@@ -251,7 +260,7 @@ blindfill/
       _contract/ contract suite every backend must pass
     actuators/
       web/       dom, heuristics, session, web.ts, providers/ (browser providers)
-      android/   stub
+      android/   companion APK host side (index.ts) + APK Signing Block parser (apk.ts)
     engine.ts  config.ts  library.ts (withPage)  cli.ts  mcp.ts  harden.ts
     rules.ts  profiles.ts  password.ts        (in progress: field rules, login recipes, generator)
   tests/         unit, contract, e2e on local fake sites, leak test, opt-in Firefox tests

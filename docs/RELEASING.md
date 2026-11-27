@@ -30,7 +30,10 @@ If `package.json` already holds the version to release (e.g. the first release
 `0.1.0-alpha.0`), just tag it: `git tag v0.1.0-alpha.0 && git push origin v0.1.0-alpha.0`.
 
 The workflow fails if the tag does not equal `v` + the `package.json` version, then runs
-`npm ci`, build, lint and tests, and finally `npm publish --provenance --access public`.
+`npm ci`, build, the signed Android companion (`android/release-apk.sh` with the
+`ANDROID_KEYSTORE_*` secrets; fails unless `apksigner` shows the pinned certificate), lint and
+tests, checks that the tarball contains `dist/android/blindfill-companion.apk`, and finally
+`npm publish --provenance --access public`.
 Versions with a pre-release suffix (`-alpha.0`, `-rc.1`, …) are published under the `next`
 dist-tag (`npm i blindfill@next`); plain `X.Y.Z` versions become `latest`.
 

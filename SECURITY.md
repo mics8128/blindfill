@@ -80,7 +80,16 @@ blindfill defends against **the model and its logs**:
     argument (visible to the host user's processes for a moment). Any app on the phone can connect
     to the loopback port; without the token it gets nothing, but its connection ends the arm (fails
     closed, the agent re-arms). The companion trusts the system's package and signer report; a rooted
-    or compromised phone defeats it. Build the APK yourself; no signed release exists.
+    or compromised phone defeats it. Before every arm the host reads the installed companion APK back
+    from the phone (`pm path`, `adb exec-out cat`), parses its APK Signing Block and refuses unless
+    its only signer certificate has SHA-256
+    `C7EDE55AB64522DC9BC142F8F20B9BAABE5341D828210183D991157FE0EC45C8` (an app that merely reuses the
+    package name is not armed). This trusts `adb` and PackageManager, which verified the signature at
+    install; it does not re-verify the signature bytes. `BLINDFILL_COMPANION_SIGNER` overrides the pin
+    for development builds; anyone who controls the host's environment can set it. The release key
+    (PKCS12, RSA 4096) lives in the owner's `~/.config/blindfill/` (0600), in the GitHub Actions
+    secrets `ANDROID_KEYSTORE_B64`/`ANDROID_KEYSTORE_PASSWORD`, and as an age-encrypted backup; it is
+    never committed. CI and the release workflow check the built APK's signer with `apksigner`.
 
 ## Reporting a vulnerability
 
