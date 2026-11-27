@@ -12,9 +12,10 @@ from the `gh-pages` branch (see `README.md`, "Deploy").
   the GitHub API.
 - Checked in Chromium at 1440px and 390px, light and dark, EN and zh-TW: no horizontal scroll, no console
   errors, no external requests. Computed contrast of every token pair >= 5.47:1.
-- Claims match README.md, SECURITY.md and docs/TESTED.md of main at abafe2e (bw mock-tested plus one
-  live-vault run on fake pages, six backends unverified, Android tested with a fake app plus Threads
-  success and Instagram partial on one phone, passkeys limited, not on npm).
+- Claims match README.md, SECURITY.md and docs/TESTED.md of main for release 0.1.0 (bw on real sites per
+  TESTED.md, six backends unverified, Chromium / Firefox-Camoufox / Ego Lite supported, Windows test suite
+  only, Android experimental, passkeys sign-in and registration, on npm). Install section uses
+  `npm i -g blindfill`, so deploy only after 0.1.0 is on npm.
 
 ## Needs the owner
 
