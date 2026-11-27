@@ -471,10 +471,15 @@
           <h2 data-i18n="sup_h">Password managers and browsers</h2>
           <p class="sub" data-i18n-html="sup_p">
             Status of <code>main</code> at 0.1.0-alpha.0, from the
-            <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a> and
+            <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>,
             <a href="https://github.com/mics8128/blindfill/blob/main/docs/browsers.md" rel="noopener"
               >browsers.md</a
-            >.
+            >
+            and the test log
+            <a href="https://github.com/mics8128/blindfill/blob/main/docs/TESTED.md" rel="noopener"
+              >TESTED.md</a
+            >
+            (every run, including failures).
           </p>
           <div class="table-wrap" tabindex="0" role="region" aria-labelledby="cap-sup">
             <table class="stack status">
@@ -545,10 +550,13 @@
                 <tr>
                   <th scope="row">Android 14+</th>
                   <td><span class="st warn" data-i18n="st_exp">Experimental</span></td>
-                  <td data-i18n="sup_and">
-                    Companion APK you build yourself: autofill for passwords, credential provider for passkeys
-                    (signed on the host). Tested on one phone with a fake app; on 2026-11-27 with real apps on
-                    that phone: Threads sign-in succeeded, Instagram partial (login result not checked).
+                  <td data-i18n-html="sup_and">
+                    Companion APK: autofill for passwords, credential provider for passkeys (signed on the
+                    host). Release-signed; install with
+                    <code>blindfill android install --serial &lt;s&gt;</code>, and the host checks the
+                    installed APK's signer before every fill. Tested on one phone with a fake app; on
+                    2026-11-27 with real apps on that phone: Threads sign-in succeeded, Instagram partial
+                    (login result not checked).
                   </td>
                 </tr>
                 <tr>
@@ -579,7 +587,7 @@
             <article class="card">
               <h3 data-i18n="lim_ah">Not built yet</h3>
               <ul>
-                <li data-i18n="lim_a1">Android: WebView logins, saving new logins, a signed release APK.</li>
+                <li data-i18n="lim_a1">Android: WebView logins, saving new logins.</li>
                 <li data-i18n="lim_a2">Passkey registration and counter write-back.</li>
                 <li data-i18n="lim_a3">WebKit / Safari.</li>
                 <li data-i18n="lim_a4">
