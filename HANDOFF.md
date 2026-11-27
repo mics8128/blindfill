@@ -38,8 +38,8 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   then a sign-in (item `webauthn-io-interop`, kept), Mics's Bitwarden extension signed in with it, and
   blindfill signed in again after the extension (counter accepted). GitHub (`github-ollie`, 2026-11-28,
   Chromium on ollie-ubuntu): password login once, passkey added from Settings, signed out, two passkey
-  sign-ins in fresh sessions (counter 2, 3 written back); the Bitwarden-extension sign-in is still to
-  do. Not tested: passkeys made by
+  sign-ins in fresh sessions (counter 2, 3 written back), Mics's Bitwarden extension signed in with it,
+  then blindfill again (counter 5, after a `bw sync` fix). Not tested: passkeys made by
   Bitwarden clients used by blindfill; Firefox passkeys on a real site or in the shared Camoufox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
 - Android: companion APK (`android/`), passwords via autofill (login, sign-up with `android register`,
