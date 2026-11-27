@@ -143,14 +143,14 @@ interface Actuator {
   Credential Manager (`GetPasswordOption`), a password entry (`PasswordActivity`). A WebView
   reports the scheme and domain of its document per view node; it is accepted when the screen
   shows exactly one `https` domain the item binds, whatever the app (SECURITY 22). Kind `password`
-  needs a single-password screen; kind `password-new` (`android register`, item opted in) needs a
+  needs a single-password screen; kind `password-new` (`android register`) needs a
   sign-up screen (two password fields, or one with a new-password hint) and fills the same
   password into both. `item generate --android <pkg>` makes such an item. Passkeys: the companion builds clientDataJSON
   for the calling app (`android:apk-key-hash:` origin) and sends only its hash; the host signs
   `authData || hash` (flags UP+UV, counter 0), so the private key never reaches the phone.
   Registration: `android passkey-register --rp-id` arms kind `passkey-create`; the provider offers a
   create entry only for that rpId, `PasskeyCreateActivity` sends rp, user id, algorithms and the
-  `webauthn.create` client data hash; the host (item bound to the app, `https://<rpId>`, opted in,
+  `webauthn.create` client data hash; the host (item bound to the app and `https://<rpId>`,
   no passkey; ES256 offered) makes a P-256 key, stores it, and returns a `none` attestation
   (`src/core/webauthn.ts`, flags `0x5D`, zero AAGUID).
   The host only arms a companion whose installed APK (read back with `pm path` +
@@ -264,7 +264,7 @@ inserted by script, not created by a Bitwarden client, so real-client encoding i
   (Bitwarden's rule) and otherwise signs stored + 1. Both sign with BE=BS=1 like Bitwarden clients.
   The result reports `sign_count` and `counter_written_back` (plus `counter_error` on a failed write).
 - Registration (owner decision 2026-11-27, no terminal, add only): `Engine.passkeyRegister` needs an
-  item that binds the page, carries `blindfill.registration=allow` and holds no passkey; then
+  item that binds the page and holds no passkey (no opt-in since 2026-11-28); then
   one-shot per session+origin. `WebActuator.passkeyCreate` adds an empty virtual authenticator,
   narrows the page's next `create()` to ES256 (what an ES256-only authenticator such as Bitwarden's
   picks; webauthn.io lists Ed25519 first), clicks `click`, and takes the key from

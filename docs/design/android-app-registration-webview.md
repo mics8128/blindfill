@@ -38,7 +38,7 @@ gets the password.
 Two steps, as on the web (`item generate`, then fill): the vault holds the password before any app
 sees it, so a crash between the steps never leaves an account whose password is not in the vault.
 
-1. **Item.** An existing item that has opted in (`blindfill.registration=allow`) and binds the app,
+1. **Item.** An existing item that binds the app (no opt-in since 2026-11-28),
    or a new one: `blindfill item generate <name> --android <pkg> --username <u> [--origin https://…]
 [--length n] [--policy-file f]`. The password is generated on the host (CSPRNG, item policy) and
    never printed.

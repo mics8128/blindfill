@@ -313,7 +313,6 @@ export class Engine {
         ...(m.hasTotp ? [{ name: 'totp', class: 'totp' }] : []),
       ],
       rules: parsed,
-      registration_allowed: m.control.registration,
       password_policy: m.control.passwordPolicy !== undefined,
       submit: m.control.submit,
       secrets_exposed: false,
@@ -468,8 +467,7 @@ export class Engine {
   /**
    * Generate a password under an optional data-only policy and save it as a new item. The value is written
    * straight to the backend and is never returned, printed or logged. Does not touch any website.
-   * The item is created with blindfill.registration=allow unless `registration` is false (generating a
-   * password is how a registration is prepared).
+   * `noPassword` saves the item without one, for sites registered with a passkey only.
    */
   async itemGenerate(req: {
     name: string;
@@ -478,9 +476,9 @@ export class Engine {
     displayName?: string;
     length?: number;
     policy?: unknown;
-    registration?: boolean;
     /** also bind this Android app (androidapp://<pkg>); no signer pin unless a person adds one */
     androidApp?: string;
+    noPassword?: boolean;
   }): Promise<Record<string, unknown>> {
     const b = this.writable();
     if (!req.username || (req.displayName !== undefined && !req.displayName))
@@ -489,14 +487,15 @@ export class Engine {
       throw new BlindfillError('POLICY', 'at least one origin or an Android app is required');
     if (req.androidApp && !/^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$/.test(req.androidApp))
       throw new BlindfillError('POLICY', 'invalid Android package name');
+    if (req.noPassword && (req.policy !== undefined || req.length !== undefined))
+      throw new BlindfillError('POLICY', 'a password policy or length needs a password (drop --no-password)');
     const origins = (req.origins ?? []).map((o) => Engine.canonicalOrigin(o));
     const policy = req.policy === undefined ? undefined : validatePasswordPolicy(req.policy);
     await this.assertNameFree(req.name);
-    const password = generatePassword(policy, req.length);
-    globalScrubber.register(password);
+    const password = req.noPassword ? undefined : generatePassword(policy, req.length);
+    if (password) globalScrubber.register(password);
     const fields: Record<string, string> = {};
     if (req.displayName !== undefined) fields.display_name = req.displayName;
-    if (req.registration !== false) fields['blindfill.registration'] = 'allow';
     if (policy) fields['blindfill.password_policy'] = JSON.stringify(policy);
     const ref = await b.createItem({
       name: req.name,
@@ -512,9 +511,8 @@ export class Engine {
       name: req.name,
       origins,
       ...(req.androidApp ? { android_app: req.androidApp } : {}),
-      password_generated: true,
+      password_generated: !req.noPassword,
       secret_exposed: false,
-      registration_enabled: req.registration !== false,
       registration_outcome: 'not_attempted',
     };
   }
@@ -794,6 +792,11 @@ export class Engine {
           new BlindfillError('SECRET_ACCESS', `"${name}" is a private key: it is never typed into a field`),
         );
       else if (meta.secretFields.includes(name)) kind = 'secret';
+      else if (name === 'password')
+        return refuse(
+          'no password',
+          new BlindfillError('NOT_FOUND', 'this item has no password (passkey-only); nothing was filled'),
+        );
       else if (name === 'username' ? !!meta.username : name in meta.readable) kind = 'readable';
       else
         return refuse(
@@ -1086,8 +1089,8 @@ export class Engine {
   }
 
   /**
-   * Account registration with an item that opted in (blindfill.registration=allow) and an explicit
-   * registration rule. The stored password is read ONCE and typed into the password field and (unless the
+   * Account registration with an item that binds the page and an explicit registration rule.
+   * The stored password is read ONCE and typed into the password field and (unless the
    * rule says the form has none) the separate confirmation field; equality is checked inside the page and
    * only a boolean comes back. Fill-only unless submit=true; at most one submit; never retried.
    */
@@ -1099,11 +1102,6 @@ export class Engine {
       throw new BlindfillError('POLICY', 'registration fields come from the rule; do not pass fields');
     const act = this.actuator();
     const peek = await this.resolveForRegistration(req);
-    if (!peek.meta.control.registration)
-      throw new BlindfillError(
-        'POLICY',
-        'this item has not opted in to registration (custom field blindfill.registration=allow)',
-      );
     const p = await this.prepare({ ...req, url: undefined, item: peek.ref.id }, 'registration', {
       confirmField: true,
     });
@@ -1348,7 +1346,7 @@ export class Engine {
 
   /**
    * Passkey registration (web: Chromium or Firefox/Camoufox), add only (owner decision 2026-11-27, no terminal):
-   * the item must bind the page, have opted in (blindfill.registration=allow) and hold no passkey.
+   * the item must bind the page and hold no passkey.
    * The page's own navigator.credentials.create() is answered once by an empty virtual authenticator;
    * the new key goes from the browser into the vault (one `bw edit`), never to the caller.
    */
@@ -1370,14 +1368,6 @@ export class Engine {
       refuse(
         bind.reason,
         new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`),
-      );
-    if (!meta.control.registration)
-      refuse(
-        'registration not allowed',
-        new BlindfillError(
-          'POLICY',
-          'this item has not opted in to registration (custom field blindfill.registration=allow)',
-        ),
       );
     if (meta.secretFields.includes('passkey'))
       refuse(
@@ -1471,11 +1461,6 @@ export class Engine {
         req.kind === 'passkey'
           ? 'item binds no Android app: it needs an androidapp://<package> URI'
           : 'item binds no Android app (androidapp://<package>) and no web URI for a WebView',
-      );
-    if (req.kind === 'password-new' && !meta.control.registration)
-      throw new BlindfillError(
-        'POLICY',
-        'this item has not opted in to registration (custom field blindfill.registration=allow)',
       );
     const field = req.kind === 'passkey' ? 'passkey' : 'password';
     if (!meta.secretFields.includes(field)) throw new BlindfillError('NOT_FOUND', `item has no ${field}`);
@@ -1600,8 +1585,8 @@ export class Engine {
   /**
    * Android passkey registration (companion, design 5.5), add only like passkeyRegister: the item must
    * bind the app (androidapp://, plus its blindfill.signers pin if it has one) and the rpId (a web URI
-   * on it, standing in for the Digital Asset Links check a provider owes non-browser callers), have
-   * opted in and hold no passkey. The host makes the key and stores it before the phone gets the
+   * on it, standing in for the Digital Asset Links check a provider owes non-browser callers) and
+   * hold no passkey. The host makes the key and stores it before the phone gets the
    * attestation; the key stays here.
    */
   async androidPasskeyRegister(
@@ -1626,11 +1611,6 @@ export class Engine {
       refuse('item binds no Android app: it needs an androidapp://<package> URI');
     if (!/^[a-z0-9.-]+$/.test(rpId) || !checkWebBinding(`https://${rpId}/`, meta).ok)
       refuse(`the item has no web URI for rpId ${rpId}`);
-    if (!meta.control.registration)
-      refuse(
-        'this item has not opted in to registration (custom field blindfill.registration=allow)',
-        'POLICY',
-      );
     if (meta.secretFields.includes('passkey'))
       refuse('the item already holds a passkey; replacing one needs a person at a terminal', 'POLICY');
     if (!this.backend.addPasskey)

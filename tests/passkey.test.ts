@@ -67,14 +67,13 @@ async function engine() {
   const backend = new BwBackend({ bin: MOCK, env: { ...process.env, BW_SESSION: 'mock-session-token' } });
   return new Engine(backend, act);
 }
-const OPT_IN = { name: 'blindfill.registration', value: 'allow', type: 0 };
-/** an opted-in login item without a passkey (what `item generate` leaves behind) */
-const regItem = (id: string, fields: object[]) => ({
+/** a login item without a passkey (what `item generate --no-password` leaves behind) */
+const regItem = (id: string) => ({
   id,
   type: 1,
   name: `Reg ${id}`,
   login: { username: 'pk-user', password: null, uris: [{ uri: `${O()}/`, match: 1 }] },
-  fields,
+  fields: [],
 });
 type VaultCred = Record<string, string>;
 const vaultCreds = (id: string): VaultCred[] =>
@@ -97,10 +96,9 @@ beforeAll(async () => {
       passkeyItem('pk-other', 'other.localhost'),
       passkeyItem('pk-strict', 'good.localhost'),
       passkeyItem('pk-five', 'good.localhost', '5'),
-      { ...passkeyItem('pk-has', 'good.localhost'), fields: [OPT_IN] },
-      regItem('pk-reg', [OPT_IN]),
-      regItem('pk-reg2', [OPT_IN]),
-      regItem('pk-noopt', []),
+      passkeyItem('pk-has', 'good.localhost'),
+      regItem('pk-reg'),
+      regItem('pk-reg2'),
       {
         ...passkeyItem('pk-be0', 'good.localhost'),
         fields: [{ name: 'blindfill.passkey_be', value: '0', type: 0 }],
@@ -305,13 +303,10 @@ describe('passkey registration (Chromium virtual authenticator, add only)', () =
     expect(verify('sha256', signed, pub, Buffer.from(a.signature, 'base64url'))).toBe(true);
   }, 90_000);
 
-  it('refuses before the ceremony: no opt-in, an existing passkey, an unbound page', async () => {
+  it('refuses before the ceremony: an existing passkey, an unbound page', async () => {
     const eng = await engine();
     sites.received.length = 0;
     const url = `${O()}/passkey-register`;
-    await expect(eng.passkeyRegister({ item: 'pk-noopt', url, click: '#reg' })).rejects.toMatchObject({
-      code: 'POLICY',
-    });
     await expect(eng.passkeyRegister({ item: 'pk-has', url, click: '#reg' })).rejects.toMatchObject({
       code: 'POLICY',
     });
@@ -322,8 +317,9 @@ describe('passkey registration (Chromium virtual authenticator, add only)', () =
         click: '#reg',
       }),
     ).rejects.toMatchObject({ code: 'ORIGIN_MISMATCH' });
+    // a passkey-only item never fills a blank password
+    await expect(eng.fill({ item: 'pk-reg2', url })).rejects.toThrow(/no password/);
     expect(sites.received).toHaveLength(0);
-    expect(vaultCreds('pk-noopt')).toHaveLength(0);
     expect(vaultCreds('pk-reg2')).toHaveLength(0);
     expect(vaultCreds('pk-has')).toHaveLength(1);
   }, 60_000);

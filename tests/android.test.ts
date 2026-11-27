@@ -132,38 +132,32 @@ beforeAll(() => {
         { username: 'web-user', uris: [{ uri: `https://${RP}`, match: null }], fido2Credentials: [] },
         '',
       ),
-      {
-        ...item(
-          'signup',
-          {
-            uris: [
-              { uri: `androidapp://${PKG}`, match: null },
-              { uri: `https://${RP}`, match: null },
-            ],
-            fido2Credentials: [],
-          },
-          '',
-        ),
-        fields: [{ name: 'blindfill.registration', value: 'allow', type: 0 }],
-      },
+      item(
+        'signup',
+        {
+          uris: [
+            { uri: `androidapp://${PKG}`, match: null },
+            { uri: `https://${RP}`, match: null },
+          ],
+          fido2Credentials: [],
+        },
+        '',
+      ),
+      item('nopw', { password: null }),
       item('app-ctr', {
         fido2Credentials: [
           { credentialId: randomUUID(), rpId: RP, keyValue: KEY, userHandle: 'dXNlcg', counter: '3' },
         ],
       }),
-      ...['reg', 'reg2', 'reg-noopt', 'reg-has'].map((id) => ({
-        ...item(id, {
+      ...['reg', 'reg2', 'reg-has'].map((id) =>
+        item(id, {
           uris: [
             { uri: `androidapp://${PKG}`, match: null },
             { uri: `https://${RP}`, match: null },
           ],
           ...(id === 'reg-has' ? {} : { fido2Credentials: [] }),
         }),
-        fields: [
-          { name: 'blindfill.signers', value: SIGNER, type: 0 },
-          ...(id === 'reg-noopt' ? [] : [{ name: 'blindfill.registration', value: 'allow', type: 0 }]),
-        ],
-      })),
+      ),
     ]),
   );
   process.env.BLINDFILL_MOCK_BW_ITEMS = f;
@@ -300,13 +294,14 @@ describe('android companion, host side', () => {
     expect(await guarded).toMatchObject({ code: 'ORIGIN_MISMATCH' });
   });
 
-  it('refuses before touching the device: sign-up without opt-in, a passkey for an item with no app', async () => {
-    await expect(
-      engine().androidOffer({ item: 'app', serial: 'S1', kind: 'password-new' }, android()),
-    ).rejects.toMatchObject({ code: 'POLICY' });
+  it('refuses before touching the device: a passkey for an item with no app, a passkey-only item', async () => {
     await expect(
       engine().androidOffer({ item: 'web', serial: 'S1', kind: 'passkey' }, android()),
     ).rejects.toMatchObject({ code: 'ORIGIN_MISMATCH' });
+    for (const kind of ['password', 'password-new'] as const)
+      await expect(engine().androidOffer({ item: 'nopw', serial: 'S1', kind }, android())).rejects.toThrow(
+        /no password/,
+      );
     expect(existsSync(log)).toBe(false);
   });
 
@@ -488,7 +483,6 @@ describe('android companion, host side', () => {
   });
 
   it.each([
-    ['no opt-in', 'reg-noopt', RP, 'POLICY'],
     ['an existing passkey', 'reg-has', RP, 'POLICY'],
     ['an rpId the item does not bind', 'reg2', 'evil.com', 'ORIGIN_MISMATCH'],
     ['an item without a web URI', 'app', RP, 'ORIGIN_MISMATCH'],

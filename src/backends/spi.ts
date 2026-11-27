@@ -87,7 +87,6 @@ export const DEFAULT_CONTROL: ControlFields = {
   submit: 'once',
   signers: [],
   notesReadable: false,
-  registration: false,
   passkeyBe: true,
 };
 
@@ -104,7 +103,6 @@ export function parseControl(fields: Record<string, string>): ControlFields {
         .map((s) => s.trim())
         .filter(Boolean);
     else if (key === 'blindfill.notes') c.notesReadable = v.trim().toLowerCase() === 'readable';
-    else if (key === 'blindfill.registration') c.registration = v.trim().toLowerCase() === 'allow';
     else if (key === 'blindfill.passkey_be') c.passkeyBe = v.trim() !== '0';
     else if (key === 'blindfill.password_policy') {
       try {

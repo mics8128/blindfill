@@ -80,7 +80,6 @@ beforeAll(async () => {
     fields: { username: '#em', password: '#pw' },
     submit: { selector: '#go', kind: 'js', outside_form: true },
   };
-  const reg = field('blindfill.registration', 'allow');
   const policy = field(
     'blindfill.password_policy',
     JSON.stringify({ version: 1, min_length: 8, max_length: 12 }),
@@ -92,11 +91,9 @@ beforeAll(async () => {
       item('ruled', [rules([loginRule])]),
       item('ruled-two', [rules([loginRule, { ...loginRule, id: 'second' }])]),
       item('badrule', [rules([{ ...loginRule, top_origin: 'http://elsewhere.localhost:1' }])]),
-      item('reg', [reg, rules([regRule()])]),
-      item('reg-noopt', [rules([regRule()])]),
-      item('reg-policy', [reg, policy, rules([regRule()])]),
+      item('reg', [rules([regRule()])]),
+      item('reg-policy', [policy, rules([regRule()])]),
       item('reg-absent', [
-        reg,
         rules([regRule({ id: 'one', confirm_password: undefined, password_confirmation: 'absent' })]),
       ]),
       item('jsrule', [
@@ -382,23 +379,20 @@ describe('registration', () => {
     expect(u.registration_outcome).toBe('unknown');
   });
 
-  it('requires opt-in (blindfill.registration=allow) and an explicit rule; never inferred', async () => {
+  it('requires an explicit registration rule; never inferred', async () => {
     const { eng } = await engine();
-    await expect(eng.register({ item: 'reg-noopt', url: good('/register'), rule: 'signup' })).rejects.toThrow(
-      /opted in/,
-    );
     await expect(
       eng.register({ item: 'reg', url: good('/register'), rule: undefined as never }),
     ).rejects.toThrow(/explicit rule/);
     await expect(eng.register({ item: 'plain', url: good('/register'), rule: 'signup' })).rejects.toThrow(
-      /opted in/,
+      /unknown rule/,
     );
     await expect(eng.register({ item: 'reg', url: good('/register'), rule: 'nope' })).rejects.toThrow(
       /unknown rule/,
     );
     // a login rule cannot be used for registration and vice versa
     await expect(eng.register({ item: 'ruled', url: good('/multi'), rule: 'main' })).rejects.toThrow(
-      /opted in/,
+      /login rule, not registration/,
     );
     await expect(eng.fill({ item: 'reg', url: good('/register'), rule: 'signup' })).rejects.toThrow(
       /registration rule, not login/,

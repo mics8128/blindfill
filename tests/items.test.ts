@@ -62,7 +62,7 @@ describe('password policy + generation', () => {
 });
 
 describe('item generate / create / password-policy (bw, mock)', () => {
-  it('generate: saved with opt-in + policy, value never returned; stored value satisfies the policy', async () => {
+  it('generate: saved with policy, value never returned; stored value satisfies the policy', async () => {
     const eng = new Engine(backend());
     const policy = { version: 1, min_length: 12, max_length: 16 };
     const r = await eng.itemGenerate({
@@ -87,7 +87,6 @@ describe('item generate / create / password-policy (bw, mock)', () => {
     expect(show.secretFields).toContain('password');
     expect(show.readable.display_name).toBe('Bob');
     const meta = await backend().meta({ backend: 'bw', id: raw.id });
-    expect(meta.control.registration).toBe(true);
     expect(meta.control.passwordPolicy).toEqual(policy);
     // the password is write-only: reading it is refused
     await expect(backend().read({ backend: 'bw', id: raw.id }, 'password')).rejects.toMatchObject({
@@ -134,12 +133,25 @@ describe('item generate / create / password-policy (bw, mock)', () => {
       username: 'bob',
       androidApp: 'com.example.app',
     });
-    expect(r).toMatchObject({ android_app: 'com.example.app', registration_enabled: true });
+    expect(r).toMatchObject({ android_app: 'com.example.app' });
     const raw = stored().find((i) => i.name === 'gen-app')!;
     expect(JSON.stringify(r)).not.toContain(raw.login.password);
     const meta = await backend().meta({ backend: 'bw', id: raw.id });
     expect(meta.uris.map((u) => u.uri)).toEqual(['androidapp://com.example.app']);
     expect(meta.control.signers).toEqual([]);
+  });
+
+  it('generate --no-password: bound item with a username and no password; policy/length refused', async () => {
+    const eng = new Engine(backend());
+    await expect(
+      eng.itemGenerate({ name: 'gen-nopw', origins: [O()], username: 'bob', noPassword: true, length: 20 }),
+    ).rejects.toMatchObject({ code: 'POLICY' });
+    const r = await eng.itemGenerate({ name: 'gen-nopw', origins: [O()], username: 'bob', noPassword: true });
+    expect(r).toMatchObject({ password_generated: false });
+    const raw = stored().find((i) => i.name === 'gen-nopw')!;
+    expect(raw.login.password).toBeNull();
+    const meta = await backend().meta({ backend: 'bw', id: raw.id });
+    expect(meta).toMatchObject({ username: 'bob', secretFields: [] });
   });
 
   it('create: origin-bound item from supplied values; password never echoed', async () => {
@@ -266,7 +278,6 @@ describe('item admin', () => {
     outputs.push(l, st);
     expect(l).toContain('gen-e2e');
     expect(st).toContain('"class":"secret"');
-    expect(st).toContain('"registration_allowed":true');
     for (const o of [l, st]) expect(o).not.toContain(raw.login.password);
   });
 
@@ -297,7 +308,7 @@ describe('item admin', () => {
     ).toBe(false);
     const sensitive: Partial<Parameters<Engine['itemEdit']>[1]>[] = [
       { origins: ['https://evil.example'] },
-      { set: { 'blindfill.registration': 'allow' } },
+      { set: { 'blindfill.submit': 'none' } },
       { unset: ['blindfill.password_policy'] },
       { secrets: { password: 'new-secret-value-1!' } },
     ];

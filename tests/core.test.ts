@@ -175,7 +175,7 @@ const meta = (uris: { uri: string; match: any }[], extra: Partial<ItemMeta> = {}
   readable: {},
   secretFields: ['password'],
   hasTotp: false,
-  control: { submit: 'once', signers: [], notesReadable: false, registration: false, passkeyBe: true },
+  control: { submit: 'once', signers: [], notesReadable: false, passkeyBe: true },
   ...extra,
 });
 
@@ -260,7 +260,6 @@ describe('policy: match types', () => {
         submit: 'once',
         signers: ['aa:bb:cc'],
         notesReadable: false,
-        registration: false,
         passkeyBe: true,
       },
     });

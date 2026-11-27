@@ -31,7 +31,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   counter written back to the vault (no terminal) and BE=BS=1 like Bitwarden clients; Android app
   registration through the companion (`android passkey-register --rp-id`, add only; fake app on the
   emulator and the Xperia, create then sign in); web
-  registration in Chromium (`passkey register`, add only, opted-in items); Firefox/Camoufox sign-in and
+  registration in Chromium (`passkey register`, add only, any bound item without a passkey); Firefox/Camoufox sign-in and
   registration over Marionette (`BLINDFILL_MARIONETTE`, BE=0 recorded as `blindfill.passkey_be=0`;
   Bitwarden-made BE=1 passkeys are signed there with BE=0, so BE-checking sites reject them). Tested against a strict fake relying party (Firefox: opt-in
   suite) and, with the live Vault in Chromium, on webauthn.io: three sign-ins in a row, a registration
@@ -88,8 +88,8 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    terminal on 11 items. Rules rejected by `parseRulesValue` (`:has()` and value/state selectors) for
    qbo-ollie, line-ollie, walmart-ollie, walmart-ollie-setup, and one rule each of gmail and
    ig-dj.mikechen, wait in `ollie-ubuntu:~/projects/blindfill-migration-rules/needs-rewrite/`;
-   rewrite one against the live page only when generic fill fails there. `blindfill.registration`
-   not enabled (Mics: login only for now). Communicate with Ollie (OpenClaw agent on ollie-ubuntu)
+   rewrite one against the live page only when generic fill fails there. The `blindfill.registration`
+   opt-in was removed on 2026-11-28 (item 10). Communicate with Ollie (OpenClaw agent on ollie-ubuntu)
    with `openclaw agent --agent ollie --session-key agent:ollie:blindfill --message-file <f>` over
    `ssh ollie@ollie-ubuntu`, without `--deliver`; Ollie writes `docs/TESTED.md` rows, the owner
    commits.
@@ -104,7 +104,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    1. The shared Camoufox may be restarted with `-marionette` and the softtoken prefs, but only after
       Phase 0 spike 2 passed (it did, 2026-11-27, on a separate throw-away Camoufox). Applied
       2026-11-27 by Ollie: `~/.local/bin/camoufox-desktop` starts with `-marionette` (127.0.0.1:2828).
-   2. On opted-in items the agent may add a passkey without a terminal: add only, never replace or
+   2. The agent may add a passkey without a terminal: add only, never replace or
       delete (same footing as `item generate`).
    3. Counter write-back to the Vault needs no terminal.
    4. Phase 5 real site: GitHub; Mics will put the account in the Vault (no passkey registered yet).
@@ -135,3 +135,9 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    ollie-ubuntu, Ollie and the `bw` agent API key stay the same Unix user (`ollie`, NOPASSWD sudo);
    no separate user for the key, blindfill or the LINE gateway. Ollie can therefore read any vault
    password with `bwu`; blindfill's no-read guarantee there is a convention, accepted.
+10. Owner decision on registration (Mics, 2026-11-28): the `blindfill.registration` opt-in is gone.
+    `passkey register`, `android passkey-register`, `android register` and `register --rule` need only
+    an item bound to the page or app (and, for passkeys, no passkey yet; nothing replaces or deletes
+    one); `item generate` no longer writes the field and `--no-registration` is gone; items that still
+    carry it are ignored. `item generate --no-password` makes a username-only item for passkey-only
+    sites; password login, fill, `register` and `android fill` refuse it ("no password").

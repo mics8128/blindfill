@@ -55,7 +55,6 @@ describe.skipIf(!enabled)('Firefox / Camoufox (opt-in: BLINDFILL_TEST_FIREFOX=1)
     const bwKey = generateKeyPairSync('ec', { namedCurve: 'P-256' })
       .privateKey.export({ type: 'pkcs8', format: 'der' })
       .toString('base64url');
-    const optIn = [{ name: 'blindfill.registration', value: 'allow', type: 0 }];
     writeFileSync(
       join(dir, 'items.json'),
       JSON.stringify([
@@ -63,7 +62,7 @@ describe.skipIf(!enabled)('Firefox / Camoufox (opt-in: BLINDFILL_TEST_FIREFOX=1)
         {
           ...item('ffpk-reg', [good]),
           login: { username: 'pk-user', uris: [{ uri: good, match: 1 }] },
-          fields: optIn,
+          fields: [],
         },
         {
           ...item('ffpk-bw', [good]),

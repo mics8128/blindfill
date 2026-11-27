@@ -36,21 +36,22 @@ Commands:
   item rename <id> <name>     rename; item edit <id> [--origin o ...] [--username u] [--set N=V] [--unset N] [--secret N]
                               (origins, blindfill.* other than blindfill.rules, and --secret need a terminal; no reveal)
   item generate <name>        generate a password (CSPRNG, optional --policy-file) and save it as a new item; never printed;
-                              --android <package> also binds that Android app
+                              --android <package> also binds that Android app; --no-password saves the item with no
+                              password (passkey-only sites: password login, fill and register then refuse it)
   item create [name]          create an item; username/password are read from the terminal (hidden)
   item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy
   passkey --click <css>       sign in with the item's passkey: Chromium only; the page's WebAuthn request is answered once
   passkey register --click <css>
                               create a passkey for the page and store it in the item (Chromium, bw; the item must
-                              bind the page, have blindfill.registration=allow and no passkey yet); key never printed
+                              bind the page and hold no passkey yet); key never printed
   android fill|passkey        arm the companion APK on --serial <adb serial> for one fill of --item (the app must be
                               bound by androidapp://<package>, plus its blindfill.signers pin if the item has one; a
                               WebView by its https domain); waits --timeout seconds (default 60)
   android register            like android fill, into the app's sign-up form (password and confirmation; the item
-                              needs blindfill.registration=allow); the caller submits
+                              binds the app); the caller submits
   android passkey-register --rp-id <domain>
                               arm the companion for one passkey creation by the bound app for --rp-id (the item
-                              must also bind https://<domain>, have blindfill.registration=allow and no passkey)
+                              must also bind https://<domain> and hold no passkey)
   android install             install the packaged companion APK on --serial (adb install -r); --set-services also
                               makes it the autofill and credential provider (prints the previous values to restore)
   totp [--fill]               print the current TOTP code, or fill it into the page
@@ -62,7 +63,7 @@ Commands:
   backend list                list backends and their support tier
   backend selftest [id]       round-trip a fake item through a backend (--fixture for offline)
   handoff pause|resume|status hand the browser to a person (CAPTCHA/consent/MFA); agent actions are refused meanwhile
-  register --rule <id>        fill a registration form from an opted-in item (fill-only unless --submit)
+  register --rule <id>        fill a registration form from an item bound to the page (fill-only unless --submit)
   page list|discover|diagnose|verify
                               open pages (origin+path), planned fields, structural diagnosis, outcome evidence
   profile init|validate|login login recipes: init <name> --item id --origin o --rule id; validate <name>;
@@ -104,7 +105,7 @@ const { values, positionals } = parseArgs({
     'display-name': { type: 'string' },
     length: { type: 'string' },
     'policy-file': { type: 'string' },
-    'no-registration': { type: 'boolean' },
+    'no-password': { type: 'boolean' },
     totp: { type: 'boolean' },
     name: { type: 'string' },
     origin: { type: 'string', multiple: true },
@@ -289,7 +290,7 @@ async function main(): Promise<number> {
         if (!name || !values.username)
           throw new BlindfillError(
             'POLICY',
-            'usage: blindfill item generate <name> (--origin <https origin> [--origin ...] | --android <package>) --username <u> [--display-name n] [--length n] [--policy-file f] [--no-registration]',
+            'usage: blindfill item generate <name> (--origin <https origin> [--origin ...] | --android <package>) --username <u> [--display-name n] [--length n] [--policy-file f] [--no-password]',
           );
         const e = await engineFor(false);
         out(
@@ -300,8 +301,8 @@ async function main(): Promise<number> {
             displayName: values['display-name'] as string | undefined,
             length: values.length ? Number(values.length) : undefined,
             policy,
-            registration: values['no-registration'] === true ? false : true,
             androidApp: values.android as string | undefined,
+            noPassword: values['no-password'] === true,
           }),
         );
         return 0;

@@ -30,7 +30,9 @@ blindfill defends against **the model and its logs**:
 - Changing secret values, origins, `blindfill.*` control fields or a password policy needs a
   person at a terminal. There is no command that reveals a stored secret. The exceptions only add
   or are field maps: adding a TOTP seed (`totp enroll`, point 18), adding a passkey (point 19) and
-  editing `blindfill.rules` (point 20).
+  editing `blindfill.rules` (point 20). Adding a passkey or filling a sign-up password needs no
+  per-item opt-in (owner decision 2026-11-28): any item that binds the site or app, and for a passkey
+  holds none yet, can be used.
 - Fill is one-shot: a Secret field is filled at most once per session and origin, and the
   form is submitted at most once per call. Unknown outcomes are reported, never retried.
   The submit control is checked before any secret is read; a control that is merely disabled
@@ -140,7 +142,7 @@ blindfill defends against **the model and its logs**:
     cannot swap a working seed for one it controls. It can still give a seedless item a seed from any
     page that item binds, which is the purpose. No QR decoding; a key inside an iframe is unreachable.
 19. **An agent can add a passkey to an item that has none** (`passkey register`, owner decision
-    2026-11-27, no terminal). The item must bind the page and carry `blindfill.registration=allow`;
+    2026-11-27, no terminal; no opt-in since 2026-11-28). Any item that binds the page qualifies;
     an item that already holds a passkey is refused, so an agent cannot replace a working one. The
     page's own `create()` is answered once by an empty Chromium virtual authenticator, offered ES256
     only; the new private key goes from the browser into the vault in one `bw edit` and the agent
@@ -158,7 +160,8 @@ blindfill defends against **the model and its logs**:
     that; review rule changes in the audit log (`event: item`, field `blindfill.rules`).
 21. **Android apps are bound by package name; a signer pin is optional** (owner decision
     2026-11-27, as Bitwarden does). An item with `androidapp://<package>` and no `blindfill.signers`
-    gives its password (autofill or Credential Manager), passkey sign-in and passkey registration to
+    gives its password (autofill or Credential Manager), passkey sign-in and passkey registration (no
+    opt-in, any item without a passkey) to
     whatever app has that package name. **If a fake app with the same package name replaces the real
     one** (sideloaded after the real app is removed, or installed on a phone that never had it), it
     gets the password. Android refuses to install a differently signed APK over an installed one, so
@@ -172,11 +175,15 @@ blindfill defends against **the model and its logs**:
     page with that base URL) and so receive the password of any item that binds that domain. Only
     arm WebView fills for apps you trust, as with a browser. Passkeys are not offered to WebViews.
 23. **App sign-up fills a generated password** (`android register`, `password-new`). The item must
-    carry `blindfill.registration=allow` (set by `item generate`) and bind the app (item 21) or the
+    bind the app (item 21) or the
     WebView's domain (item 22); the screen must look like sign-up (two password fields, or one with a
     new-password hint; more than two is refused). The same password goes into the password and its
     confirmation. blindfill does not submit and cannot tell whether the account was created; if the
-    app rejects the password, the item keeps a password the account does not have.
+    app rejects the password, the item keeps a password the account does not have. Since 2026-11-28
+    there is no opt-in: an agent can fill any bound item's password into any sign-up form of that
+    site or app (web `register`, `android register`). An item made with `item generate --no-password`
+    (passkey-only sites) has no password; password login, fill, `register` and `android fill` refuse
+    it with "no password" rather than fill a blank.
 
 ## Reporting a vulnerability
 

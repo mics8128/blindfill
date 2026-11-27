@@ -259,7 +259,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'register_credentials',
     {
-      description: `Fill an account-registration form using the stored password of an item that opted in (custom field blindfill.registration=allow) and an explicit registration rule. The same stored value is typed into the password and confirmation fields; nothing is returned. Fill-only unless submit=true; at most one submit; never retried. ${CONTRACT}`,
+      description: `Fill an account-registration form using the stored password of an item that binds the page and an explicit registration rule. The same stored value is typed into the password and confirmation fields; nothing is returned. Fill-only unless submit=true; at most one submit; never retried. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         rule: z.string().describe('Registration rule id (required; never inferred).'),
@@ -302,7 +302,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'passkey_register',
     {
-      description: `Create a passkey for this page and store it in the item (Chromium, bw only). Add only: the item must bind the page, have opted in (blindfill.registration=allow) and hold no passkey yet. The page's own WebAuthn create request is answered once by a temporary browser authenticator; the private key goes straight into the vault and is never returned. Returns rp_id and credential_id. ${CONTRACT}`,
+      description: `Create a passkey for this page and store it in the item (Chromium, bw only). Add only: the item must bind the page and hold no passkey yet. The page's own WebAuthn create request is answered once by a temporary browser authenticator; the private key goes straight into the vault and is never returned. Returns rp_id and credential_id. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         url: urlArg,
@@ -318,7 +318,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'android_offer',
     {
-      description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion (or Credential Manager password entry); kind=password-new: the same into a sign-up form (password and confirmation; the item needs blindfill.registration=allow; the caller submits); kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind the package (androidapp:// URI; a blindfill.signers pin is checked when present), or for a WebView the https domain it shows, or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,
+      description: `Arm the blindfill companion APK on an adb-attached phone for one fill. kind=password: the app on screen gets a "blindfill: <item>" autofill suggestion (or Credential Manager password entry); kind=password-new: the same into a sign-up form (password and confirmation; the caller submits); kind=passkey: the app's passkey request gets a blindfill entry. The phone reports the requesting app's package and signer; the item must bind the package (androidapp:// URI; a blindfill.signers pin is checked when present), or for a WebView the https domain it shows, or nothing is sent. Waits up to timeout_s for the phone. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         serial: z.string().describe('adb device serial'),
@@ -334,7 +334,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'android_passkey_register',
     {
-      description: `Arm the blindfill companion APK on an adb-attached phone for one passkey creation (bw only). Add only: the item must bind the app (androidapp://; a blindfill.signers pin is checked when present) and https://<rp_id>, have opted in (blindfill.registration=allow) and hold no passkey. The host makes the key and stores it in the vault; the phone gets only the attestation. Returns rp_id and credential_id. ${CONTRACT}`,
+      description: `Arm the blindfill companion APK on an adb-attached phone for one passkey creation (bw only). Add only: the item must bind the app (androidapp://; a blindfill.signers pin is checked when present) and https://<rp_id> and hold no passkey. The host makes the key and stores it in the vault; the phone gets only the attestation. Returns rp_id and credential_id. ${CONTRACT}`,
       inputSchema: {
         ...itemSel,
         serial: z.string().describe('adb device serial'),

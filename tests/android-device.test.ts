@@ -127,10 +127,7 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
             ],
             fido2Credentials: [],
           },
-          fields: [
-            { name: 'blindfill.signers', value: signer, type: 0 },
-            { name: 'blindfill.registration', value: 'allow', type: 0 },
-          ],
+          fields: [{ name: 'blindfill.signers', value: signer, type: 0 }],
         },
         {
           id: 'dev-web',

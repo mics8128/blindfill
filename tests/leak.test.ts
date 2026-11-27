@@ -80,7 +80,7 @@ const regRule = () => ({
   confirm_password: '#pw2',
   submit: { selector: '#create', kind: 'native' },
 });
-function leakRuleItem(id: string, mk: (() => object)[] | (() => object), extra: object[] = []) {
+function leakRuleItem(id: string, mk: (() => object)[] | (() => object)) {
   const rs = (Array.isArray(mk) ? mk : [mk]).map((f) => f());
   return {
     id,
@@ -92,10 +92,7 @@ function leakRuleItem(id: string, mk: (() => object)[] | (() => object), extra: 
       totp: 'JBSWY3DPEHPK3PXP',
       uris: [{ uri: `${O()}/`, match: 1 }],
     },
-    fields: [
-      ...extra,
-      { name: 'blindfill.rules', value: JSON.stringify({ version: 2, rules: rs }), type: 0 },
-    ],
+    fields: [{ name: 'blindfill.rules', value: JSON.stringify({ version: 2, rules: rs }), type: 0 }],
   };
 }
 
@@ -120,13 +117,13 @@ beforeAll(async () => {
         fields: [{ name: 'pin', value: 'CANARY-pin-123456', type: 1 }],
       },
       leakRuleItem('leak-rule', [loginRule]),
-      leakRuleItem('leak-reg', [regRule], [{ name: 'blindfill.registration', value: 'allow', type: 0 }]),
+      leakRuleItem('leak-reg', [regRule]),
       {
         id: 'leak-pk',
         type: 1,
         name: 'leak-pk',
         login: { username: 'pk-user', password: null, uris: [{ uri: good, match: 1 }] },
-        fields: [{ name: 'blindfill.registration', value: 'allow', type: 0 }],
+        fields: [],
       },
     ]),
   );
@@ -416,7 +413,7 @@ describe('leak test: canary password never appears anywhere', () => {
     expect(sites.received).toHaveLength(0);
     expect((await cli('register', '--item', 'leak-reg', '--rule', 'signup', '--submit')).code).toBe(1);
     expect((await cli('session', 'stop')).code).toBe(0);
-    // refused: no opt-in
+    // refused: a login rule used for registration
     expect((await cli('session', 'start', '--headless')).code).toBe(0);
     const noopt = await cli('register', '--item', 'leak-rule', '--rule', 'main', '--url', good('/multi'));
     expect(noopt.code).toBe(1);
