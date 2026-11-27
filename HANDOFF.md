@@ -90,7 +90,8 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    item names, origins and field names, never values).
 5. Owner decisions on passkeys (Mics, 2026-11-27; docs/design/passkey-feasibility.md §9):
    1. The shared Camoufox may be restarted with `-marionette` and the softtoken prefs, but only after
-      Phase 0 spike 2 passed (it did, 2026-11-27, on a separate throw-away Camoufox). Not applied yet.
+      Phase 0 spike 2 passed (it did, 2026-11-27, on a separate throw-away Camoufox). Applied
+      2026-11-27 by Ollie: `~/.local/bin/camoufox-desktop` starts with `-marionette` (127.0.0.1:2828).
    2. On opted-in items the agent may add a passkey without a terminal: add only, never replace or
       delete (same footing as `item generate`).
    3. Counter write-back to the Vault needs no terminal.
@@ -102,3 +103,13 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    `item edit --set` without a terminal, password fields included; Mics accepts that a misled agent
    could map a secret into a public field on a bound origin. Origins, secrets and every other
    `blindfill.*` control field still need a terminal.
+8. Real-site state (2026-11-27, rows in `docs/TESTED.md`): Fastmail (`fastmail-milu`) and
+   eccang (`eccang-ollie`, rule with `submit.outside_form`) log in; QBO is ambiguous (fields in an
+   iframe); iCHEF (`ichef-main`) not retested since `store_id` was added. Walmart Seller
+   (`walmart-ollie-setup`; the old `walmart-ollie` is in the Vault trash) now uses an authenticator
+   app: seed added with `totp enroll`. Its two rules share one origin, so pass
+   `--rule walmart_official_login` to log in and `totp --fill --rule walmart_totp` for the code.
+   Real-site tests use a throw-away Camoufox profile, accept cookie banners, submit once, and stop
+   at CAPTCHA, consent or any MFA the item has no TOTP for. Shared Camoufox on ollie-ubuntu: one window, new pages as tabs
+   (`open_newwindow=3`), at most 12 tabs (`camoufox-idle-tabs`), windows fitted once by
+   `camoufox-window-fit`; backups `*.bak-*` next to each file.
