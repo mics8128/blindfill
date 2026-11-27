@@ -64,7 +64,7 @@ Browser providers and their contract: [docs/browsers.md](docs/browsers.md). Ever
   `otpauth://totp` URI) from one element of a bound page and saves it to an item that has no TOTP seed;
   the key is never printed, and an existing seed is never replaced. Then `totp --fill` types the code.
 - **Item admin**: `item list|status|rename|edit`. Secret values, origins and `blindfill.*` fields change only
-  at a terminal. There is no `item reveal`.
+  at a terminal, except `blindfill.rules`, which an agent may edit (see SECURITY.md). There is no `item reveal`.
 - **Human handoff**: `handoff pause|resume` hands the browser to a person for a CAPTCHA, consent or MFA;
   agent actions are refused meanwhile, and the lock survives resume.
 - **Interfaces**: CLI, MCP server (stdio) and a library API (`withPage(page, …)`).

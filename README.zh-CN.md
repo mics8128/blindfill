@@ -54,7 +54,7 @@
 - **页面工具**：`page discover|diagnose|verify|list` 只报告结构和布尔值，绝不返回内容值；会话锁定时一律拒绝。
 - **注册**：`item generate` 用 CSPRNG 生成密码并创建条目，密码不会显示；`register` 将其输入绑定来源上的注册表单（密码和确认字段）。
 - **验证器设置**：`totp enroll --item <id> --selector <css>` 从绑定网页上的单个元素读取设置密钥（或 `otpauth://totp` URI），保存到尚无 TOTP 种子的条目；密钥不会显示，已有种子绝不覆盖。之后用 `totp --fill` 填入验证码。
-- **条目管理**：`item list|status|rename|edit`。机密值、来源和 `blindfill.*` 字段只能在终端中修改。没有 `item reveal`。
+- **条目管理**：`item list|status|rename|edit`。机密值、来源和 `blindfill.*` 字段只能在终端中修改，唯一例外是 `blindfill.rules`，代理可以修改（见 SECURITY.md）。没有 `item reveal`。
 - **人工接管**：`handoff pause|resume` 把浏览器交给人处理 CAPTCHA、授权页或 MFA；期间拒绝代理操作，恢复后锁定仍然有效。
 - **接口**：CLI、MCP 服务器（stdio）和库 API（`withPage(page, …)`）。
 - **泄漏测试**：填写、规则、配置、页面工具、注册、条目管理和人工接管均通过 CLI 和 MCP 运行，使用 canary 密码和生成的密码；所有输出、错误、`DEBUG=pw:api` 日志和状态文件都以原文、URL、Base64 和十六进制形式搜索。

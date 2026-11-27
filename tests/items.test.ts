@@ -279,7 +279,7 @@ describe('item admin', () => {
     const sensitive: Partial<Parameters<Engine['itemEdit']>[1]>[] = [
       { origins: ['https://evil.example'] },
       { set: { 'blindfill.registration': 'allow' } },
-      { set: { 'Blindfill.Rules': '{"version":2,"rules":[]}' } },
+      { unset: ['blindfill.password_policy'] },
       { secrets: { password: 'new-secret-value-1!' } },
     ];
     for (const s of sensitive)
@@ -287,6 +287,17 @@ describe('item admin', () => {
         /human at a terminal/,
       );
     expect(stored().find((i) => i.id === raw.id)!.login.password).not.toBe('new-secret-value-1!');
+    // blindfill.rules is agent-editable without a terminal (owner decision 2026-11-27), still validated
+    const rules = '{"version":2,"rules":[]}';
+    await eng.itemEdit({ item: raw.id }, { set: { 'Blindfill.Rules': rules }, human: false });
+    expect(
+      stored()
+        .find((i) => i.id === raw.id)!
+        .fields.find((f) => f.name === 'Blindfill.Rules')?.value,
+    ).toBe(rules);
+    await expect(
+      eng.itemEdit({ item: raw.id }, { set: { 'blindfill.rules': '{"version":9}' }, human: false }),
+    ).rejects.toThrow();
     await expect(
       eng.itemEdit({ item: raw.id }, { set: { password: 'x' }, human: true }),
     ).rejects.toMatchObject({ code: 'SECRET_ACCESS' });

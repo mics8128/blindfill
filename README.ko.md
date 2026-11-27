@@ -54,7 +54,7 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 - **페이지 도구**: `page discover|diagnose|verify|list`는 구조와 불리언만 보고하며 값은 절대 반환하지 않음. 세션이 잠긴 동안은 거부됨.
 - **등록**: `item generate`는 표시되지 않는 CSPRNG 비밀번호가 담긴 항목을 생성. `register`는 이를 바인딩된 오리진의 가입 폼(비밀번호와 확인란)에 입력.
 - **인증 앱 설정**: `totp enroll --item <id> --selector <css>`는 바인딩된 페이지의 단일 요소에서 설정 키(또는 `otpauth://totp` URI)를 읽어 TOTP 시드가 없는 항목에 저장. 키는 표시되지 않으며 기존 시드는 절대 덮어쓰지 않음. 이후 `totp --fill`로 코드를 입력.
-- **항목 관리**: `item list|status|rename|edit`. 비밀 값, 오리진, `blindfill.*` 필드는 터미널에서만 변경 가능. `item reveal`은 없음.
+- **항목 관리**: `item list|status|rename|edit`. 비밀 값, 오리진, `blindfill.*` 필드는 터미널에서만 변경 가능. 단, `blindfill.rules`는 에이전트도 변경 가능(SECURITY.md 참조). `item reveal`은 없음.
 - **사람에게 인계**: `handoff pause|resume`으로 CAPTCHA, 동의, MFA를 위해 브라우저를 사람에게 넘김. 그동안 에이전트 동작은 거부되고, 재개 후에도 잠금은 유지됨.
 - **인터페이스**: CLI, MCP 서버(stdio), 라이브러리 API(`withPage(page, …)`).
 - **유출 테스트**: 입력, 규칙, 프로필, 페이지 도구, 등록, 항목 관리, 인계를 CLI와 MCP로 canary 비밀번호와 생성된 비밀번호를 사용해 실행. 모든 출력, 오류, `DEBUG=pw:api` 로그, 상태 파일을 원문, URL, Base64, 16진수 형태로 검색.

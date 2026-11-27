@@ -98,3 +98,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
 6. Owner decision on TOTP (Mics, 2026-11-27): an agent may add a TOTP seed without a terminal
    (`totp enroll`), add only: an item that already has a seed is refused (same footing as
    `item generate` and add-only passkeys).
+7. Owner decision on rules (Mics, 2026-11-27): an agent may add or change `blindfill.rules` with
+   `item edit --set` without a terminal, password fields included; Mics accepts that a misled agent
+   could map a secret into a public field on a bound origin. Origins, secrets and every other
+   `blindfill.*` control field still need a terminal.

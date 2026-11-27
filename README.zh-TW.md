@@ -54,7 +54,7 @@
 - **頁面工具**：`page discover|diagnose|verify|list` 只回報結構與布林值，絕不回傳內容值；工作階段鎖定時一律拒絕。
 - **註冊**：`item generate` 以 CSPRNG 產生密碼並建立項目，密碼不會顯示；`register` 將其輸入綁定來源上的註冊表單（密碼與確認欄位）。
 - **驗證器設定**：`totp enroll --item <id> --selector <css>` 從綁定網頁上的單一元素讀出設定金鑰（或 `otpauth://totp` URI），存進尚無 TOTP 種子的項目；金鑰不會顯示，既有種子絕不覆蓋。之後用 `totp --fill` 填入驗證碼。
-- **項目管理**：`item list|status|rename|edit`。機密值、來源與 `blindfill.*` 欄位只能在終端機中變更。沒有 `item reveal`。
+- **項目管理**：`item list|status|rename|edit`。機密值、來源與 `blindfill.*` 欄位只能在終端機中變更，唯一例外是 `blindfill.rules`，代理可以修改（見 SECURITY.md）。沒有 `item reveal`。
 - **人工接手**：`handoff pause|resume` 將瀏覽器交給人處理 CAPTCHA、同意頁或 MFA；期間拒絕代理動作，且恢復後鎖定仍然有效。
 - **介面**：CLI、MCP 伺服器（stdio）與函式庫 API（`withPage(page, …)`）。
 - **洩漏測試**：填寫、規則、設定檔、頁面工具、註冊、項目管理與人工接手皆透過 CLI 與 MCP 執行，使用 canary 密碼與產生的密碼；所有輸出、錯誤、`DEBUG=pw:api` 日誌與狀態檔案都以原文、URL、Base64 與十六進位形式搜尋。

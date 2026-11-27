@@ -28,8 +28,9 @@ blindfill defends against **the model and its logs**:
   lock file, and the lock and one-shot records only grow until `session stop`, so a CLI and an MCP
   process running at once cannot clear each other's.
 - Changing secret values, origins, `blindfill.*` control fields or a password policy needs a
-  person at a terminal. There is no command that reveals a stored secret. The one exception is
-  adding a TOTP seed (`totp enroll`, see point 18 below): it only adds, never replaces.
+  person at a terminal. There is no command that reveals a stored secret. The exceptions only add
+  or are field maps: adding a TOTP seed (`totp enroll`, point 18), adding a passkey (point 19) and
+  editing `blindfill.rules` (point 20).
 - Fill is one-shot: a Secret field is filled at most once per session and origin, and the
   form is submitted at most once per call. Unknown outcomes are reported, never retried.
   The submit control is checked before any secret is read; a control that is merely disabled
@@ -137,6 +138,12 @@ blindfill defends against **the model and its logs**:
     gets the rpId and credential id. If the vault write fails (`vault_write_failed`) or the key is
     unusable (`not_stored`), the relying party may keep a passkey the vault does not have; a person
     must delete it there.
+20. **An agent can rewrite an item's rules** (`item edit --set blindfill.rules=…` without a terminal,
+    owner decision 2026-11-27). Rules still parse strictly and a rule naming an origin the item does
+    not bind is refused at fill time, but
+    an agent misled by page text could map the password field to a visible input on a bound origin
+    (a comment box, a profile field) and so publish the password there. Origin binding does not stop
+    that; review rule changes in the audit log (`event: item`, field `blindfill.rules`).
 
 ## Reporting a vulnerability
 

@@ -34,7 +34,7 @@ Commands:
   item show                   show an item: readable fields only (secret field NAMES, never values)
   item list [text]            list items (names, origins, field names); item status <id> structural status
   item rename <id> <name>     rename; item edit <id> [--origin o ...] [--username u] [--set N=V] [--unset N] [--secret N]
-                              (origins, blindfill.* and --secret need a terminal; there is deliberately no reveal)
+                              (origins, blindfill.* other than blindfill.rules, and --secret need a terminal; no reveal)
   item generate <name>        generate a password (CSPRNG, optional --policy-file) and save it as a new item; never printed
   item create [name]          create an item; username/password are read from the terminal (hidden)
   item password-policy <id>   read, or replace with --policy-file, the item's non-secret password policy

@@ -373,8 +373,11 @@ export class Engine {
       changed.push(n);
     }
     if (Object.keys(fields).length) patch.fields = fields;
+    // blindfill.rules is agent-editable (owner decision 2026-11-27); other control fields are not
     const sensitive =
-      !!req.origins || Object.keys(fields).some(control) || Object.keys(req.secrets ?? {}).length > 0;
+      !!req.origins ||
+      Object.keys(fields).some((n) => control(n) && n.toLowerCase() !== 'blindfill.rules') ||
+      Object.keys(req.secrets ?? {}).length > 0;
     if (sensitive && !req.human)
       throw new BlindfillError(
         'POLICY',

@@ -54,7 +54,7 @@ AI エージェントを、**パスワードを一切見せることなく**Web 
 - **ページツール**：`page discover|diagnose|verify|list` は構造と真偽値のみを報告し、値は返さない。セッションがロック中は拒否される。
 - **登録**：`item generate` は CSPRNG で生成した（表示されない）パスワードを持つアイテムを作成。`register` はそれを紐付け済みオリジンの登録フォーム（パスワードと確認欄）に入力する。
 - **認証アプリ設定**：`totp enroll --item <id> --selector <css>` は紐付け済みページ上の単一要素からセットアップキー（または `otpauth://totp` URI）を読み取り、TOTP シードを持たないアイテムに保存する。キーは表示されず、既存のシードは上書きしない。その後 `totp --fill` でコードを入力する。
-- **アイテム管理**：`item list|status|rename|edit`。秘密の値、オリジン、`blindfill.*` フィールドはターミナルでのみ変更できる。`item reveal` は存在しない。
+- **アイテム管理**：`item list|status|rename|edit`。秘密の値、オリジン、`blindfill.*` フィールドはターミナルでのみ変更できる。ただし `blindfill.rules` はエージェントも変更できる（SECURITY.md 参照）。`item reveal` は存在しない。
 - **人への引き継ぎ**：`handoff pause|resume` で CAPTCHA、同意、MFA のためにブラウザを人に渡す。その間エージェントの操作は拒否され、再開後もロックは維持される。
 - **インターフェース**：CLI、MCP サーバー（stdio）、ライブラリ API（`withPage(page, …)`）。
 - **漏えいテスト**：入力、ルール、プロファイル、ページツール、登録、アイテム管理、引き継ぎを CLI と MCP 経由で、canary パスワードと生成パスワードを使って実行。すべての出力、エラー、`DEBUG=pw:api` ログ、状態ファイルを、生、URL、Base64、16 進の各形式で検索する。
