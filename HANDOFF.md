@@ -36,7 +36,10 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
   Bitwarden-made BE=1 passkeys are signed there with BE=0, so BE-checking sites reject them). Tested against a strict fake relying party (Firefox: opt-in
   suite) and, with the live Vault in Chromium, on webauthn.io: three sign-ins in a row, a registration
   then a sign-in (item `webauthn-io-interop`, kept), Mics's Bitwarden extension signed in with it, and
-  blindfill signed in again after the extension (counter accepted). Not tested: passkeys made by
+  blindfill signed in again after the extension (counter accepted). GitHub (`github-ollie`, 2026-11-28,
+  Chromium on ollie-ubuntu): password login once, passkey added from Settings, signed out, two passkey
+  sign-ins in fresh sessions (counter 2, 3 written back); the Bitwarden-extension sign-in is still to
+  do. Not tested: passkeys made by
   Bitwarden clients used by blindfill; Firefox passkeys on a real site or in the shared Camoufox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
 - Android: companion APK (`android/`), passwords via autofill (login, sign-up with `android register`,
@@ -107,7 +110,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    2. The agent may add a passkey without a terminal: add only, never replace or
       delete (same footing as `item generate`).
    3. Counter write-back to the Vault needs no terminal.
-   4. Phase 5 real site: GitHub; Mics will put the account in the Vault (no passkey registered yet).
+   4. Phase 5 real site: GitHub (`github-ollie`); passkey registered 2026-11-28 (see `docs/TESTED.md`).
    5. Firefox/Camoufox also use BE=1 (Bitwarden-made) passkeys: signed with BE=0 (Firefox cannot set
       BE), no POLICY refusal; if the relying party rejects it, that is an ordinary failure and the
       caller uses Chromium. `blindfill.passkey_be` is still recorded. Marionette has no W3C

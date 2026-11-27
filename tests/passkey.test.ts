@@ -319,6 +319,15 @@ describe('passkey registration (Chromium virtual authenticator, add only)', () =
     ).rejects.toMatchObject({ code: 'ORIGIN_MISMATCH' });
     // a passkey-only item never fills a blank password
     await expect(eng.fill({ item: 'pk-reg2', url })).rejects.toThrow(/no password/);
+    // a rejected --click selector is refused up front and does not use up the one-shot
+    for (let i = 0; i < 2; i++) {
+      await expect(
+        eng.passkey({ item: 'pk-good', url: `${O()}/passkey`, click: 'button:has-text("x")' }),
+      ).rejects.toThrow(/evidence selectors/);
+      await expect(
+        eng.passkeyRegister({ item: 'pk-reg2', url, click: 'button:has-text("x")' }),
+      ).rejects.toThrow(/evidence selectors/);
+    }
     expect(sites.received).toHaveLength(0);
     expect(vaultCreds('pk-reg2')).toHaveLength(0);
     expect(vaultCreds('pk-has')).toHaveLength(1);

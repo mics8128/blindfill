@@ -23,6 +23,7 @@ import type {
   CandidateInfo,
   WebActuator,
 } from './actuators/web/web.js';
+import { assertSafeEvidenceSelector } from './actuators/web/web.js';
 import type { Role } from './actuators/web/heuristics.js';
 import { loadLocalRules, parseRulesValue, type ParsedRules, type Rule } from './rules.js';
 import type { Profile } from './profiles.js';
@@ -1287,6 +1288,7 @@ export class Engine {
     req: ItemSelector & { url?: string; click?: string; expect?: Expect },
   ): Promise<Record<string, unknown>> {
     const act = this.actuator();
+    if (req.click) assertSafeEvidenceSelector(req.click); // a bad selector must not burn the one-shot
     if (req.url) await act.navigate(req.url);
     const { target, url } = act.identify();
     const tname = formatTarget(target);
@@ -1354,6 +1356,7 @@ export class Engine {
     req: ItemSelector & { url?: string; click?: string; expect?: Expect; timeoutMs?: number },
   ): Promise<Record<string, unknown>> {
     const act = this.actuator();
+    if (req.click) assertSafeEvidenceSelector(req.click); // a bad selector must not burn the one-shot
     if (req.url) await act.navigate(req.url);
     const { target, url } = act.identify();
     const tname = formatTarget(target);
