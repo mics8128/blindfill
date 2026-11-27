@@ -333,6 +333,34 @@ export class WebActuator {
     return found[0];
   }
 
+  /**
+   * Raw text of the one main-frame element `selector` matches, for TOTP enrollment: an otpauth:// URI in
+   * its href, value or text, else its value (inputs) or text. Returned to the engine only, never to a caller.
+   * Main frame only, like v1 selectors: a key inside an iframe is not reachable.
+   */
+  async readSetupKey(selector: string): Promise<string> {
+    let hs: ElementHandle<Element>[];
+    try {
+      hs = await this.page.mainFrame().$$(selector);
+    } catch {
+      throw new BlindfillError('POLICY', 'invalid selector');
+    }
+    if (hs.length !== 1)
+      throw new BlindfillError(
+        'AMBIGUOUS',
+        `selector matched ${hs.length} elements in the top document (need exactly 1)`,
+      );
+    try {
+      return await hs[0].evaluate((el) => {
+        const v = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : null;
+        const all = [el.getAttribute('href'), v, el.textContent];
+        return all.find((s) => s && /otpauth:\/\//i.test(s)) ?? v ?? el.textContent ?? '';
+      });
+    } catch (e) {
+      throw wrap(e, 'could not read the element');
+    }
+  }
+
   // ---- filling --------------------------------------------------------------------------
 
   private async fillOnce(d: Detected, value: string): Promise<'fill' | 'keys'> {

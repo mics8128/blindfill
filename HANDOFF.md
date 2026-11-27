@@ -93,3 +93,6 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
       delete (same footing as `item generate`).
    3. Counter write-back to the Vault needs no terminal.
    4. Phase 5 real site: GitHub; Mics will put the account in the Vault (no passkey registered yet).
+6. Owner decision on TOTP (Mics, 2026-11-27): an agent may add a TOTP seed without a terminal
+   (`totp enroll`), add only: an item that already has a seed is refused (same footing as
+   `item generate` and add-only passkeys).

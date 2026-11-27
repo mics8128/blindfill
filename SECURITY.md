@@ -28,7 +28,8 @@ blindfill defends against **the model and its logs**:
   lock file, and the lock and one-shot records only grow until `session stop`, so a CLI and an MCP
   process running at once cannot clear each other's.
 - Changing secret values, origins, `blindfill.*` control fields or a password policy needs a
-  person at a terminal. There is no command that reveals a stored secret.
+  person at a terminal. There is no command that reveals a stored secret. The one exception is
+  adding a TOTP seed (`totp enroll`, see point 18 below): it only adds, never replaces.
 - Fill is one-shot: a Secret field is filled at most once per session and origin, and the
   form is submitted at most once per call. Unknown outcomes are reported, never retried.
   The submit control is checked before any secret is read; a control that is merely disabled
@@ -122,6 +123,12 @@ blindfill defends against **the model and its logs**:
     only in their dedicated places (the item's TOTP field, SSH-key items, passkeys). A private key,
     seed or recovery code pasted into a Hidden custom field is an ordinary Secret: it cannot be read,
     but it can be filled into a page the item binds. Keep keys in their dedicated fields.
+18. **An agent can add a TOTP seed to an item that has none** (`totp enroll`, owner decision
+    2026-11-27). blindfill reads the setup key or `otpauth://totp` URI from one element of the top
+    document on a page the item binds and writes it to the item's TOTP field; the agent gets only the
+    item id. An item that already has a seed is refused (the `bw` backend refuses too), so an agent
+    cannot swap a working seed for one it controls. It can still give a seedless item a seed from any
+    page that item binds, which is the purpose. No QR decoding; a key inside an iframe is unreachable.
 
 ## Reporting a vulnerability
 

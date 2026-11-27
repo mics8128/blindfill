@@ -24,6 +24,45 @@ import {
   type PasswordPolicy,
 } from './password.js';
 
+/**
+ * A setup key (base32, spaces/dashes allowed, any case) or an otpauth://totp URI, as stored by the backend:
+ * the bare seed, or the URI when it sets a non-default algorithm, digits or period. Errors never echo input.
+ */
+export function normalizeTotpSeed(raw: string): string {
+  globalScrubber.register(raw.trim());
+  const bad = () =>
+    new BlindfillError(
+      'POLICY',
+      'the element holds no TOTP setup key (base32, 16-128 chars) or otpauth://totp URI',
+    );
+  const found = raw.match(/otpauth:\/\/\S+/i)?.[0];
+  let uri: URL | undefined;
+  if (found) {
+    try {
+      uri = new URL(found);
+    } catch {
+      throw bad();
+    }
+    if (uri.host.toLowerCase() !== 'totp') throw bad();
+  }
+  const seed = (uri ? (uri.searchParams.get('secret') ?? '') : raw)
+    .replace(/[\s-]+/g, '')
+    .replace(/=+$/, '')
+    .toUpperCase();
+  if (!/^[A-Z2-7]{16,128}$/.test(seed)) throw bad();
+  globalScrubber.register(seed);
+  const p = uri?.searchParams;
+  const custom =
+    !!p &&
+    ((p.get('algorithm') ?? 'SHA1').toUpperCase() !== 'SHA1' ||
+      (p.get('digits') ?? '6') !== '6' ||
+      (p.get('period') ?? '30') !== '30');
+  if (!uri || !custom) return seed;
+  uri.searchParams.set('secret', seed);
+  globalScrubber.register(uri.toString());
+  return uri.toString();
+}
+
 export interface ItemSelector {
   /** backend item id */
   item?: string;
@@ -342,7 +381,8 @@ export class Engine {
         'changing origins, blindfill.* control fields or secret values needs a human at a terminal',
       );
     for (const n of Object.keys(req.secrets ?? {}))
-      if (!meta.secretFields.includes(n))
+      // "totp" names the item's TOTP seed for the backend; seeds are added only by totp enroll
+      if (n === 'totp' || !meta.secretFields.includes(n))
         throw new BlindfillError('NOT_FOUND', 'item has no secret field with that name');
     if (!changed.length && !Object.keys(req.secrets ?? {}).length)
       throw new BlindfillError('POLICY', 'nothing to change');
@@ -524,6 +564,57 @@ export class Engine {
     const code = await this.backend.totpCode(ref);
     audit({ event: 'totp', backend: this.backend.id, item: ref.id, outcome: 'returned' });
     return { code, item: ref.id, note: 'valid for ~30 seconds' };
+  }
+
+  /**
+   * Add a TOTP seed to an item that has none, read by blindfill from one element of the current page
+   * (a setup key, or an otpauth:// URI in its href, value or text). The seed goes straight to the backend;
+   * nothing about it is returned, printed or logged. Add-only: an existing seed is never replaced.
+   */
+  async totpEnroll(req: ItemSelector & { selector: string }): Promise<Record<string, unknown>> {
+    const b = this.writable();
+    if (!b.capabilities.has('TOTP'))
+      throw new BlindfillError('UNSUPPORTED', `backend "${b.id}" does not store TOTP seeds`);
+    const act = this.actuator();
+    const { target, url } = act.identify();
+    const tname = formatTarget(target);
+    const ref = await this.resolveItem(req, target);
+    const meta = await b.meta(ref);
+    const refuse = (err: BlindfillError): never => {
+      audit({
+        event: 'refused',
+        backend: b.id,
+        item: ref.id,
+        target: tname,
+        reason: `${err.code}: totp enroll`,
+      });
+      throw err;
+    };
+    const bind = checkWebBinding(url, meta);
+    if (!bind.ok)
+      refuse(
+        new BlindfillError('ORIGIN_MISMATCH', `refused: ${tname} is not bound by this item (${bind.reason})`),
+      );
+    if (meta.hasTotp)
+      refuse(
+        new BlindfillError('POLICY', 'this item already has a TOTP seed; enroll only adds, never replaces'),
+      );
+    let seed: string;
+    try {
+      seed = normalizeTotpSeed(await act.readSetupKey(req.selector));
+      // the page may have navigated while we read: the element must still be on a bound page
+      if (!checkWebBinding(act.identify().url, meta).ok)
+        throw new BlindfillError(
+          'ORIGIN_MISMATCH',
+          'the page left the bound origin while reading; nothing saved',
+        );
+    } catch (e) {
+      return refuse(e as BlindfillError);
+    }
+    globalScrubber.register(seed);
+    await b.updateSecret(ref, 'totp', seed);
+    audit({ event: 'item', backend: b.id, item: ref.id, target: tname, outcome: 'totp_enrolled' });
+    return { status: 'completed', id: ref.id, totp_enrolled: true, secret_exposed: false };
   }
 
   async probe(url?: string): Promise<ProbeResult & { items?: { id: string; name?: string }[] }> {

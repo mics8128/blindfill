@@ -44,6 +44,9 @@ Commands:
   android install             install the packaged companion APK on --serial (adb install -r); --set-services also
                               makes it the autofill and credential provider (prints the previous values to restore)
   totp [--fill]               print the current TOTP code, or fill it into the page
+  totp enroll --selector <css>
+                              add a TOTP seed to --item from the current page: blindfill reads the one element
+                              (setup key, or otpauth:// URI in href/value/text); never printed, never replaces a seed
   probe                       describe the current page's form fields (structure only)
   candidates [--role r]       list field candidates (names only)
   backend list                list backends and their support tier
@@ -107,6 +110,7 @@ const { values, positionals } = parseArgs({
     'expect-selector': { type: 'string' },
     'fail-selector': { type: 'string' },
     click: { type: 'string' },
+    selector: { type: 'string' },
     serial: { type: 'string' },
     timeout: { type: 'string' },
     'expect-timeout': { type: 'string' },
@@ -452,6 +456,26 @@ async function main(): Promise<number> {
       return 0;
     }
     case 'totp': {
+      if (sub === 'enroll') {
+        if (!values.selector)
+          throw new BlindfillError(
+            'POLICY',
+            'usage: blindfill totp enroll (--item <id> | --query <text>) --selector <css>',
+          );
+        const e = await engineFor(true);
+        try {
+          out(
+            await e.totpEnroll({
+              item: values.item as string | undefined,
+              query: values.query as string | undefined,
+              selector: String(values.selector),
+            }),
+          );
+        } finally {
+          await disconnect(e);
+        }
+        return 0;
+      }
       if (values.fill) {
         const e = await engineFor(true);
         const { fields: _f, ...req } = fillRequest();

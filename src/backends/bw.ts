@@ -158,6 +158,12 @@ export class BwBackend extends RawItemBackend {
         raw.login = { ...(raw.login ?? {}), password: value };
         return;
       }
+      if (field === 'totp') {
+        // add-only (owner decision 2026-11-27): an existing seed is never replaced
+        if (raw.login?.totp) throw new BlindfillError('POLICY', 'this item already has a TOTP seed');
+        raw.login = { ...(raw.login ?? {}), totp: value };
+        return;
+      }
       const f = raw.fields?.find((x) => x.name === field && classifyBwFieldType(x.type) === 'secret');
       if (!f) throw new BlindfillError('NOT_FOUND', 'item has no secret field with that name');
       f.value = value;

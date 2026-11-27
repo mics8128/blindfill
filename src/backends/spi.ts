@@ -51,7 +51,10 @@ export interface Backend {
   totpCode(ref: ItemRef): Promise<string>;
   /** Optional (capability WRITE). Backends without it report UNSUPPORTED to callers. */
   createItem?(spec: NewItemSpec): Promise<ItemRef>;
-  /** Optional (WRITE). Replace one Secret-class value; the value is never returned or logged. */
+  /**
+   * Optional (WRITE). Replace one Secret-class value; the value is never returned or logged. Field "totp"
+   * adds a TOTP seed (base32 or otpauth:// URI) and must refuse (POLICY) when the item already has one.
+   */
   updateSecret?(ref: ItemRef, field: string, value: string): Promise<void>;
   /** Optional (WRITE). Change only non-secret properties. */
   updateItem?(ref: ItemRef, patch: ItemPatch): Promise<void>;
