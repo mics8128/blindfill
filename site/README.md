@@ -9,9 +9,9 @@ dependencies, no external fonts, CDN or trackers, so it works offline.
   dictionary at the top of `app.js`; every translatable element carries a `data-i18n` key. The switcher
   remembers the choice; `?lang=zh-TW` forces a language.
 - Theme: follows the OS (`prefers-color-scheme`), with a toggle that is remembered.
-- Tables with class `stack` turn into one block per row below 640px; `app.js` labels each cell with its
-  column header.
 - The terminal demo respects `prefers-reduced-motion` (all lines are shown at once).
+- Keep the page short: what it is, why it's safe, what it works with, how to start. Details (support matrix,
+  limits, comparison) live in `docs/TESTED.md`, `SECURITY.md` and `docs/COMPARISON.md` on main; link there.
 
 ## Preview
 
