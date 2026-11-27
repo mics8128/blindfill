@@ -678,7 +678,13 @@ export class Engine {
         if (!meta.hasTotp || !this.backend.capabilities.has('TOTP'))
           refuse('no totp', new BlindfillError('NOT_FOUND', 'this item has no TOTP'));
         kind = 'totp';
-      } else if (meta.secretFields.includes(name)) kind = 'secret';
+      } else if (name === 'passkey' || name === 'ssh.privateKey')
+        // private keys are used to sign (passkey) or not at all; never typed into a page or app
+        return refuse(
+          'private key',
+          new BlindfillError('SECRET_ACCESS', `"${name}" is a private key: it is never typed into a field`),
+        );
+      else if (meta.secretFields.includes(name)) kind = 'secret';
       else if (name === 'username' ? !!meta.username : name in meta.readable) kind = 'readable';
       else
         return refuse(

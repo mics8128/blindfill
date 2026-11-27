@@ -63,9 +63,10 @@ tests/android-device.test.ts` after `cd android && ./gradlew assembleDebug`); no
 ## Rules to keep
 
 - Passwords only go straight from the backend into the target field. Never print, log, return,
-  screenshot, write to files, or put them in messages. Only Secret-class fields (password, TOTP
-  seed, Hidden custom fields, card number, private keys, passkey private keys) are fill-only.
-  TOTP codes are readable like text. Notes are unreadable by default.
+  screenshot, write to files, or put them in messages. Secret-class fields (password, Hidden custom
+  fields, card number) are fill-only. Keys (TOTP seed, SSH and passkey private keys) are never read
+  and never filled: the seed only yields codes, a passkey only signs. TOTP codes are readable like
+  text. Notes are unreadable by default.
 - README and website claims must match the code. Do not claim unverified support.
 - Do not build an attach provider for the running Ego Lite until an outbound-traffic capture and an
   operation-log check show filled values do not leak. Even then, never label it "supported".

@@ -42,12 +42,13 @@ solver, not a general remote-control tool. Multi-step flows stay with the caller
 
 ### 2a. Field classes
 
-| Class         | Examples                                                                                                               | Agent can read?                                                                   | Agent can fill? |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- |
-| **Secret**    | password, TOTP seed/otpauth URI, Bitwarden _Hidden_ custom fields, card number/CVV, SSH/private keys, passkey material | **never**                                                                         | yes (via fill)  |
-| **Ephemeral** | the current TOTP code (6-8 digits, ~30 s)                                                                              | **yes** (owner's decision)                                                        | yes             |
-| **Readable**  | username, item name, URIs, _Text_/_Boolean_ custom fields, field names, folder/collection                              | yes                                                                               | yes             |
-| **Notes**     | free-form notes                                                                                                        | no by default (may hold secrets); opt in per item with `blindfill.notes=readable` | no              |
+| Class         | Examples                                                                                  | Agent can read?                                                                   | Agent can fill?                                                       |
+| ------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **Secret**    | password, Bitwarden _Hidden_ custom fields, card number/CVV                               | **never**                                                                         | yes (via fill)                                                        |
+| **Key**       | TOTP seed/otpauth URI, SSH private keys, passkey private keys                             | **never**                                                                         | **never** (a passkey only signs; `fill` refuses with `SECRET_ACCESS`) |
+| **Ephemeral** | the current TOTP code (6-8 digits, ~30 s)                                                 | **yes** (owner's decision)                                                        | yes                                                                   |
+| **Readable**  | username, item name, URIs, _Text_/_Boolean_ custom fields, field names, folder/collection | yes                                                                               | yes                                                                   |
+| **Notes**     | free-form notes                                                                           | no by default (may hold secrets); opt in per item with `blindfill.notes=readable` | no                                                                    |
 
 Notes:
 
