@@ -86,7 +86,7 @@
     cmp_fine: '填寫後的上鎖只涵蓋 blindfill 自己的介面。連到同一個瀏覽器的其他工具仍可讀取頁面。',
     sup_h: '密碼管理器與瀏覽器',
     sup_p:
-      '<code>main</code> 分支 0.1.0-alpha.0 的狀態，取自 <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a> 與 <a href="https://github.com/mics8128/blindfill/blob/main/docs/browsers.md" rel="noopener">browsers.md</a>。',
+      '<code>main</code> 分支 0.1.0-alpha.0 的狀態，取自 <a href="https://github.com/mics8128/blindfill/blob/main/README.md" rel="noopener">README</a>、<a href="https://github.com/mics8128/blindfill/blob/main/docs/browsers.md" rel="noopener">browsers.md</a> 與測試紀錄 <a href="https://github.com/mics8128/blindfill/blob/main/docs/TESTED.md" rel="noopener">TESTED.md</a>（每次測試，含失敗）。',
     sup_cap: '支援狀態',
     sup_c1: '項目',
     sup_c2: '狀態',
@@ -110,14 +110,14 @@
     sup_pkh: 'Passkey',
     sup_pk: 'Chromium 網頁登入，只針對假的依賴方測試過。不回寫計數器，不支援註冊。',
     sup_and:
-      '需自行編譯的輔助 APK：密碼走自動填入服務，passkey 走憑證提供者（簽章在主機端）。在一支手機上用假 app 測試過；2026-11-27 在同一支手機測真實 app：Threads 登入成功，Instagram 部分完成（未確認登入結果）。',
+      '輔助 APK：密碼走自動填入服務，passkey 走憑證提供者（簽章在主機端）。已用正式金鑰簽署；以 <code>blindfill android install --serial &lt;s&gt;</code> 安裝，每次填入前主機都會核對手機上 APK 的簽署者。在一支手機上用假 app 測試過；2026-11-27 在同一支手機測真實 app：Threads 登入成功，Instagram 部分完成（未確認登入結果）。',
     sup_bw:
       '<code>bw</code>，以模擬 CLI 與測試資料驗證；2026-11-27 在真實密碼庫上跑過一次端到端測試（拋棄式項目、本機假網頁）。尚未用於真實網站。',
     sup_oth: '只通過錄製資料的契約測試，從未在真實密碼庫上執行。',
     sup_npm: 'npm 上的 <code>latest</code> 只是空的佔位套件，請從原始碼建置。',
     lim_h: '使用前先了解限制',
     lim_ah: '尚未完成',
-    lim_a1: 'Android：WebView 登入、儲存新登入、簽署過的正式版 APK。',
+    lim_a1: 'Android：WebView 登入、儲存新登入。',
     lim_a2: 'Passkey 註冊與計數器回寫。',
     lim_a3: 'WebKit／Safari。',
     lim_a4: 'Shadow DOM、封閉的 iframe 與 canvas 輸入框。遇到時 blindfill 會停止。',
