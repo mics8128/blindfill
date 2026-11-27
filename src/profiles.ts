@@ -1,7 +1,7 @@
 /**
  * Private, data-only login recipes ("profiles"). A recipe never expands authorization: the item's vault
  * URIs still decide which origins may receive a secret; a recipe only names the item, the page origin, the
- * rule to use (or an inline login rule) and which fields to fill. Ported in meaning from olliepm profiles.py.
+ * rule to use (or an inline login rule) and which fields to fill.
  *
  * File: <configDir>/profiles/<name>.json, mode 0600, owned by you, one link, no symlinks, <= 64 KiB.
  */

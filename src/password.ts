@@ -1,5 +1,5 @@
 /**
- * Data-only password policies and CSPRNG password generation. Ported from olliepm passwords.py.
+ * Data-only password policies and CSPRNG password generation.
  * Candidate values are never logged; generated values are handed straight to a backend write.
  */
 import { randomInt } from 'node:crypto';

@@ -1,5 +1,5 @@
 /**
- * Explicit field rules (data only). Ported in meaning from olliepm policy.py `_rules`.
+ * Explicit field rules (data only).
  *
  * A rule tells blindfill WHERE the fields are on one page (form/container, frame, per-field CSS selector,
  * submit control). It never grants authorization: the item's vault URIs still decide which origins may

@@ -85,10 +85,10 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
 
 1. Done 2026-11-27: end-to-end `bw` run against the real Vault and Ollie's real-use round, recorded
    in `docs/TESTED.md`; README x5, SECURITY.md, this file and the website aligned with it.
-2. Done 2026-11-27 (Mics approved): olliepm migrated. 15 items in the `agent-ollie` collection
-   (Estiginto org), values compared in-process with olliepm (all match, never shown);
-   `brightbean-ollie` deleted (unused, in the Vault trash); `linejs-pilot` handoff not migrated (no
-   equivalent by design; LINE re-login keeps using olliepm). `blindfill.rules` set by Mics at a
+2. Done 2026-11-27 (Mics approved): the earlier internal tool's items migrated. 15 items in the
+   `agent-ollie` collection (Estiginto org), values compared in-process with the old store (all
+   match, never shown); `brightbean-ollie` deleted (unused, in the Vault trash); `linejs-pilot`
+   handoff not migrated (no equivalent by design; LINE re-login keeps using the old tool). `blindfill.rules` set by Mics at a
    terminal on 11 items. Rules rejected by `parseRulesValue` (`:has()` and value/state selectors) for
    qbo-ollie, line-ollie, walmart-ollie, walmart-ollie-setup, and one rule each of gmail and
    ig-dj.mikechen, wait in `ollie-ubuntu:~/projects/blindfill-migration-rules/needs-rewrite/`;
@@ -99,7 +99,7 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    commits.
 3. Remote commands for Mics need absolute paths and a login shell:
    `ssh -t ollie@ollie-ubuntu bash -l /home/ollie/...` (`bw` lives in `~/.local/bin`).
-4. Owner decisions (2026-11-27): migrate the ~15 olliepm items only after Ollie's real-Vault test
+4. Owner decisions (2026-11-27): migrate the ~15 old-tool items only after Ollie's real-Vault test
    round (ask Mics and Ollie before touching real data); `agent-ollie` collection is **writable** (the
    agent may store accounts it registers; set in the Vault, not in this repo); default web match stays
    Host; rules live in the custom field `blindfill.rules`; MCP `list_credentials` stays (agents see

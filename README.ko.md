@@ -68,7 +68,6 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 - Android: 직접 입력한 로그인 저장, 실제 앱에서의 가입 양식·WebView·Credential Manager 비밀번호, 실제 앱에서의 passkey 등록. WebKit. 실제 사이트나 상시 실행 Camoufox에서의 Firefox passkey.
 - `bw`로 실제 웹사이트 로그인(실제 Vault 테스트는 로컬 가짜 페이지 사용). 나머지 여섯 백엔드는 맹목적으로 작성되어 미검증.
 - npm에 미게시(`latest`는 빈 플레이스홀더).
-- olliepm에서 이전: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).
 
 ## 사용해 보기
 

@@ -68,7 +68,6 @@ AI エージェントを、**パスワードを一切見せることなく**Web 
 - Android：手入力したログインの保存、実アプリでの登録フォーム・WebView・Credential Manager パスワード、実アプリでの passkey 登録。WebKit。実サイトや常駐 Camoufox での Firefox passkey。
 - `bw` を使った実在サイトへのログイン（実 Vault のテストはローカルの偽ページ）。他の 6 バックエンドは盲検で書かれており未検証。
 - npm には未公開（`latest` は空のプレースホルダー）。
-- olliepm からの移行：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。
 
 ## 試してみる
 

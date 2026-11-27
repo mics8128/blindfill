@@ -122,10 +122,9 @@ blindfill defends against **the model and its logs**:
     person does in the browser; it only refuses agent actions.
 14. **Outcome reporting is a small channel by design.** `verify` and `--expect-*` return
     booleans for caller-chosen structural selectors; they cannot select on values.
-15. **Rule-less fills are still looser than olliepm in one way.** Without a rule, the form must be a
-    single login form in the top document and submit goes only through its one native POST button
-    (see [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)), but olliepm's page-text
-    heuristics for newsletter and password-reset forms are not ported. Use `blindfill.rules` for
+15. **Rule-less fills have one gap.** Without a rule, the form must be a single login form in the
+    top document and submit goes only through its one native POST button, but there are no
+    page-text heuristics for newsletter and password-reset forms. Use `blindfill.rules` for
     sites that matter, for forms without a `<form>` element and for fields inside frames.
 16. **Android companion trust.** Passwords pass through the companion's memory into the autofill
     framework and then the app, which receives them by design. The arm token travels as an `adb`

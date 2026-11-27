@@ -503,7 +503,7 @@ export class WebActuator {
   }
 
   /**
-   * Rule-less form choice (olliepm parity): the password and username must share one form owner, and the
+   * Rule-less form choice: the password and username must share one form owner, and the
    * page must offer exactly one plausible login form. Sign-up / change-password / confirm pages refuse.
    * Messages never echo page or caller input.
    */

@@ -10,10 +10,10 @@ docs, permission listings; no file under `data/`, no token, session or secret va
 - On ollie-ubuntu, Ollie (the LLM agent), the `bw` agent API key, the LINE service and the LINE
   session token share Unix user `ollie`, which has `NOPASSWD: ALL` sudo (§5). Mics accepts this
   (2026-11-27). So every option here keeps the password away from the model and its logs by
-  construction of the code path, not by an OS boundary; that is also true of today's olliepm path.
+  construction of the code path, not by an OS boundary; that is also true of today's handoff-tool path.
 - **Recommended: (d)**, the LINE launcher reads the one item from Bitwarden itself with the agent
   API key, bound by item id, and pipes it to LINEJS; no blindfill and no LLM in the path. About
-  1 agent day; retires olliepm for LINE; adds no secret-export path to blindfill; no weaker than
+  1 agent day; retires the legacy handoff tool for LINE; adds no secret-export path to blindfill; no weaker than
   today (§4.4).
 - **Not recommended: (a)**, a blindfill "local process" actuator. On a shared uid its
   path/hash/uid binding is defeatable (§4.1), so it would cost 4-6 days and widen blindfill's
@@ -24,7 +24,7 @@ docs, permission listings; no file under `data/`, no token, session or secret va
 - Every password re-login already needs the phone: LINE asks for a PIN on the primary device
   (§2). The option choice changes where the password lives, not whether a person is involved.
 
-## 2. The current olliepm path
+## 2. The current path (a legacy internal handoff tool)
 
 ### 2.1 Flow
 
@@ -33,7 +33,7 @@ sequenceDiagram
   participant S as systemd (user ollie)
   participant L as start-with-credentials.py
   participant D as Deno pilot.ts (LINEJS)
-  participant O as olliepm handoff
+  participant O as legacy handoff tool
   participant P as Xperia (LINE primary)
   S->>L: start linejs-pilot.service
   L->>L: data/session.json has authToken?
@@ -41,7 +41,7 @@ sequenceDiagram
     L->>D: run without password
   else no token
     L->>D: spawn with --password-stdin, stdin = pipe read end
-    L->>O: olliepm handoff linejs-pilot --output-fd W --json
+    L->>O: handoff linejs-pilot --output-fd W --json
     O->>O: load grant, check item id/name and field kinds
     O->>D: one JSON line {username,password}, then EOF
     O-->>L: {"status":"written_to_pipe"} (no values)
@@ -59,15 +59,15 @@ sequenceDiagram
   token exits 78, so systemd never retries a password login; a person restarts it. The unit is
   `linked`, not enabled at boot (password-pipe doc 2026-10-20), and runs under lingering user
   `ollie` [observed: `Linger=yes`, unit active].
-- **Grant [source]** (`ollie_password_management/handoff.py`): `~/.config/ollie-password-management/handoffs/linejs-pilot.json`
+- **Grant [source]** (the handoff tool's `handoff.py`): a per-grant `handoffs/linejs-pilot.json` in its config directory
   must be a regular file, mode 0600, one link, owned by the caller uid, at most 16 KiB, exact
   schema. It pins item name **and** 32-hex item id, the fields (here `username`, `password`
   [observed]), `format=json`, a `purpose` and `destinations`
   (`https://legy.line-apps.com`, `https://gf.line.naver.jp` [observed]). Only `text`/`password`
   kinds; TOTP seeds refused. `purpose`/`destinations` are declarations; the code does not check
-  them against the reader (olliepm `docs/credential-handoff.md` says so).
+  them against the reader (the handoff tool's own documentation says so).
 - **Pipe [source]**: the launcher makes `pipe2(O_NONBLOCK|O_CLOEXEC)`, sets the read end blocking,
-  hands it to Deno as stdin, and passes only the write end to olliepm (`pass_fds`). olliepm dups
+  hands it to Deno as stdin, and passes only the write end to the handoff tool (`pass_fds`). The tool dups
   the FD and requires: FIFO named `pipe:[n]` in `/proc/self/fd`, same uid, write-only,
   nonblocking, not aliased to fd 0-2. It reads every field first, writes one payload of at most
   `min(4096, PIPE_BUF)` bytes in one `write`, 2 s default deadline (`--timeout`; the launcher waits
@@ -99,10 +99,10 @@ sequenceDiagram
 
 | Property                                         | Holds?                                                                                                                           |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Password never in model context, argv, env, logs | yes, by construction of the launcher and olliepm [source]                                                                        |
-| Only one item and two fields can leave the store | yes for this grant [source]; but any same-uid process can call olliepm or Secret Service directly                                |
+| Password never in model context, argv, env, logs | yes, by construction of the launcher and the handoff tool [source]                                                               |
+| Only one item and two fields can leave the store | yes for this grant [source]; but any same-uid process can call the handoff tool or Secret Service directly                       |
 | Reader of the pipe is authenticated              | **no**; the launcher is trusted to spawn the right reader, the grant says so itself [source]                                     |
-| Network destinations enforced                    | by Deno `--allow-net`, not by olliepm [source]                                                                                   |
+| Network destinations enforced                    | by Deno `--allow-net`, not by the handoff tool [source]                                                                          |
 | No automatic password retry                      | yes, exit 78 [source]                                                                                                            |
 | Isolation from Ollie (LLM agent with a shell)    | **no**: same uid `ollie`, NOPASSWD sudo; accepted by Mics (§5) [observed]                                                        |
 | Store unlocked without a person                  | `pass-secret-service` runs as "fresh unattended store" [observed unit description]; [inference] unlocked for any `ollie` process |
@@ -111,8 +111,8 @@ sequenceDiagram
 
 blindfill's invariant 1 is that no API returns a secret-class value; it only types into a sink whose
 identity it observed: a web origin, or an Android package + signer (ARCHITECTURE §2, §3.2). There
-is no local-process sink, and `MIGRATING-FROM-OLLIEPM.md` §3 row 13 keeps the pipe handoff out:
-"a future, separately reviewed sink would be an Actuator, not a read API."
+is no local-process sink, and the pipe handoff stays out by design: a future, separately reviewed
+sink would be an Actuator, not a read API.
 
 ## 4. Options
 
@@ -163,7 +163,7 @@ PNG valid for 5 minutes [source]. The primary phone scans it; LINE may then ask 
 - **Cost**: a phone scan per re-login. The Xperia must scan a QR shown elsewhere (camera) or read
   it from an image; whether LINE's scanner accepts an image pushed by adb, and whether automating
   that is acceptable, is unverified [inference]. Mics or Ollie is involved at each re-login.
-- **Work**: launcher change to stop calling olliepm and exit 78 with "QR login needed", plus a
+- **Work**: launcher change to stop calling the handoff tool and exit 78 with "QR login needed", plus a
   runbook: **0.5 agent day**. Maintenance: none beyond today's PIN script.
 
 ### 4.4 (d) Launcher reads Bitwarden itself (Mics' proposal)
@@ -177,15 +177,15 @@ Implementation notes:
   memory, never logged; `stderr` dropped; fixed error codes in `launcher-status.json`, as today.
   Separate `BITWARDENCLI_APPDATA_DIR` so the LINE path does not log out other `bw` users (`bwu`
   runs `bw logout` and re-logs in on every call [source: `~/.local/bin/bwu`]).
-- Keep olliepm's guarantees in the launcher: item id + name pin, payload <= 4096, one write,
+- Keep the handoff tool's guarantees in the launcher: item id + name pin, payload <= 4096, one write,
   no retry, exit 78.
 - Unlock: `bwu` derives a session from the API key alone; how an API-key login unlocks this
   Vaultwarden account without a master password was not checked [inference; check `bw status`
   once, which prints no secret].
 - **Threat model (now, same uid)**: equal to today. The API key file is readable by every `ollie`
-  process; it reads every item the agent account can see, a wider scope than the olliepm grant,
-  but Ollie can already use that same key through `bwu`. Gains: one store instead of two, olliepm
-  retired for LINE, no new blindfill surface. Loss: no per-item grant file; the item id lives in
+  process; it reads every item the agent account can see, a wider scope than the handoff grant,
+  but Ollie can already use that same key through `bwu`. Gains: one store instead of two, the
+  handoff tool retired for LINE, no new blindfill surface. Loss: no per-item grant file; the item id lives in
   the launcher.
 - **Work: about 1 agent day** (launcher change, synthetic pipe test with a fake `bw`, one
   supervised real re-login with Ollie's consent, docs). Moving the LINE item into the vault is a
@@ -195,7 +195,7 @@ Implementation notes:
 
 | Option                  | Password on host     | Agent days | Ongoing cost                  |
 | ----------------------- | -------------------- | ---------- | ----------------------------- |
-| today (olliepm)         | yes (Secret Service) | 0          | second store                  |
+| today (handoff tool)    | yes (Secret Service) | 0          | second store                  |
 | (a) process actuator    | yes (vault)          | 4-6        | hash per release, new surface |
 | (b) web/app login       | n/a                  | none       | not available                 |
 | (c) QR                  | **no**               | 0.5        | phone scan per re-login       |
@@ -223,7 +223,7 @@ with a LINE-only vault account rather than need (a).
 1. **Re-login method**: (d) password from the vault via the launcher (recommended, ~1 agent day),
    or (c) QR only (no password on the host, phone scan each time, ~0.5 day). "LINE goes through
    blindfill" read literally is (a); this document recommends against it.
-2. **Moving the LINE item into the Vault** (from olliepm's Secret Service): a Vault change; which
+2. **Moving the LINE item into the Vault** (from the handoff tool's Secret Service): a Vault change; which
    collection, and Ollie's consent.
 3. **One supervised real re-login** to verify (d) or (c): it logs the LINE gateway out and back in,
    so it needs a time window and someone at the Xperia for the PIN.

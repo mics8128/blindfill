@@ -1,19 +1,19 @@
 # Android: app sign-up, WebView logins and Credential Manager passwords through the companion
 
 Status: built (2026-11-28) after the owner decisions in §6; test results in
-[TESTED.md](../TESTED.md). Owner decision (Mics, 2026-11-27): the phone path replaces olliepm's
-scrcpy control completely and goes through the companion APK. This page covers the gaps left in
-[MIGRATING-FROM-OLLIEPM.md](../MIGRATING-FROM-OLLIEPM.md) §3 row 12: **mobile registration** and
+[TESTED.md](../TESTED.md). Owner decision (Mics, 2026-11-27): the phone path replaces the earlier
+internal tool's scrcpy control completely and goes through the companion APK. This page covers the
+remaining phone gaps: **mobile registration** and
 **WebView logins**, plus Credential Manager password sign-in. Android passkey registration was built
 earlier (Phase 4, ARCHITECTURE §3.2).
 
-## 1. What olliepm did
+## 1. What the earlier tool did
 
-- `olliepm profile phone NAME --device SERIAL --package PKG [--user N] --authorize [--submit]`: one-time
+- `profile phone NAME --device SERIAL --package PKG [--user N] --authorize [--submit]`: one-time
   binding of a saved item to a native app (device serial, Android user, package; APK path fingerprint,
-  publisher checked), saved in a private profile; `olliepm login NAME --target phone` then typed the
+  publisher checked), saved in a private profile; `login NAME --target phone` then typed the
   stored username and password through scrcpy's control channel.
-- `olliepm register-phone ITEM --device --package --password-selector XPATH --confirm-selector XPATH
+- `register-phone ITEM --device --package --password-selector XPATH --confirm-selector XPATH
 [--submit-selector XPATH] (--check | --authorize) [--submit]`: the item's stored (already generated)
   password, read once, typed into the new-password and confirm fields that restricted UI-XML XPaths
   select; refuses extra password fields or overlapping bounds; never retries, never clears input
@@ -84,7 +84,7 @@ autofill or Credential Manager.
 
 ## 7. Not covered
 
-- Android user / work profile (olliepm's `--user`): the companion answers for the user it runs as;
+- Android user / work profile (the earlier tool's `--user`): the companion answers for the user it runs as;
   not tested with a second profile.
 - Asset Links (`assetlinks.json`) checks.
 - Apps that block autofill (`importantForAutofill=no`, custom views): refused by absence; there is

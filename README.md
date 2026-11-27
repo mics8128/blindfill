@@ -92,7 +92,6 @@ Browser providers and their contract: [docs/browsers.md](docs/browsers.md). Ever
 - Android: saving logins typed by hand, sign-up, WebView and Credential Manager passwords in a real app, passkey registration in a real app. WebKit. Firefox passkeys on a real site or in a long-running Camoufox.
 - `bw` on real websites: the live-vault runs used local fake pages, and webauthn.io (no account) for passkeys. The other six backends are blind-written and unverified.
 - Not published to npm (`latest` is an empty placeholder).
-- Moving from olliepm: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).
 
 ## Try it
 

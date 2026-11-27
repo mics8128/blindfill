@@ -3,9 +3,8 @@
 > Let AI agents sign in to anything without ever seeing the password.
 
 Status: alpha. M0 and M1 are implemented (see section 9 for what is built, stubbed and
-unverified); passkeys (web) and the Android companion are built (M2); several olliepm features are not built yet. Parts marked
-**[from olliepm]** were ported or are being ported from the Python prototype
-`ollie-password-management`. Code samples below are language-neutral sketches; the real
+unverified); passkeys (web) and the Android companion are built (M2); some features of an earlier
+internal Python prototype are not built yet. Code samples below are language-neutral sketches; the real
 interfaces are TypeScript (`src/backends/spi.ts`, `src/actuators/web/providers/types.ts`).
 
 ## 1. Problem and non-goals
@@ -228,7 +227,7 @@ flow.
 - Local append-only log: time, backend, item id (not name if configured), target, fields
   filled, outcome. Never values.
 - Grants: for phones and for sensitive items, `blindfill grant add <item> <target>`
-  creates a digest (as olliepm does) the engine checks at fill time.
+  creates a digest the engine checks at fill time.
 
 ### 3.8 Passkeys (web sign-in and registration built; Chromium, and Firefox/Camoufox over Marionette)
 
@@ -338,8 +337,8 @@ Goal: install in one command, no toolchain explanation.
   servers; Playwright is first class in Node; the Bitwarden CLI is itself an npm package, so
   the main user already has Node. `Buffer` secrets can be zero-filled, which is better than
   Python's immutable strings. The Android side needs only `adb`/`scrcpy` as external binaries.
-- Python (olliepm's language): `uvx` is also one command, but it needs `uv` and a Python
-  runtime, which most MCP users do not have. The olliepm engine is ported, not reused.
+- Python (the earlier prototype's language): `uvx` is also one command, but it needs `uv` and a
+  Python runtime, which most MCP users do not have. The prototype's engine is ported, not reused.
 - Go/Rust single binary: easiest install and best secrecy guarantees, but Playwright is not
   first class there. Revisit only if a CDP-only core is wanted.
 - Keep the `SecretHandle` boundary clean so the core can later move to Rust/Go.
@@ -347,14 +346,13 @@ Goal: install in one command, no toolchain explanation.
 ## 9. Roadmap and status
 
 - **M0 done** repo, invariants, SECURITY.md, backend/actuator SPI, contract tests, CI,
-  tag-triggered release workflow (npm Trusted Publishing).
+  release workflow triggered by a `package.json` version bump (npm Trusted Publishing).
 - **M1 done (alpha)**: `bw` backend (mock CLI and fixtures in CI; one live-vault run passed on
   2026-11-27 with throw-away items on local fake pages, see `docs/TESTED.md`), web actuator, CLI + MCP, leak test.
   Blind-written and unverified: `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`.
-- **M1.5 in progress** olliepm parity for web: browser providers (done, Firefox/Camoufox passed
+- **M1.5 in progress** web parity with the earlier prototype: browser providers (done, Firefox/Camoufox passed
   against a real Camoufox build, owner's running instance untested), field rules and profiles,
   discover/diagnose/verify, registration with generated passwords, human handoff.
-  Tracked in `docs/MIGRATING-FROM-OLLIEPM.md` once written.
 - **M2** passkeys (`sign`, section 3.8) for web; Android companion APK (autofill + passkey
   provider) with signer pinning, tested on one device with a fake app and, on 2026-11-27, with
   Threads (sign-in succeeded) and Instagram (partial).

@@ -68,7 +68,6 @@
 - Android：儲存手動輸入的登入、在真實 app 中的註冊表單、WebView 與 Credential Manager 密碼、在真實 app 中註冊 passkey。WebKit。Firefox passkey 在真實網站或長期執行的 Camoufox 上使用。
 - `bw` 登入真實網站（真實 Vault 測試用的是本機假網頁）。其餘六個後端為盲寫且未驗證。
 - 尚未發布到 npm（`latest` 為空的佔位版本）。
-- 從 olliepm 遷移：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。
 
 ## 快速試用
 

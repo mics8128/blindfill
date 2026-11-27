@@ -81,7 +81,7 @@ const FIRST_IN_GROUP_SRC = String.raw`(group, a) => {
 const GROUP_KIND_SRC = String.raw`(g, native) => (native ? g instanceof HTMLFormElement : !(g instanceof HTMLFormElement))`;
 const IS_FRAME_SRC = String.raw`(e) => e.tagName === 'IFRAME' || e.tagName === 'FRAME'`;
 
-/** Submit control checks (port of olliepm _check_submit). a.outside: a js control outside every form (an <a> is allowed). */
+/** Submit control checks. a.outside: a js control outside every form (an <a> is allowed). */
 const SUBMIT_CHECK_SRC = String.raw`(e, a) => {
   const g = a.group;
   const roleBtn = e instanceof HTMLElement && ['DIV', 'SPAN'].includes(e.tagName) && (e.getAttribute('role') || '').toLowerCase() === 'button';
