@@ -100,7 +100,7 @@
     st_lim: '有限支援',
     st_exp: '實驗性',
     st_no: '不支援',
-    st_mock: '模擬環境測試',
+    st_mock: '模擬環境 + 一次真實密碼庫',
     st_unv: '未驗證',
     st_npm: '未發佈',
     sup_chr: 'Playwright 內建版本、以 <code>--executable</code> 指定的任何 Chromium，或本機 CDP 連線。',
@@ -110,8 +110,9 @@
     sup_pkh: 'Passkey',
     sup_pk: 'Chromium 網頁登入，只針對假的依賴方測試過。不回寫計數器，不支援註冊。',
     sup_and:
-      '需自行編譯的輔助 APK：密碼走自動填入服務，passkey 走憑證提供者（簽章在主機端）。只在一支手機用假 app 測試過，未用真實 app 測試。',
-    sup_bw: '<code>bw</code>，以模擬 CLI 與測試資料驗證。尚未在真實密碼庫上做端到端測試。',
+      '需自行編譯的輔助 APK：密碼走自動填入服務，passkey 走憑證提供者（簽章在主機端）。在一支手機上用假 app 測試過；2026-11-27 在同一支手機測真實 app：Threads 登入成功，Instagram 部分完成（未確認登入結果）。',
+    sup_bw:
+      '<code>bw</code>，以模擬 CLI 與測試資料驗證；2026-11-27 在真實密碼庫上跑過一次端到端測試（拋棄式項目、本機假網頁）。尚未用於真實網站。',
     sup_oth: '只通過錄製資料的契約測試，從未在真實密碼庫上執行。',
     sup_npm: 'npm 上的 <code>latest</code> 只是空的佔位套件，請從原始碼建置。',
     lim_h: '使用前先了解限制',
@@ -120,7 +121,7 @@
     lim_a2: 'Passkey 註冊與計數器回寫。',
     lim_a3: 'WebKit／Safari。',
     lim_a4: 'Shadow DOM、封閉的 iframe 與 canvas 輸入框。遇到時 blindfill 會停止。',
-    lim_a5: '任何後端在真實密碼庫上的端到端測試。',
+    lim_a5: '任何後端登入真實網站（唯一一次真實密碼庫測試用的是本機假網頁）。',
     lim_a6: 'npm 正式發佈與獨立資安審查。',
     lim_bh: '不在威脅模型內',
     lim_b0: 'blindfill 防的是模型與它的日誌，下列情況不在防護範圍：',
@@ -140,7 +141,7 @@
     a4: '它是 alpha 軟體，沒有經過獨立審查。請先用拋棄式或影響不大的帳號試用，並先讀過威脅模型。',
     ins_h: '從原始碼建置',
     ins_p:
-      'blindfill 還沒有發佈到 npm，請不要執行 <code>npx blindfill</code>。需要 Node 20 以上；目前以模擬環境測試的後端需要 Bitwarden CLI（<code>bw</code>）。',
+      'blindfill 還沒有發佈到 npm，請不要執行 <code>npx blindfill</code>。需要 Node 20 以上；Bitwarden 後端需要 Bitwarden CLI（<code>bw</code>）。',
     copy: '複製指令',
     cta_docs: '閱讀 README',
     foot1: 'blindfill 以 MIT 授權開源。目前為 alpha，尚未經過獨立審查。',
