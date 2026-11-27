@@ -337,4 +337,78 @@ describe.skipIf(!enabled)('Firefox / Camoufox (opt-in: BLINDFILL_TEST_FIREFOX=1)
       expect(sites.received.filter((x) => x.path.startsWith('/passkey'))).toHaveLength(0);
     }, 60_000);
   });
+
+  describe('shared persistent context (like Ollie’s camoufox-desktop)', () => {
+    let shared: FirefoxServer;
+    beforeAll(async () => {
+      shared = await startCamoufoxServer(good('/home'));
+    }, 90_000);
+    afterAll(async () => {
+      await shared?.stop();
+    });
+    const paths = (act: WebActuator) => act.listPages().map((p) => p.path);
+
+    it('reuses the context, fills in its own tab next to the user tab, never navigates or closes it', async () => {
+      const act = await WebActuator.fromProvider('firefox-connect', { endpoint: shared.endpoint });
+      try {
+        expect(paths(act)).toEqual(['/home']);
+        const userTab = act.page;
+        const r = await new Engine(backend(), act).fill({
+          item: 'good',
+          url: good('/simple'),
+          submit: true,
+          expect: { urlIncludes: '/home', failSelector: '#error' },
+        });
+        expect(r).toMatchObject({ submitted: true, outcome: 'success', locked: true });
+        expect(sites.received).toHaveLength(1);
+        expect(act.page).not.toBe(userTab);
+        expect(new URL(userTab.url()).pathname).toBe('/home');
+        expect(paths(act)).toHaveLength(2);
+      } finally {
+        await act.close();
+      }
+      const again = await WebActuator.fromProvider('firefox-connect', { endpoint: shared.endpoint });
+      try {
+        expect(paths(again)).toEqual(['/home', '/home']); // both tabs survive our disconnect
+        await again.navigate(good('/honeypot'));
+        const tab = again.page;
+        await again.navigate(good('/honeypot')); // a tab already at the URL is reused
+        expect(again.page).toBe(tab);
+        expect(paths(again)).toEqual(['/home', '/home', '/honeypot']);
+      } finally {
+        await again.close();
+      }
+    }, 60_000);
+
+    it('CLI read-only attach with the launcher’s connection.json: page list and probe see the existing tabs', async () => {
+      const conn = join(dir, 'connection.json');
+      writeFileSync(
+        conn,
+        JSON.stringify({
+          title: 'bf-test',
+          profile: '/x',
+          pid: 1,
+          endpoint: shared.endpoint,
+          registry: '/x',
+        }),
+      );
+      const att = await cli('session', 'attach', '--endpoint-file', conn, '--browser', 'firefox-connect');
+      expect(att.code).toBe(0);
+      expect(JSON.parse(att.stdout).pages.length).toBeGreaterThan(0);
+      const list = await cli('page', 'list');
+      expect(list.code).toBe(0);
+      const before = (JSON.parse(list.stdout) as { pages: { path: string }[] }).pages;
+      expect(before.map((p) => p.path)).toContain('/home');
+      const p = await cli('probe');
+      expect(p.code).toBe(0);
+      expect(JSON.parse(p.stdout).origin).toBe(`http://good.localhost:${sites.port}`);
+      await cli('session', 'stop');
+      const after = await WebActuator.fromProvider('firefox-connect', { endpoint: shared.endpoint });
+      try {
+        expect(after.listPages()).toHaveLength(before.length);
+      } finally {
+        await after.close();
+      }
+    }, 60_000);
+  });
 });

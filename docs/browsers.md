@@ -33,14 +33,40 @@ Camoufox 0.5.9 ships Playwright 1.62.0, and connecting with the bundled client f
 `428 Precondition Required`. `firefox-connect` therefore tries, in order: `opts.playwrightModule`, env
 `BLINDFILL_PLAYWRIGHT_CORE`, the bundled client, then the optional dependency `playwright-core-compat`
 (= playwright-core@1.62.0). Also: the `[::1]` spelling does not work with 1.62.0, so it is retried as `localhost`.
-A Camoufox server starts a browser with **no** contexts, so blindfill creates a new context (the existing profile and tabs are
-not reachable this way). Page JS runs in an isolated world: heuristics rely on DOM evidence, never on window globals.
+Page JS runs in an isolated world: heuristics rely on DOM evidence, never on window globals.
 
-Tested (opt-in, `BLINDFILL_TEST_FIREFOX=1 npx vitest run tests/firefox.test.ts`): Camoufox 158.0.1-beta.41 started by
-`camoufox.server.launch_server` from the local install (`~/.local/share/camoufox-runtime`), throw-away HOME and profile,
-client playwright-core 1.62.0 via `playwright-core-compat`. 6 tests pass: connect, probe, fill+submit once with
-post-fill lock, lookalike origin refused, honeypot and SPA forms, `withPage`, CLI `session attach --endpoint-file`.
-The test skips cleanly when the flag or the Camoufox runtime is missing. Not tested: the owner's own long-running Camoufox.
+**Contexts.** `camoufox.server.launch_server` starts a browser with **no** contexts: blindfill creates a new one
+(empty profile; it ends when blindfill disconnects). A server that publishes a persistent context (Playwright
+`browser.bind`, like Ollie's `~/.local/bin/camoufox-desktop`) already has one: blindfill reuses it (the profile's
+cookies and logins) and treats it as shared:
+
+- `--url` never navigates an existing tab. A tab already at the same origin + path is reused; otherwise blindfill
+  opens a tab with `window.open(url, '_blank', 'noopener')` from an open tab (with `browser.link.open_newwindow=3`
+  that is a tab, not a window; Playwright `newPage` would open a window).
+- Without `--url`, the page is chosen as usual: `--page`, `--url-includes`, else the last http(s) tab.
+- Disconnecting (end of a command, `session stop`) never closes the context or any tab, including the tab
+  blindfill opened. Origin binding, the one-shot submit and the post-fill lock are unchanged.
+- Tabs that Firefox has not loaded (restored lazily, or unloaded) are not visible to Playwright until they load.
+
+Ollie's shared Camoufox on ollie-ubuntu publishes its endpoint in `/run/user/$UID/camoufox-desktop/connection.json`
+(`{"endpoint": "ws://127.0.0.1:PORT/TOKEN", ...}`, mode 0600, rewritten on every start):
+
+```
+blindfill session attach --browser firefox-connect --endpoint-file /run/user/$(id -u)/camoufox-desktop/connection.json
+blindfill page list
+blindfill fill --item ID --url https://… --submit      # opens its own tab next to Ollie's
+BLINDFILL_MARIONETTE=127.0.0.1:2828 blindfill passkey --item ID --url https://… --click '#signin'   # passkeys
+```
+
+Tested (opt-in, `BLINDFILL_TEST_FIREFOX=1 npx vitest run tests/firefox.test.ts`): Camoufox 158.0.1-beta.41 from the
+local install (`~/.local/share/camoufox-runtime`), throw-away HOME and profile, client playwright-core 1.62.0 via
+`playwright-core-compat`, started two ways: `camoufox.server.launch_server`, and a persistent context published with
+`browser.bind` with a user tab already open. Connect, probe, fill+submit once with post-fill lock, lookalike origin
+refused, honeypot and SPA forms, `withPage`, CLI `session attach --endpoint-file`; on the persistent context: the user
+tab is never navigated, blindfill's tab is reused for the same URL, both survive disconnect, and `page list` / `probe`
+through the launcher's `connection.json`. The test skips cleanly when the flag or the Camoufox runtime is missing.
+Read-only check on Ollie's running shared Camoufox (2026-11-27): `session attach` with its `connection.json`,
+`page list` and `session stop` saw its tabs and left them; nothing was filled or logged in.
 
 **Passkeys** (Phase 3): Juggler has no WebAuthn, so blindfill uses the browser's Marionette port next to it.
 Start the browser with `-marionette` and the prefs `security.webauth.webauthn_enable_softtoken=true`,

@@ -53,6 +53,11 @@ export interface ProviderConnection {
   capabilities: ProviderCapabilities;
   /** Marionette host:port for passkeys (firefox-connect only). */
   marionette?: string;
+  /**
+   * Shared (pre-existing) context: get a page at `url` without navigating someone else's tab
+   * (reuse a tab already there, else open a tab). Absent: navigate the selected page.
+   */
+  openPage?(url: string): Promise<Page>;
   /** Release our hold: disconnect when attached, terminate when owned, nothing when borrowed. */
   close(): Promise<void>;
 }

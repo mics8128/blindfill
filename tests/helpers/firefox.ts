@@ -28,6 +28,28 @@ launch_server(headless=True, args=['-marionette'], firefox_user_prefs={
 })
 `;
 
+// Like Ollie's shared Camoufox (~/.local/bin/camoufox-desktop): a persistent context (profile under TMPDIR)
+// published with browser.bind, one tab per window (open_newwindow=3), a user tab already open at argv[1].
+const SERVE_PERSISTENT_PY = `
+import asyncio, os, sys
+from playwright.async_api import async_playwright
+from camoufox.utils import launch_options
+async def main():
+    async with async_playwright() as p:
+        opts = launch_options(headless=True, args=['-marionette'], i_know_what_im_doing=True, firefox_user_prefs={
+          'marionette.port': 0,
+          'browser.link.open_newwindow': 3,
+          'browser.link.open_newwindow.restriction': 0,
+          'browser.tabs.closeWindowWithLastTab': False,
+        })
+        ctx = await p.firefox.launch_persistent_context(user_data_dir=os.path.join(os.environ['TMPDIR'], 'profile'), **opts)
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        await page.goto(sys.argv[1])
+        print((await ctx.browser.bind('bf-test', host='127.0.0.1', port=0))['endpoint'], flush=True)
+        await asyncio.Event().wait()
+asyncio.run(main())
+`;
+
 function pythonCandidates(): string[] {
   return [
     process.env.BLINDFILL_CAMOUFOX_PYTHON,
@@ -39,7 +61,8 @@ export function firefoxTestsEnabled(): boolean {
   return process.env.BLINDFILL_TEST_FIREFOX === '1' && pythonCandidates().length > 0;
 }
 
-export async function startCamoufoxServer(): Promise<FirefoxServer> {
+/** `persistent`: the URL the pre-existing user tab shows (persistent-context server); default: launch_server. */
+export async function startCamoufoxServer(persistent?: string): Promise<FirefoxServer> {
   const py = pythonCandidates()[0];
   const root = mkdtempSync(join(tmpdir(), 'bf-ff-'));
   const home = join(root, 'home');
@@ -51,7 +74,8 @@ export async function startCamoufoxServer(): Promise<FirefoxServer> {
     (existsSync(join(homedir(), '.local/share/camoufox-data'))
       ? join(homedir(), '.local/share/camoufox-data')
       : undefined);
-  const child: ChildProcess = spawn(py, ['-c', SERVE_PY], {
+  const script = persistent ? ['-c', SERVE_PERSISTENT_PY, persistent] : ['-c', SERVE_PY];
+  const child: ChildProcess = spawn(py, script, {
     env: {
       ...process.env,
       HOME: home,

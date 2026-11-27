@@ -4,7 +4,7 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## State
 
-- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 263 passed, 14 skipped
+- Branch `main`. `npm run lint`, `npm run build` and `npx vitest run` pass: 263 passed, 16 skipped
   (opt-in Firefox, live-vault and Android-device tests).
 - Version `0.1.0-alpha.0`. Nothing is tagged or published to npm. Releases only run from a pushed
   `v*.*.*` tag (`.github/workflows/release.yml`; pre-releases go to the `next` dist-tag).
@@ -15,10 +15,12 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 
 ## Verified vs not
 
-- Verified: unit, contract, leak and e2e tests on local fake sites with Chromium. Firefox: 8/8 passed
+- Verified: unit, contract, leak and e2e tests on local fake sites with Chromium. Firefox: 10/10 passed
   against a real Camoufox build started with `-marionette` and the softtoken prefs (opt-in:
-  `BLINDFILL_TEST_FIREFOX=1`), on the owner's Mac and on ollie-ubuntu; the owner's running
-  Camoufox and its contexts were not tested.
+  `BLINDFILL_TEST_FIREFOX=1`), on the owner's Mac; two of them use a persistent context published with
+  `browser.bind` (like `camoufox-desktop`): blindfill reuses it, opens its own tab for `--url` and never
+  navigates or closes existing tabs (docs/browsers.md, "Contexts"). Ollie's running shared Camoufox:
+  read-only `session attach` + `page list` only (2026-11-27); no fill or login there yet.
 - `bw` backend: mock `bw` and fixtures in CI. `tests/live-bw.test.ts` (`BLINDFILL_TEST_LIVE_BW=1`
   plus an unlocked `BW_SESSION`) passed on 2026-11-27 against the live Vault
   (`https://vault.esapp.net`, Bitwarden CLI 2026.11.1) with throw-away items on local fake pages:
@@ -121,7 +123,9 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
    Real-site tests use a throw-away Camoufox profile, accept cookie banners, submit once, and stop
    at CAPTCHA, consent or any MFA the item has no TOTP for. Shared Camoufox on ollie-ubuntu: one window, new pages as tabs
    (`open_newwindow=3`), at most 12 tabs (`camoufox-idle-tabs`), windows fitted once by
-   `camoufox-window-fit`; backups `*.bak-*` next to each file.
+   `camoufox-window-fit`; backups `*.bak-*` next to each file. blindfill attaches to it with
+   `session attach --browser firefox-connect --endpoint-file /run/user/$(id -u)/camoufox-desktop/connection.json`
+   and uses its profile (logged-in sites stay logged in); read-only so far.
 9. Owner decision on host isolation (Mics, 2026-11-27; docs/design/line-gateway-login.md §5): on
    ollie-ubuntu, Ollie and the `bw` agent API key stay the same Unix user (`ollie`, NOPASSWD sudo);
    no separate user for the key, blindfill or the LINE gateway. Ollie can therefore read any vault

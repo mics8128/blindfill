@@ -154,7 +154,7 @@ export class WebActuator {
   private bound: Map<Frame, JSHandle> | null = null;
 
   private constructor(
-    readonly page: Page,
+    public page: Page, // replaced only by navigate() on a shared context (conn.openPage)
     private conn: ProviderConnection | null,
     providerId: string,
     policy?: SessionPolicy,
@@ -214,7 +214,8 @@ export class WebActuator {
   async navigate(url: string): Promise<void> {
     if (!/^https?:\/\//i.test(url)) throw new BlindfillError('POLICY', 'only http(s) URLs can be opened');
     try {
-      await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      if (this.conn?.openPage) this.page = await this.conn.openPage(url);
+      else await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
     } catch (e) {
       throw wrap(e, 'navigation failed');
     }
