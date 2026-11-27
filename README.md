@@ -19,7 +19,7 @@
 blindfill reads a login from your password manager, checks that it belongs to the page's site, types it into the real
 form and tells the agent only the outcome. The password never enters the model's context.
 
-> **Status: alpha (0.1.0).** Not independently reviewed. Read [SECURITY.md](SECURITY.md) before using it on accounts
+> **Status: alpha.** Not independently reviewed. Read [SECURITY.md](SECURITY.md) before using it on accounts
 > that matter.
 
 ## Quick start
