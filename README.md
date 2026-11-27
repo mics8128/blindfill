@@ -48,7 +48,7 @@ Output below is illustrative; field names may differ slightly.
 | Android (14+)                                                                      | companion APK: autofill for passwords, credential provider for passkeys (signed on the host); release-signed, and the host checks the installed APK's signer before every fill; install with `blindfill android install --serial <s>` ([android/README.md](android/README.md)); tested with a fake app on one phone (Xperia 5 II, Android 17) and an emulator (Android 16) |
 | Passkeys                                                                           | web sign-in, Chromium only (tested against a fake relying party); no counter write-back, no registration                                                                                                                                                                                                                                                                   |
 
-Browser providers and their contract: [docs/browsers.md](docs/browsers.md).
+Browser providers and their contract: [docs/browsers.md](docs/browsers.md). Every test run, including failures: [docs/TESTED.md](docs/TESTED.md).
 
 ## What works (verified by the test suite)
 
@@ -72,7 +72,7 @@ Browser providers and their contract: [docs/browsers.md](docs/browsers.md).
 ## Not done
 
 - Android: saving new logins, WebView logins. Passkey counter write-back and registration. WebKit.
-- `bw` end to end against a live vault. The other six backends are blind-written and unverified.
+- `bw` on real websites (the live-vault run used local fake pages). The other six backends are blind-written and unverified.
 - Not published to npm (`latest` is an empty placeholder).
 - Moving from olliepm: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).
 

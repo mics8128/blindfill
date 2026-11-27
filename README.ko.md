@@ -45,7 +45,7 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 | Android(14 이상)                                                                 | 컴패니언 APK: 비밀번호는 자동 완성 서비스, passkey는 자격 증명 제공자(서명은 호스트에서). 정식 서명되며 호스트가 매번 채우기 전에 기기의 APK 서명을 확인. `blindfill android install --serial <s>`로 설치([android/README.md](android/README.md)). 가짜 앱으로 기기 1대(Xperia 5 II, Android 17)와 에뮬레이터(Android 16)에서 테스트 |
 | Passkey                                                                          | 웹 로그인만, Chromium 전용(가짜 relying party로 테스트). 카운터 기록과 등록은 미지원                                                                                                                                                                                                                                                 |
 
-브라우저 제공자와 그 계약: [docs/browsers.md](docs/browsers.md).
+브라우저 제공자와 그 계약: [docs/browsers.md](docs/browsers.md). 실패를 포함한 모든 테스트 기록: [docs/TESTED.md](docs/TESTED.md).
 
 ## 동작하는 것 (테스트 스위트로 검증됨)
 
@@ -61,7 +61,7 @@ AI 에이전트가 **비밀번호를 전혀 보지 않고도** 웹사이트에 �
 ## 미완료
 
 - Android: 새 로그인 저장, WebView 로그인. Passkey 카운터 기록과 등록. WebKit.
-- `bw`의 실제 보관함 대상 엔드투엔드. 나머지 여섯 백엔드는 맹목적으로 작성되어 미검증.
+- `bw`로 실제 웹사이트 로그인(실제 Vault 테스트는 로컬 가짜 페이지 사용). 나머지 여섯 백엔드는 맹목적으로 작성되어 미검증.
 - npm에 미게시(`latest`는 빈 플레이스홀더).
 - olliepm에서 이전: [docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md).
 

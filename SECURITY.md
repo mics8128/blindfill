@@ -64,7 +64,9 @@ blindfill defends against **the model and its logs**:
    biometric: the vault unlock and the item binding stand in for it. While a web passkey is armed
    (up to 15 s), any frame of that page that WebAuthn allows for the rpId may trigger the signature.
 8. **Backends marked "blind-written/unverified"** have never touched a real vault. They pass
-   contract tests against recorded fixtures only. `bw` is tested against a mock CLI only.
+   contract tests against recorded fixtures only. `bw` runs in CI against a mock CLI; it passed one
+   live run against a Vaultwarden instance on 2026-11-27, with throw-away items on local fake pages
+   ([docs/TESTED.md](docs/TESTED.md)).
 9. **"A person at a terminal" means a TTY.** An agent that runs blindfill inside a
    pseudo-terminal passes that check. Do not give an agent a PTY if item edits matter.
 10. **Generated passwords go where the agent registers.** `item generate` binds a new item to

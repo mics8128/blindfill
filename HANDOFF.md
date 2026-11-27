@@ -18,10 +18,12 @@ Read this first, then SECURITY.md, README.md and docs/ARCHITECTURE.md.
 - Verified: unit, contract, leak and e2e tests on local fake sites with Chromium. Firefox: 6/6 passed
   once against a real Camoufox build (opt-in: `BLINDFILL_TEST_FIREFOX=1`); the owner's running
   Camoufox and its contexts were not tested.
-- `bw` backend: tested with a mock `bw` and fixtures only. Not run end to end against the live
-  Vault (`https://vault.esapp.net`); the opt-in `tests/live-bw.test.ts` (`BLINDFILL_TEST_LIVE_BW=1`
-  plus an unlocked `BW_SESSION`) does that with throw-away items. Passkey data shape was checked by
-  hand with `bw` (create and read back of a fake item, since deleted); real-client-created passkeys unverified.
+- `bw` backend: mock `bw` and fixtures in CI. `tests/live-bw.test.ts` (`BLINDFILL_TEST_LIVE_BW=1`
+  plus an unlocked `BW_SESSION`) passed on 2026-11-27 against the live Vault
+  (`https://vault.esapp.net`, Bitwarden CLI 2026.11.1) with throw-away items on local fake pages:
+  password + TOTP fill, `item generate` + register; items removed afterwards. Not yet used on real
+  websites. Passkey data shape was checked by hand with `bw` (create and read back of a fake item,
+  since deleted); real-client-created passkeys unverified.
 - Passkeys: web sign-in through a Chromium virtual authenticator, tested against a fake relying
   party that verifies the signature. No counter write-back, no registration, no Firefox.
 - `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`: blind-written, unverified.
@@ -34,7 +36,9 @@ install --serial <s> [--set-services]`. CI job `android` builds and checks the s
   Xperia 5 II (Android 17) on ollie-ubuntu and on a headless arm64 emulator on the owner's Mac
   (Android 16, API 36): `BLINDFILL_TEST_ANDROID_SERIAL=<serial>
 BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.ts` after
-  `cd android && ./gradlew assembleDebug` (android/README.md); not with real apps.
+  `cd android && ./gradlew assembleDebug` (android/README.md). Real apps on the same Xperia with a
+  live `bw` item and the companion debug build (2026-11-27): Threads sign-in succeeded; Instagram
+  partial (suggestion filled and login tapped, result not checked). Rows in `docs/TESTED.md`.
 - Not supported: passkey registration, WebKit, Firefox on an already-running browser,
   the owner's running Ego Lite (no CDP). Ego Lite works only as a separately launched,
   empty-profile instance via `chromium-launch --executable` / `BLINDFILL_CHROMIUM`.
@@ -58,10 +62,10 @@ BLINDFILL_COMPANION_APK=<release apk> npx vitest run tests/android-device.test.t
 
 ## Next steps
 
-1. End-to-end `bw` run against the real Vault (`tests/live-bw.test.ts`, needs an unlocked Vault on
-   ollie-ubuntu), including `item create|generate`.
-2. Ollie's real-use test round, recorded in `docs/TESTED.md`; then align README x5, SECURITY.md,
-   this file and the website with it.
+1. Done 2026-11-27: end-to-end `bw` run against the real Vault and Ollie's real-use round, recorded
+   in `docs/TESTED.md`; README x5, SECURITY.md, this file and the website aligned with it.
+2. olliepm item migration: waits for Mics's approval (Inbox thread
+   msg_01M8EFGM2J12BQ2WQTW84B1EXC). Do not touch real items before that.
 3. Owner decisions (2026-11-27): migrate the ~15 olliepm items only after Ollie's real-Vault test
    round (ask Mics and Ollie before touching real data); `agent-ollie` collection is **writable** (the
    agent may store accounts it registers; set in the Vault, not in this repo); default web match stays

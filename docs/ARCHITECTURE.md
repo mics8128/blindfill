@@ -3,7 +3,7 @@
 > Let AI agents sign in to anything without ever seeing the password.
 
 Status: alpha. M0 and M1 are implemented (see section 9 for what is built, stubbed and
-unverified); passkeys, Android and several olliepm features are not built yet. Parts marked
+unverified); passkeys (web) and the Android companion are built (M2); several olliepm features are not built yet. Parts marked
 **[from olliepm]** were ported or are being ported from the Python prototype
 `ollie-password-management`. Code samples below are language-neutral sketches; the real
 interfaces are TypeScript (`src/backends/spi.ts`, `src/actuators/web/providers/types.ts`).
@@ -152,7 +152,9 @@ interface Actuator {
   change a person should start, so there is no MCP tool). Build and signing: `android/README.md`.
   Tested with a fake relying-party app (`tests/android-device.test.ts`, which switches the
   autofill and credential provider for the run and restores them exactly) using the release APK
-  on a Xperia 5 II (Android 17) and an arm64 emulator (Android 16, API 36, Google APIs).
+  on a Xperia 5 II (Android 17) and an arm64 emulator (Android 16, API 36, Google APIs). Real
+  apps on that Xperia with a live `bw` item (2026-11-27): Threads sign-in succeeded, Instagram
+  partial (login result not checked); see `docs/TESTED.md`.
 - Later: desktop (accessibility APIs), iOS (probably impossible without an Autofill extension).
 
 ### 3.3 Target model
@@ -307,15 +309,16 @@ Goal: install in one command, no toolchain explanation.
 
 - **M0 done** repo, invariants, SECURITY.md, backend/actuator SPI, contract tests, CI,
   tag-triggered release workflow (npm Trusted Publishing).
-- **M1 done (alpha)**: `bw` backend (mock CLI and fixtures; JSON shape checked by hand on a live
-  Vaultwarden; no end-to-end run on a live vault yet), web actuator, CLI + MCP, leak test.
+- **M1 done (alpha)**: `bw` backend (mock CLI and fixtures in CI; one live-vault run passed on
+  2026-11-27 with throw-away items on local fake pages, see `docs/TESTED.md`), web actuator, CLI + MCP, leak test.
   Blind-written and unverified: `op`, `rbw`, `pass`, `gopass`, `keepassxc`, `secret-service`.
 - **M1.5 in progress** olliepm parity for web: browser providers (done, Firefox/Camoufox passed
   against a real Camoufox build, owner's running instance untested), field rules and profiles,
   discover/diagnose/verify, registration with generated passwords, human handoff.
   Tracked in `docs/MIGRATING-FROM-OLLIEPM.md` once written.
 - **M2** passkeys (`sign`, section 3.8) for web; Android companion APK (autofill + passkey
-  provider) with signer pinning, tested on one device with a fake app.
+  provider) with signer pinning, tested on one device with a fake app and, on 2026-11-27, with
+  Threads (sign-in succeeded) and Instagram (partial).
 - **M3** community verification of the blind-written backends, public release and backend matrix.
 - **M4** community rule packs; desktop actuator exploration; Android saving new logins and WebView logins.
 - Optional: an attach provider for the already-running Ego Lite, only after an outbound-traffic

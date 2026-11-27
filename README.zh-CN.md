@@ -45,7 +45,7 @@
 | Android（14 以上）                                                                | 辅助 APK：密码走自动填充服务，passkey 走凭据提供程序（在主机端签名）；正式签名，每次填充前主机都会核对手机上 APK 的签名；用 `blindfill android install --serial <s>` 安装（[android/README.md](android/README.md)）；已用假 app 在一部手机（Xperia 5 II，Android 17）和模拟器（Android 16）测试 |
 | Passkey                                                                           | 网页登录，仅 Chromium（以假 relying party 测试）；不回写计数器、不支持注册                                                                                                                                                                                                                      |
 
-浏览器提供者及其契约：[docs/browsers.md](docs/browsers.md)。
+浏览器提供者及其契约：[docs/browsers.md](docs/browsers.md)。每次测试记录（含失败）：[docs/TESTED.md](docs/TESTED.md)。
 
 ## 已可运行（由测试套件验证）
 
@@ -61,7 +61,7 @@
 ## 尚未完成
 
 - Android：保存新登录、WebView 登录。Passkey 计数器回写与注册。WebKit。
-- `bw` 对真实密码库的端到端测试。其余六个后端为盲写且未验证。
+- `bw` 登录真实网站（真实 Vault 测试使用的是本机假网页）。其余六个后端为盲写且未验证。
 - 尚未发布到 npm（`latest` 为空占位版本）。
 - 从 olliepm 迁移：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。
 

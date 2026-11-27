@@ -45,7 +45,7 @@ AI エージェントを、**パスワードを一切見せることなく**Web 
 | Android（14 以降）                                                                          | コンパニオン APK：パスワードは自動入力サービス、passkey は認証情報プロバイダー（署名はホスト側）。正式署名済みで、ホストは入力のたびに端末上の APK の署名を確認。`blindfill android install --serial <s>` でインストール（[android/README.md](android/README.md)）。偽アプリを使い 1 台（Xperia 5 II、Android 17）とエミュレーター（Android 16）でテスト済み |
 | Passkey                                                                                     | Web ログインのみ、Chromium のみ（偽の relying party でテスト済み）。カウンターの書き戻しと登録は非対応                                                                                                                                                                                                                                                       |
 
-ブラウザプロバイダーとその契約：[docs/browsers.md](docs/browsers.md)。
+ブラウザプロバイダーとその契約：[docs/browsers.md](docs/browsers.md)。失敗も含む全テスト記録：[docs/TESTED.md](docs/TESTED.md)。
 
 ## 動作するもの（テストスイートで検証済み）
 
@@ -61,7 +61,7 @@ AI エージェントを、**パスワードを一切見せることなく**Web 
 ## 未対応
 
 - Android：新しいログインの保存、WebView ログイン。Passkey のカウンター書き戻しと登録。WebKit。
-- `bw` の実際の保管庫に対するエンドツーエンド。他の 6 バックエンドは盲検で書かれており未検証。
+- `bw` を使った実在サイトへのログイン（実 Vault のテストはローカルの偽ページ）。他の 6 バックエンドは盲検で書かれており未検証。
 - npm には未公開（`latest` は空のプレースホルダー）。
 - olliepm からの移行：[docs/MIGRATING-FROM-OLLIEPM.md](docs/MIGRATING-FROM-OLLIEPM.md)。
 
