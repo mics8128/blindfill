@@ -332,6 +332,26 @@ export function buildServer(): McpServer {
       ),
   );
   server.registerTool(
+    'android_passkey_register',
+    {
+      description: `Arm the blindfill companion APK on an adb-attached phone for one passkey creation (bw only). Add only: the item must bind the app (androidapp:// + blindfill.signers) and https://<rp_id>, have opted in (blindfill.registration=allow) and hold no passkey. The host makes the key and stores it in the vault; the phone gets only the attestation. Returns rp_id and credential_id. ${CONTRACT}`,
+      inputSchema: {
+        ...itemSel,
+        serial: z.string().describe('adb device serial'),
+        rp_id: z.string().describe('relying party id (domain) the app registers for'),
+        timeout_s: z.number().int().min(5).max(300).optional(),
+      },
+    },
+    ({ timeout_s, rp_id, ...a }) =>
+      run(async () =>
+        (await getEngine()).androidPasskeyRegister({
+          ...a,
+          rpId: rp_id,
+          timeoutMs: timeout_s ? timeout_s * 1000 : undefined,
+        }),
+      ),
+  );
+  server.registerTool(
     'session_stop',
     {
       description: `Stop the browser session and clear the post-fill lock and one-shot counters. ${CONTRACT}`,

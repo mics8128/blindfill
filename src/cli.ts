@@ -44,6 +44,9 @@ Commands:
                               bind the page, have blindfill.registration=allow and no passkey yet); key never printed
   android fill|passkey        arm the companion APK on --serial <adb serial> for one fill of --item (app must be bound
                               by androidapp:// + blindfill.signers); waits --timeout seconds (default 60)
+  android passkey-register --rp-id <domain>
+                              arm the companion for one passkey creation by the bound app for --rp-id (the item
+                              must also bind https://<domain>, have blindfill.registration=allow and no passkey)
   android install             install the packaged companion APK on --serial (adb install -r); --set-services also
                               makes it the autofill and credential provider (prints the previous values to restore)
   totp [--fill]               print the current TOTP code, or fill it into the page
@@ -115,6 +118,7 @@ const { values, positionals } = parseArgs({
     click: { type: 'string' },
     selector: { type: 'string' },
     serial: { type: 'string' },
+    'rp-id': { type: 'string' },
     timeout: { type: 'string' },
     'expect-timeout': { type: 'string' },
     submit: { type: 'boolean' },
@@ -402,10 +406,10 @@ async function main(): Promise<number> {
       return 0;
     }
     case 'android': {
-      if (sub !== 'fill' && sub !== 'passkey' && sub !== 'install')
+      if (sub !== 'fill' && sub !== 'passkey' && sub !== 'passkey-register' && sub !== 'install')
         throw new BlindfillError(
           'POLICY',
-          'usage: blindfill android fill|passkey --item <id> --serial <adb serial> | android install --serial <adb serial> [--set-services]',
+          'usage: blindfill android fill|passkey --item <id> --serial <adb serial> | android passkey-register --item <id> --rp-id <domain> --serial <adb serial> | android install --serial <adb serial> [--set-services]',
         );
       const serial = (values.serial as string | undefined) ?? process.env.ANDROID_SERIAL;
       if (!serial)
@@ -430,15 +434,16 @@ async function main(): Promise<number> {
         return 0;
       }
       const e = await engineFor(false);
-      out(
-        await e.androidOffer({
-          item: values.item as string | undefined,
-          query: values.query as string | undefined,
-          serial,
-          kind: sub === 'passkey' ? 'passkey' : 'password',
-          timeoutMs: values.timeout ? Number(values.timeout) * 1000 : undefined,
-        }),
-      );
+      const sel = {
+        item: values.item as string | undefined,
+        query: values.query as string | undefined,
+        serial,
+        timeoutMs: values.timeout ? Number(values.timeout) * 1000 : undefined,
+      };
+      if (sub === 'passkey-register') {
+        if (!values['rp-id']) throw new BlindfillError('POLICY', 'usage: pass --rp-id <domain>');
+        out(await e.androidPasskeyRegister({ ...sel, rpId: values['rp-id'] as string }));
+      } else out(await e.androidOffer({ ...sel, kind: sub === 'passkey' ? 'passkey' : 'password' }));
       return 0;
     }
     case 'passkey': {

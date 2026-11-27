@@ -11,10 +11,14 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.credentials.CredentialManager;
 import androidx.credentials.CredentialManagerCallback;
+import androidx.credentials.CreateCredentialResponse;
+import androidx.credentials.CreatePublicKeyCredentialRequest;
+import androidx.credentials.CreatePublicKeyCredentialResponse;
 import androidx.credentials.GetCredentialRequest;
 import androidx.credentials.GetCredentialResponse;
 import androidx.credentials.GetPublicKeyCredentialOption;
 import androidx.credentials.PublicKeyCredential;
+import androidx.credentials.exceptions.CreateCredentialException;
 import androidx.credentials.exceptions.GetCredentialException;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -23,6 +27,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -55,6 +60,8 @@ public class MainActivity extends Activity {
         check.setText("check");
         Button passkey = new Button(this);
         passkey.setText("passkey");
+        Button register = new Button(this);
+        register.setText("register");
         status = new TextView(this);
         status.setContentDescription("status");
         status.setText("ready");
@@ -62,12 +69,14 @@ public class MainActivity extends Activity {
         l.addView(pw);
         l.addView(check);
         l.addView(passkey);
+        l.addView(register);
         l.addView(status);
         setContentView(l);
 
         check.setOnClickListener(v -> status.setText(
                 "user=" + user.getText() + " pwsha256=" + sha256hex(pw.getText().toString())));
         passkey.setOnClickListener(v -> getPasskey());
+        register.setOnClickListener(v -> createPasskey());
     }
 
     private void getPasskey() {
@@ -98,6 +107,48 @@ public class MainActivity extends Activity {
                     });
         } catch (Exception e) {
             status.setText("passkey: error " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** Lists Ed25519 first, as webauthn.io does: the provider must pick ES256. */
+    private void createPasskey() {
+        try {
+            byte[] c = new byte[32];
+            new SecureRandom().nextBytes(c);
+            String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(c);
+            String uid = Base64.getUrlEncoder().withoutPadding().encodeToString("device-user".getBytes(StandardCharsets.UTF_8));
+            String json = new JSONObject()
+                    .put("challenge", challenge)
+                    .put("rp", new JSONObject().put("id", RP_ID).put("name", "blindfill test RP"))
+                    .put("user", new JSONObject().put("id", uid).put("name", "device-user").put("displayName", "device-user"))
+                    .put("pubKeyCredParams", new JSONArray()
+                            .put(new JSONObject().put("type", "public-key").put("alg", -8))
+                            .put(new JSONObject().put("type", "public-key").put("alg", -7)))
+                    .put("authenticatorSelection", new JSONObject().put("residentKey", "required").put("userVerification", "preferred"))
+                    .put("attestation", "none")
+                    .put("timeout", 60000)
+                    .toString();
+            write("reg-challenge.txt", challenge);
+            new File(getFilesDir(), "registration.json").delete();
+            status.setText("register: waiting");
+            CredentialManager.create(this).createCredentialAsync(this, new CreatePublicKeyCredentialRequest(json),
+                    new CancellationSignal(), getMainExecutor(),
+                    new CredentialManagerCallback<CreateCredentialResponse, CreateCredentialException>() {
+                        @Override
+                        public void onResult(CreateCredentialResponse r) {
+                            if (r instanceof CreatePublicKeyCredentialResponse) {
+                                write("registration.json", ((CreatePublicKeyCredentialResponse) r).getRegistrationResponseJson());
+                                status.setText("register: ok");
+                            } else status.setText("register: wrong type");
+                        }
+
+                        @Override
+                        public void onError(CreateCredentialException e) {
+                            status.setText("register: error " + e.getType());
+                        }
+                    });
+        } catch (Exception e) {
+            status.setText("register: error " + e.getClass().getSimpleName());
         }
     }
 

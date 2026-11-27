@@ -271,6 +271,7 @@ describe('leak test: canary password never appears anywhere', () => {
     const names = tools.tools.map((t) => t.name).sort();
     expect(names).toEqual([
       'android_offer',
+      'android_passkey_register',
       'candidates',
       'diagnose_fields',
       'discover_fields',

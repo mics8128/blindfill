@@ -132,6 +132,19 @@ beforeAll(() => {
           { credentialId: randomUUID(), rpId: RP, keyValue: KEY, userHandle: 'dXNlcg', counter: '3' },
         ],
       }),
+      ...['reg', 'reg2', 'reg-noopt', 'reg-has'].map((id) => ({
+        ...item(id, {
+          uris: [
+            { uri: `androidapp://${PKG}`, match: null },
+            { uri: `https://${RP}`, match: null },
+          ],
+          ...(id === 'reg-has' ? {} : { fido2Credentials: [] }),
+        }),
+        fields: [
+          { name: 'blindfill.signers', value: SIGNER, type: 0 },
+          ...(id === 'reg-noopt' ? [] : [{ name: 'blindfill.registration', value: 'allow', type: 0 }]),
+        ],
+      })),
     ]),
   );
   process.env.BLINDFILL_MOCK_BW_ITEMS = f;
@@ -293,5 +306,98 @@ describe('android companion, host side', () => {
     expect(apkSigners(fakeApk([V2, CERT], [V3, Buffer.from('x')]))).toHaveLength(2);
     expect(() => apkSigners(Buffer.from('PK\x03\x04 not signed'))).toThrow(/not a signed APK/);
     expect(() => apkSigners(Buffer.alloc(30))).toThrow(/not a signed APK/);
+  });
+
+  const create = {
+    ...base,
+    kind: 'passkey-create',
+    rpId: RP,
+    userId: 'dXNlcg',
+    algs: [-8, -7],
+    clientDataHash: createHash('sha256').update('{"type":"webauthn.create"}').digest().toString('base64url'),
+  };
+  const vaultItem = (id: string) =>
+    (
+      JSON.parse(readFileSync(process.env.BLINDFILL_MOCK_BW_ITEMS!, 'utf8')) as {
+        id: string;
+        login: { fido2Credentials?: { keyValue: string; rpId: string; counter: string }[] };
+      }[]
+    ).find((x) => x.id === id)!;
+
+  it('passkey-create: the host makes and stores the key; the phone gets an attestation; then sign in', async () => {
+    const run = engine().androidPasskeyRegister({ item: 'reg', serial: 'S1', rpId: RP }, android());
+    const reply = await phone(create);
+    expect(reply.ok).toBe(true);
+    const r = await run;
+    expect(r).toMatchObject({ status: 'registered', rp_id: RP, target: `android:${PKG}#sha256=${SIGNER}` });
+    const broadcast = readFileSync(log, 'utf8');
+    expect(broadcast).toContain('passkey-create');
+    const stored = vaultItem('reg').login.fido2Credentials![0];
+    expect(stored).toMatchObject({ rpId: RP, counter: '0' });
+    const authData = Buffer.from(String(reply.authenticatorData), 'base64url');
+    const id = Buffer.from(String(reply.credentialId), 'base64url');
+    // rpIdHash | flags UP UV BE BS AT | counter 0 | AAGUID | id length | id | COSE key
+    expect(authData.subarray(0, 32)).toEqual(createHash('sha256').update(RP).digest());
+    expect([authData[32], authData.readUInt32BE(33), authData.readUInt16BE(53)]).toEqual([
+      0x5d,
+      0,
+      id.length,
+    ]);
+    expect(authData.subarray(55, 55 + id.length)).toEqual(id);
+    const att = Buffer.from(String(reply.attestationObject), 'base64url');
+    expect(att.includes(Buffer.from('none'))).toBe(true);
+    expect(att.subarray(att.length - authData.length)).toEqual(authData);
+    for (const s of [
+      JSON.stringify(reply),
+      JSON.stringify(r),
+      broadcast,
+      readFileSync(process.env.BLINDFILL_AUDIT_FILE!, 'utf8'),
+    ])
+      expect(s).not.toContain(stored.keyValue.slice(10, 40));
+
+    // the new passkey signs in through the same companion; the returned public key verifies it
+    log = join(dir, `adb-${randomBytes(4).toString('hex')}.log`);
+    process.env.FAKE_ADB_LOG = log;
+    const cdh = Buffer.alloc(32, 7);
+    const signIn = engine().androidOffer({ item: 'reg', serial: 'S1', kind: 'passkey' }, android());
+    const a = await phone({ ...base, kind: 'passkey', rpId: RP, clientDataHash: cdh.toString('base64url') });
+    expect(await signIn).toMatchObject({ status: 'signed', sign_count: 0 });
+    const ad = Buffer.from(String(a.authenticatorData), 'base64url');
+    const pub = createPublicKey({
+      key: Buffer.from(String(reply.publicKey), 'base64url'),
+      format: 'der',
+      type: 'spki',
+    });
+    expect(
+      verify('sha256', Buffer.concat([ad, cdh]), pub, Buffer.from(String(a.signature), 'base64url')),
+    ).toBe(true);
+    expect(a.credentialId).toBe(reply.credentialId);
+  });
+
+  it.each([
+    ['other signer', { signer: 'AB'.repeat(32) }],
+    ['other package', { pkg: 'com.evil.app' }],
+    ['web view', { web: true }],
+    ['another rpId', { rpId: 'evil.com' }],
+    ['no ES256', { algs: [-8] }],
+    ['a sign-in request', { kind: 'passkey' }],
+  ])('passkey-create refuses %s and stores nothing', async (_n, patch) => {
+    const run = engine().androidPasskeyRegister({ item: 'reg2', serial: 'S1', rpId: RP }, android());
+    const guarded = run.catch((e) => e);
+    expect(await phone({ ...create, ...patch })).toEqual({ ok: false });
+    expect(await guarded).toMatchObject({ code: 'ORIGIN_MISMATCH' });
+    expect(vaultItem('reg2').login.fido2Credentials).toEqual([]);
+  });
+
+  it.each([
+    ['no opt-in', 'reg-noopt', RP, 'POLICY'],
+    ['an existing passkey', 'reg-has', RP, 'POLICY'],
+    ['an rpId the item does not bind', 'reg2', 'evil.com', 'ORIGIN_MISMATCH'],
+    ['an item without a web URI', 'app', RP, 'ORIGIN_MISMATCH'],
+  ])('passkey-create refuses %s before arming', async (_n, id, rpId, code) => {
+    await expect(
+      engine().androidPasskeyRegister({ item: id, serial: 'S1', rpId }, android()),
+    ).rejects.toMatchObject({ code });
+    expect(existsSync(log)).toBe(false);
   });
 });

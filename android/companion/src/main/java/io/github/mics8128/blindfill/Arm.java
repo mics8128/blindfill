@@ -22,7 +22,7 @@ import org.json.JSONObject;
 final class Arm {
     final String token;
     final int port;
-    final String mode; // "password" | "passkey"
+    final String mode; // "password" | "passkey" | "passkey-create"
     final String item;
     final String user;
     final String rpId;

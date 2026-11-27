@@ -1,10 +1,12 @@
-import { createHash, createPrivateKey, sign } from 'node:crypto';
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { AndroidActuator } from './actuators/android/index.js';
 import { bwCredentialId, credentialIdBase64, type BwFido2Credential } from './backends/bwmap.js';
 import type { Backend, ItemPatch } from './backends/spi.js';
 import { audit } from './core/audit.js';
 import { androidPackages, checkAndroidBinding, checkWebBinding, SubmitGuard } from './core/policy.js';
 import { globalScrubber } from './core/scrubber.js';
+import { SecretHandle } from './core/secret.js';
+import { noneAttestation } from './core/webauthn.js';
 import { BlindfillError, formatTarget, type ItemMeta, type ItemRef, type Target } from './core/types.js';
 import type {
   Detected,
@@ -1566,6 +1568,126 @@ export class Engine {
         answered && req.kind === 'password'
           ? 'the phone shows a "blindfill: <item>" autofill suggestion; selecting it fills the fields'
           : undefined,
+    };
+  }
+
+  /**
+   * Android passkey registration (companion, design 5.5), add only like passkeyRegister: the item must
+   * bind the app (androidapp:// + blindfill.signers) and the rpId (a web URI on it, standing in for the
+   * Digital Asset Links check a provider owes non-browser callers), have opted in and hold no passkey.
+   * The host makes the key and stores it before the phone gets the attestation; the key stays here.
+   */
+  async androidPasskeyRegister(
+    req: ItemSelector & { serial: string; rpId: string; timeoutMs?: number },
+    android = new AndroidActuator(),
+  ): Promise<Record<string, unknown>> {
+    const ref = await this.resolveItem(req);
+    const meta = await this.backend.meta(ref);
+    const rpId = req.rpId.trim().toLowerCase();
+    let target = '';
+    const refuse = (reason: string, code: 'ORIGIN_MISMATCH' | 'POLICY' = 'ORIGIN_MISMATCH'): never => {
+      audit({
+        event: 'refused',
+        backend: this.backend.id,
+        item: ref.id,
+        target: target || 'android',
+        reason,
+      });
+      throw new BlindfillError(code, `refused: ${reason}`);
+    };
+    if (androidPackages(meta).length === 0 || meta.control.signers.length === 0)
+      refuse('item binds no Android app: it needs an androidapp://<package> URI and a blindfill.signers pin');
+    if (!/^[a-z0-9.-]+$/.test(rpId) || !checkWebBinding(`https://${rpId}/`, meta).ok)
+      refuse(`the item has no web URI for rpId ${rpId}`);
+    if (!meta.control.registration)
+      refuse(
+        'this item has not opted in to registration (custom field blindfill.registration=allow)',
+        'POLICY',
+      );
+    if (meta.secretFields.includes('passkey'))
+      refuse('the item already holds a passkey; replacing one needs a person at a terminal', 'POLICY');
+    if (!this.backend.addPasskey)
+      throw new BlindfillError('UNSUPPORTED', `${this.backend.id} cannot store passkeys`);
+    const addPasskey = this.backend.addPasskey.bind(this.backend);
+    let credentialId: Buffer | undefined;
+    const r = await android.serve(
+      {
+        serial: req.serial,
+        mode: 'passkey-create',
+        item: meta.name,
+        user: meta.username,
+        rpId,
+        timeoutMs: req.timeoutMs,
+      },
+      async (p) => {
+        target = formatTarget({ kind: 'android', pkg: p.pkg, signer: p.signer ?? undefined });
+        if (p.kind !== 'passkey-create') refuse('the phone answered a different request kind');
+        if (p.web) refuse('a web page or WebView asked; use the web actuator for web logins');
+        const bind = checkAndroidBinding(p.pkg, p.signer ?? undefined, meta);
+        if (!bind.ok) refuse(bind.reason);
+        if (p.rpId !== rpId) refuse('the requested rpId is not the armed rpId');
+        const cdh = Buffer.from(String(p.clientDataHash ?? ''), 'base64url');
+        if (cdh.length !== 32) refuse('malformed client data hash');
+        const userId = String(p.userId ?? '');
+        if (!/^[\w-]{1,86}$/.test(userId)) refuse('malformed user id');
+        if (!(p.algs ?? []).includes(-7)) refuse('the app does not accept ES256 (P-256) passkeys');
+        const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+        const der = privateKey.export({ type: 'pkcs8', format: 'der' });
+        globalScrubber.register(der.toString('base64url'));
+        globalScrubber.register(der.toString('base64'));
+        const key = new SecretHandle(der, 'passkey');
+        der.fill(0);
+        const id = randomBytes(16);
+        try {
+          // stored before the phone answers: a failed write leaves no passkey at the relying party
+          await addPasskey(ref, {
+            credentialId: id.toString('base64url'),
+            rpId,
+            userHandle: userId,
+            userName: meta.username,
+            counter: 0,
+            backupEligible: true,
+            key,
+          });
+        } catch (e) {
+          key.destroy();
+          audit({
+            event: 'passkey',
+            backend: this.backend.id,
+            item: ref.id,
+            target,
+            outcome: 'vault_write_failed',
+            reason: e instanceof BlindfillError ? e.code : 'BACKEND',
+          });
+          throw e;
+        }
+        credentialId = id;
+        audit({ event: 'passkey', backend: this.backend.id, item: ref.id, target, outcome: 'registered' });
+        const att = noneAttestation(rpId, id, publicKey, true);
+        return {
+          credentialId: id.toString('base64url'),
+          authenticatorData: att.authData.toString('base64url'),
+          attestationObject: att.attestationObject.toString('base64url'),
+          publicKey: publicKey.export({ type: 'spki', format: 'der' }).toString('base64url'),
+          publicKeyAlgorithm: -7,
+        };
+      },
+    );
+    if (r.status === 'refused')
+      audit({
+        event: 'refused',
+        backend: this.backend.id,
+        item: ref.id,
+        target: target || 'android',
+        reason: r.reason,
+      });
+    return {
+      status: r.status === 'answered' ? 'registered' : r.status,
+      ...(r.status === 'refused' ? { reason: r.reason } : {}),
+      target: target || null,
+      item: { id: ref.id, name: meta.name },
+      rp_id: rpId,
+      ...(credentialId ? { credential_id: bwCredentialId(credentialId) } : {}),
     };
   }
 

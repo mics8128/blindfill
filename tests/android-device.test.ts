@@ -111,6 +111,23 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
           },
           fields: [{ name: 'blindfill.signers', value: signer, type: 0 }],
         },
+        {
+          id: 'dev-reg',
+          type: 1,
+          name: 'Reg RP',
+          login: {
+            username: USER,
+            uris: [
+              { uri: `androidapp://${RP_PKG}`, match: null },
+              { uri: `https://${RP_ID}`, match: null },
+            ],
+            fido2Credentials: [],
+          },
+          fields: [
+            { name: 'blindfill.signers', value: signer, type: 0 },
+            { name: 'blindfill.registration', value: 'allow', type: 0 },
+          ],
+        },
       ]),
     );
     process.env.BLINDFILL_MOCK_BW_ITEMS = items;
@@ -190,6 +207,56 @@ describe.skipIf(!SERIAL)('android companion on a real device (opt-in)', () => {
     const pub = createPublicKey(publicKey.export({ type: 'spki', format: 'pem' }));
     expect(verify('sha256', signed, pub, Buffer.from(resp.response.signature, 'base64url'))).toBe(true);
   }, 120_000);
+
+  it('passkey-create: the app registers a passkey made on the host, then signs in with it', async () => {
+    adb('shell', 'settings', 'put', 'secure', 'credential_service', `${COMPANION}/.PasskeyProvider`);
+    adb('shell', 'settings', 'put', 'secure', 'credential_service_primary', `${COMPANION}/.PasskeyProvider`);
+    startRp();
+    const run = engine().androidPasskeyRegister(
+      { item: 'dev-reg', serial: SERIAL!, rpId: RP_ID, timeoutMs: 45_000 },
+      new AndroidActuator(ADB),
+    );
+    await sleep(1500);
+    await tap(has('text="register"'), 'register button');
+    // the create sheet names the provider ("blindfill"), not the entry; one provider entry: Continue
+    await tap((n) => /text="(Continue|Create|繼續|建立)"/.test(n), 'create sheet confirm');
+    expect(await run).toMatchObject({ status: 'registered', rp_id: RP_ID });
+    expect(await status(/register: /)).toBe('register: ok');
+    const reg = JSON.parse(adb('shell', 'run-as', RP_PKG, 'cat', 'files/registration.json'));
+    const regChallenge = adb('shell', 'run-as', RP_PKG, 'cat', 'files/reg-challenge.txt').trim();
+    const regClient = JSON.parse(Buffer.from(reg.response.clientDataJSON, 'base64url').toString('utf8'));
+    expect(regClient).toMatchObject({ type: 'webauthn.create', challenge: regChallenge });
+    const regAuth = Buffer.from(reg.response.authenticatorData, 'base64url');
+    expect(regAuth.subarray(0, 32)).toEqual(createHash('sha256').update(RP_ID).digest());
+    expect(regAuth[32]).toBe(0x5d);
+    expect(reg.response.publicKeyAlgorithm).toBe(-7);
+
+    startRp();
+    const signIn = engine().androidOffer(
+      { item: 'dev-reg', serial: SERIAL!, kind: 'passkey', timeoutMs: 45_000 },
+      new AndroidActuator(ADB),
+    );
+    await sleep(1500);
+    await tap(has('text="passkey"'), 'passkey button');
+    await tap((n) => n.includes(USER) || n.includes('blindfill: Reg RP'), 'blindfill passkey entry');
+    const cont = find((n) => /text="(Continue|Sign in|繼續|登入)"/.test(n));
+    if (cont) adb('shell', 'input', 'tap', String(cont[0]), String(cont[1]));
+    expect(await signIn).toMatchObject({ status: 'signed', sign_count: 0 });
+    expect(await status(/passkey: /)).toBe('passkey: ok');
+    const resp = JSON.parse(adb('shell', 'run-as', RP_PKG, 'cat', 'files/passkey.json'));
+    expect(resp.id).toBe(reg.id);
+    const clientData = Buffer.from(resp.response.clientDataJSON, 'base64url');
+    const signed = Buffer.concat([
+      Buffer.from(resp.response.authenticatorData, 'base64url'),
+      createHash('sha256').update(clientData).digest(),
+    ]);
+    const pub = createPublicKey({
+      key: Buffer.from(reg.response.publicKey, 'base64url'),
+      format: 'der',
+      type: 'spki',
+    });
+    expect(verify('sha256', signed, pub, Buffer.from(resp.response.signature, 'base64url'))).toBe(true);
+  }, 150_000);
 
   it('refuses before arming when the installed companion has another signer than the pin', async () => {
     const pinned = process.env.BLINDFILL_COMPANION_SIGNER;
